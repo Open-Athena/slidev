@@ -1,7 +1,7 @@
 import type { SlidePatch } from '@slidev/types'
 import type { CSSProperties, DirectiveBinding, InjectionKey, WatchStopHandle } from 'vue'
 import { debounce, ensureSuffix } from '@antfu/utils'
-import { injectLocal, onClickOutside, useWindowFocus } from '@vueuse/core'
+import { injectLocal, useWindowFocus } from '@vueuse/core'
 import { computed, ref, watch } from 'vue'
 import { injectionCurrentPage, injectionFrontmatter, injectionRenderContext, injectionSlideElement, injectionSlideScale, injectionSlideZoom } from '../constants'
 import { makeId } from '../logic/utils'
@@ -158,6 +158,7 @@ export function useDragElement(directive: DirectiveBinding | null, posRaw?: stri
   const x0 = ref(pos[0] + pos[2] / 2)
 
   const rotate = ref(isArrow ? 0 : (pos[4] ?? 0))
+  const zIndex = ref(pos[5] ?? 100)
   const rotateRad = computed(() => rotate.value * Math.PI / 180)
   const rotateSin = computed(() => Math.sin(rotateRad.value))
   const rotateCos = computed(() => Math.cos(rotateRad.value))
@@ -198,7 +199,7 @@ export function useDragElement(directive: DirectiveBinding | null, posRaw?: stri
     return Number.isFinite(x0.value)
       ? {
         position: 'absolute',
-        zIndex: 100,
+        zIndex: zIndex.value,
         left: `${x0.value - width.value / 2}px`,
         top: `${y0.value - height.value / 2}px`,
         width: `${width.value}px`,
@@ -208,7 +209,7 @@ export function useDragElement(directive: DirectiveBinding | null, posRaw?: stri
       } satisfies CSSProperties
       : {
         position: 'absolute',
-        zIndex: 100,
+        zIndex: zIndex.value,
       } satisfies CSSProperties
   })
 
@@ -244,6 +245,7 @@ export function useDragElement(directive: DirectiveBinding | null, posRaw?: stri
     width,
     height,
     rotate,
+    zIndex,
     container,
     containerStyle,
     watchStopHandles,
@@ -281,13 +283,26 @@ export function useDragElement(directive: DirectiveBinding | null, posRaw?: stri
     },
   }
 
+  // Handle click-outside-to-deselect with our own listener instead of VueUse's onClickOutside
+  // (VueUse's onClickOutside has timing issues with our pointerdown-based selection)
+  function handleDocumentPointerdown(ev: PointerEvent) {
+    // Only process if this element is currently active
+    if (activeDragElement.value !== state)
+      return
+    const target = ev.target as HTMLElement
+    // Don't deselect if clicking on the DragControl UI
+    const dragControlContainer = document.querySelector('#drag-control-container')
+    if (dragControlContainer?.contains(target))
+      return
+    // Don't deselect if clicking on this element or any v-drag element
+    if (target?.closest('[data-drag-id]') || container.value?.contains(target))
+      return
+    state.stopDragging()
+  }
+  document.addEventListener('pointerdown', handleDocumentPointerdown)
+  watchStopHandles.push(() => document.removeEventListener('pointerdown', handleDocumentPointerdown))
+
   watchStopHandles.push(
-    onClickOutside(container, (ev) => {
-      const container = document.querySelector('#drag-control-container')
-      if (container && ev.target && container.contains(ev.target as HTMLElement))
-        return
-      state.stopDragging()
-    }),
     watch(useWindowFocus(), (focused) => {
       if (!focused)
         state.stopDragging()

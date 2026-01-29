@@ -20,7 +20,7 @@ onUnmounted(unmounted)
     :data-drag-id="dragId"
     :style="containerStyle"
     class="p-1"
-    @dblclick="startDragging"
+    @click.prevent.stop="startDragging"
   >
     <slot />
   </div>

@@ -30,7 +30,7 @@ const y2 = computed(() => y0.value + height.value / 2)
     :width="props.width"
     :color="props.color"
     :two-way="props.twoWay"
-    @dblclick="startDragging"
+    @click="startDragging"
     @click-outside="stopDragging"
   />
 </template>

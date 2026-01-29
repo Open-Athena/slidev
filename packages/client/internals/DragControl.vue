@@ -9,15 +9,70 @@ import { injectionSlideScale } from '../constants'
 import { slideHeight, slideWidth } from '../env'
 import { magicKeys } from '../state'
 
-const { data } = defineProps<{ data: DragElementState }>()
-const { dragId, zoom, autoHeight, x0, y0, width, height, rotate, isArrow } = data
+const props = defineProps<{ data: DragElementState }>()
+
+// Use computed to ensure we always access the current data prop's values
+const dragId = computed(() => props.data.dragId)
+const zoom = computed(() => props.data.zoom.value)
+const autoHeight = computed(() => props.data.autoHeight)
+const x0 = computed({
+  get: () => props.data.x0.value,
+  set: (v: number) => props.data.x0.value = v,
+})
+const y0 = computed({
+  get: () => props.data.y0.value,
+  set: (v: number) => props.data.y0.value = v,
+})
+const width = computed({
+  get: () => props.data.width.value,
+  set: (v: number) => props.data.width.value = v,
+})
+const height = computed({
+  get: () => props.data.height.value,
+  set: (v: number) => props.data.height.value = v,
+})
+const rotate = computed({
+  get: () => props.data.rotate.value,
+  set: (v: number) => props.data.rotate.value = v,
+})
+const zIndex = computed({
+  get: () => props.data.zIndex.value,
+  set: (v: number) => props.data.zIndex.value = v,
+})
+const isArrow = computed(() => props.data.isArrow)
+
+// Store original aspect ratio for reset (computed to update when data changes)
+const originalAspectRatio = computed(() => width.value / height.value)
+
+// Detect if the element has an associated link (wrapping <a> or internal <a>)
+const associatedLink = computed(() => {
+  const el = props.data.container.value
+  if (!el)
+    return null
+
+  // Check if element itself is an anchor
+  if (el.tagName === 'A')
+    return (el as HTMLAnchorElement).href
+
+  // Check if element is wrapped by an anchor
+  const parentAnchor = el.closest('a')
+  if (parentAnchor)
+    return parentAnchor.href
+
+  // Check if element contains an anchor (e.g., image inside a link)
+  const childAnchor = el.querySelector('a')
+  if (childAnchor)
+    return childAnchor.href
+
+  return null
+})
 
 const slideScale = inject(injectionSlideScale, ref(1))
 const scale = computed(() => slideScale.value * zoom.value)
 const { left: slideLeft, top: slideTop } = useSlideBounds()
 
 const ctrlSize = 10
-const minSize = isArrow ? Number.NEGATIVE_INFINITY : 40
+const minSize = computed(() => isArrow.value ? Number.NEGATIVE_INFINITY : 40)
 const minRemain = 10
 
 const rotateRad = computed(() => rotate.value * Math.PI / 180)
@@ -32,8 +87,8 @@ const boundingTop = computed(() => y0.value - boundingHeight.value / 2)
 const boundingRight = computed(() => x0.value + boundingWidth.value / 2)
 const boundingBottom = computed(() => y0.value + boundingHeight.value / 2)
 
-const arrowRevX = computed(() => isArrow && width.value < 0)
-const arrowRevY = computed(() => isArrow && height.value < 0)
+const arrowRevX = computed(() => isArrow.value && width.value < 0)
+const arrowRevY = computed(() => isArrow.value && height.value < 0)
 
 let currentDrag: {
   x0: number
@@ -130,7 +185,7 @@ function getCornerProps(isLeft: boolean, isTop: boolean) {
       const { ltx, lty, rtx, rty, lbx, lby, rbx, rby } = currentDrag
 
       const ratio = currentDrag.width / currentDrag.height
-      const wMin = Math.max(minSize, minSize * ratio)
+      const wMin = Math.max(minSize.value, minSize.value * ratio)
       function getSize(w1: number, h1: number) {
         if (ev.shiftKey) {
           const w = Math.max(w1, h1 * ratio, wMin)
@@ -138,7 +193,7 @@ function getCornerProps(isLeft: boolean, isTop: boolean) {
           return { w, h }
         }
         else {
-          return { w: Math.max(w1, minSize), h: Math.max(h1, minSize) }
+          return { w: Math.max(w1, minSize.value), h: Math.max(h1, minSize.value) }
         }
       }
 
@@ -213,8 +268,9 @@ function getCornerProps(isLeft: boolean, isTop: boolean) {
       right: isLeft !== arrowRevX.value ? undefined : '0',
       top: isTop !== arrowRevY.value ? '0' : undefined,
       bottom: isTop !== arrowRevY.value ? undefined : '0',
-      cursor: isArrow ? 'move' : +isLeft + +isTop === 1 ? 'nesw-resize' : 'nwse-resize',
-      borderRadius: isArrow ? '50%' : undefined,
+      cursor: isArrow.value ? 'move' : +isLeft + +isTop === 1 ? 'nesw-resize' : 'nwse-resize',
+      borderRadius: isArrow.value ? '50%' : undefined,
+      pointerEvents: 'auto',
     },
     class: ctrlClasses,
   }
@@ -238,28 +294,28 @@ function getBorderProps(dir: 'l' | 'r' | 't' | 'b') {
       if (dir === 'l') {
         const rx = (rtx + rbx) / 2
         const ry = (rty + rby) / 2
-        width.value = Math.max((rx - x) * rotateCos.value + (ry - y) * rotateSin.value, minSize)
+        width.value = Math.max((rx - x) * rotateCos.value + (ry - y) * rotateSin.value, minSize.value)
         x0.value = rx - width.value * rotateCos.value / 2
         y0.value = ry - width.value * rotateSin.value / 2
       }
       else if (dir === 'r') {
         const lx = (ltx + lbx) / 2
         const ly = (lty + lby) / 2
-        width.value = Math.max((x - lx) * rotateCos.value + (y - ly) * rotateSin.value, minSize)
+        width.value = Math.max((x - lx) * rotateCos.value + (y - ly) * rotateSin.value, minSize.value)
         x0.value = lx + width.value * rotateCos.value / 2
         y0.value = ly + width.value * rotateSin.value / 2
       }
       else if (dir === 't') {
         const bx = (lbx + rbx) / 2
         const by = (lby + rby) / 2
-        height.value = Math.max((by - y) * rotateCos.value - (bx - x) * rotateSin.value, minSize)
+        height.value = Math.max((by - y) * rotateCos.value - (bx - x) * rotateSin.value, minSize.value)
         x0.value = bx + height.value * rotateSin.value / 2
         y0.value = by - height.value * rotateCos.value / 2
       }
       else if (dir === 'b') {
         const tx = (ltx + rtx) / 2
         const ty = (lty + rty) / 2
-        height.value = Math.max((y - ty) * rotateCos.value - (x - tx) * rotateSin.value, minSize)
+        height.value = Math.max((y - ty) * rotateCos.value - (x - tx) * rotateSin.value, minSize.value)
         x0.value = tx - height.value * rotateSin.value / 2
         y0.value = ty + height.value * rotateCos.value / 2
       }
@@ -273,6 +329,7 @@ function getBorderProps(dir: 'l' | 'r' | 't' | 'b') {
       top: dir === 't' ? '0' : dir === 'b' ? `100%` : `50%`,
       cursor: 'lr'.includes(dir) ? 'ew-resize' : 'ns-resize',
       borderRadius: '50%',
+      pointerEvents: 'auto',
     },
     class: ctrlClasses,
   }
@@ -312,6 +369,7 @@ function getRotateProps() {
       top: '-20px',
       cursor: 'grab',
       borderRadius: '50%',
+      pointerEvents: 'auto',
     },
     class: ctrlClasses,
   }
@@ -354,6 +412,53 @@ watchEffect(() => {
   shortcut('up', moveUp)
   shortcut('down', moveDown)
 })
+
+function openLink() {
+  if (associatedLink.value)
+    window.open(associatedLink.value, '_blank')
+}
+
+function resetAspectRatio() {
+  // Reset to original aspect ratio, keeping width constant
+  height.value = width.value / originalAspectRatio.value
+}
+
+function bringForward() {
+  zIndex.value += 1
+}
+
+function sendBackward() {
+  zIndex.value = Math.max(1, zIndex.value - 1)
+}
+
+function bringToFront() {
+  zIndex.value = 1000
+}
+
+function sendToBack() {
+  zIndex.value = 1
+}
+
+// Z-order keyboard shortcuts
+watchEffect(() => {
+  const meta = magicKeys.meta?.value || magicKeys.ctrl?.value
+  const shift = magicKeys.shift?.value
+  const up = magicKeys.ArrowUp?.value
+  const down = magicKeys.ArrowDown?.value
+
+  if (meta && up && !shift) {
+    bringForward()
+  }
+  else if (meta && down && !shift) {
+    sendBackward()
+  }
+  else if (meta && shift && up) {
+    bringToFront()
+  }
+  else if (meta && shift && down) {
+    sendToBack()
+  }
+})
 </script>
 
 <template>
@@ -363,17 +468,15 @@ watchEffect(() => {
     :data-drag-id="dragId"
     :style="{
       position: 'absolute',
-      zIndex: 100,
+      zIndex: zIndex,
       left: `${zoom * (x0 - Math.abs(width) / 2)}px`,
       top: `${zoom * (y0 - Math.abs(height) / 2)}px`,
       width: `${zoom * Math.abs(width)}px`,
       height: `${zoom * Math.abs(height)}px`,
       transformOrigin: 'center center',
       transform: `rotate(${rotate}deg)`,
+      pointerEvents: 'none',
     }"
-    @pointerdown="onPointerdown"
-    @pointermove="onPointermove"
-    @pointerup="onPointerup"
   >
     <div class="absolute inset-0 z-nav dark:b-gray-400" :class="isArrow ? '' : 'b b-dark'">
       <template v-if="!autoHeight">
@@ -400,6 +503,78 @@ watchEffect(() => {
           }"
         />
       </template>
+    </div>
+    <!-- Floating toolbar -->
+    <div
+      class="absolute flex items-center gap-1 bg-white dark:bg-gray-800 rounded shadow-lg px-2 py-1 text-xs"
+      :style="{
+        top: '-32px',
+        right: '0',
+        zIndex: 101,
+        pointerEvents: 'auto',
+      }"
+    >
+      <!-- Reset aspect ratio button -->
+      <button
+        v-if="!isArrow && !autoHeight"
+        class="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded"
+        title="Reset aspect ratio"
+        @click.stop="resetAspectRatio"
+      >
+        <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" />
+        </svg>
+      </button>
+      <!-- Z-order buttons -->
+      <button
+        class="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded"
+        title="Bring forward (⌘↑)"
+        @click.stop="bringForward"
+      >
+        <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 15l7-7 7 7" />
+        </svg>
+      </button>
+      <button
+        class="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded"
+        title="Send backward (⌘↓)"
+        @click.stop="sendBackward"
+      >
+        <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+        </svg>
+      </button>
+    </div>
+    <!-- Floating link button -->
+    <div
+      v-if="associatedLink"
+      class="absolute flex items-center gap-1 bg-white dark:bg-gray-800 rounded shadow-lg px-2 py-1 text-xs"
+      :style="{
+        bottom: '-32px',
+        left: '50%',
+        transform: 'translateX(-50%)',
+        zIndex: 101,
+        pointerEvents: 'auto',
+      }"
+    >
+      <a
+        :href="associatedLink"
+        target="_blank"
+        rel="noopener noreferrer"
+        class="text-blue-600 dark:text-blue-400 hover:underline max-w-40 truncate"
+        @click.stop
+      >
+        {{ associatedLink }}
+      </a>
+      <button
+        class="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded"
+        title="Open link"
+        @click.stop="openLink"
+      >
+        <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+        </svg>
+      </button>
     </div>
   </div>
 </template>
