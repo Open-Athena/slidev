@@ -11,8 +11,25 @@ export interface DraggableImageOptions {
 }
 
 /**
+ * Extract a stable ID from an image source path/URL.
+ * E.g., `/images/mario.png` → `mario`, `https://example.com/cat.jpg?v=2` → `cat`
+ */
+function extractImageId(src: string): string {
+  // Remove query string and hash
+  const cleanSrc = src.split(/[?#]/)[0]
+  // Get basename (last path segment)
+  const basename = cleanSrc.split('/').pop() || ''
+  // Remove extension
+  const name = basename.replace(/\.[^.]+$/, '')
+  // Sanitize: keep only alphanumeric, dash, underscore; replace others with dash
+  const sanitized = name.replace(/[^\w-]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '')
+  // Return sanitized name or fallback
+  return sanitized || 'img'
+}
+
+/**
  * Markdown-it plugin to make images draggable by default.
- * Transforms `![alt](src)` to `<img v-drag="'img-N'" src="..." alt="...">` where N is a unique index.
+ * Transforms `![alt](src)` to `<img v-drag="'img-NAME'" src="..." alt="...">` where NAME is derived from the image basename.
  */
 export default function MarkdownItDraggableImage(
   md: MarkdownIt,
@@ -57,11 +74,21 @@ export default function MarkdownItDraggableImage(
     const alt = token.attrGet('alt') ?? token.content ?? ''
     const title = token.attrGet('title')
 
-    // Generate a unique ID for this image based on slide + index
-    // Use a hash of src to make IDs somewhat stable across edits
+    // Generate a stable ID for this image based on its source basename
+    // Track used IDs per slide to handle duplicates
     const slideNo = env.slideNo ?? 1
-    const imgIndex = env._draggableImageIndex = (env._draggableImageIndex ?? 0) + 1
-    const imgId = `img-${slideNo}-${imgIndex}`
+    env._draggableImageIds = env._draggableImageIds ?? new Map<number, Set<string>>()
+    const slideIds: Set<string> = env._draggableImageIds.get(slideNo) ?? new Set()
+    env._draggableImageIds.set(slideNo, slideIds)
+
+    // Extract base ID from src and ensure uniqueness within slide
+    const baseId = `img-${extractImageId(src)}`
+    let imgId = baseId
+    let counter = 2
+    while (slideIds.has(imgId)) {
+      imgId = `${baseId}-${counter++}`
+    }
+    slideIds.add(imgId)
 
     // Calculate markdown source position for persistence
     const smc = getSourceMapConsumer(env.id)
