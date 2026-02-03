@@ -1,7 +1,7 @@
 import type { SlidePatch } from '@slidev/types'
 import type { CSSProperties, DirectiveBinding, InjectionKey, WatchStopHandle } from 'vue'
 import { debounce, ensureSuffix } from '@antfu/utils'
-import { injectLocal, useWindowFocus } from '@vueuse/core'
+import { injectLocal, useSessionStorage, useWindowFocus } from '@vueuse/core'
 import { computed, ref, watch } from 'vue'
 import { injectionCurrentPage, injectionFrontmatter, injectionRenderContext, injectionSlideElement, injectionSlideScale, injectionSlideZoom } from '../constants'
 import { makeId } from '../logic/utils'
@@ -272,7 +272,7 @@ export function useDragElement(directive: DirectiveBinding | null, posRaw?: stri
     ),
   )
 
-  // Undo/redo history
+  // Undo/redo history (persisted to sessionStorage)
   interface HistorySnapshot {
     x0: number
     y0: number
@@ -285,8 +285,9 @@ export function useDragElement(directive: DirectiveBinding | null, posRaw?: stri
     cropBottom: number
     cropLeft: number
   }
-  const history: HistorySnapshot[] = []
-  const redoStack: HistorySnapshot[] = []
+  const storageKey = `slidev-drag-history-${page.value}-${dragId}`
+  const history = useSessionStorage<HistorySnapshot[]>(`${storageKey}-undo`, [])
+  const redoStack = useSessionStorage<HistorySnapshot[]>(`${storageKey}-redo`, [])
   const maxHistorySize = 50
 
   function getCurrentSnapshot(): HistorySnapshot {
@@ -339,33 +340,33 @@ export function useDragElement(directive: DirectiveBinding | null, posRaw?: stri
     containerStyle,
     watchStopHandles,
     dragging: computed((): boolean => activeDragElement.value === state),
-    // Undo/redo
-    canUndo: computed(() => history.length > 0),
-    canRedo: computed(() => redoStack.length > 0),
+    // Undo/redo (persisted to sessionStorage)
+    canUndo: computed(() => history.value.length > 0),
+    canRedo: computed(() => redoStack.value.length > 0),
     saveSnapshot(): void {
       // Save current state to history (call before making changes)
-      history.push(getCurrentSnapshot())
-      if (history.length > maxHistorySize)
-        history.shift()
+      history.value.push(getCurrentSnapshot())
+      if (history.value.length > maxHistorySize)
+        history.value.shift()
       // Clear redo stack when new action is taken
-      redoStack.length = 0
+      redoStack.value = []
     },
     undo(): void {
-      if (history.length === 0)
+      if (history.value.length === 0)
         return
       // Save current state to redo stack
-      redoStack.push(getCurrentSnapshot())
+      redoStack.value.push(getCurrentSnapshot())
       // Restore previous state
-      const prev = history.pop()!
+      const prev = history.value.pop()!
       applySnapshot(prev)
     },
     redo(): void {
-      if (redoStack.length === 0)
+      if (redoStack.value.length === 0)
         return
       // Save current state to history
-      history.push(getCurrentSnapshot())
+      history.value.push(getCurrentSnapshot())
       // Restore from redo stack
-      const next = redoStack.pop()!
+      const next = redoStack.value.pop()!
       applySnapshot(next)
     },
     mounted() {
