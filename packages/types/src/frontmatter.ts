@@ -311,6 +311,15 @@ export interface HeadmatterConfig extends TransitionOptions {
    * @default 800
    */
   magicMoveDuration?: number
+  /**
+   * Make all markdown images (`![](...)`) draggable by default
+   *
+   * When enabled, images can be moved, resized, rotated, and cropped
+   * like in Google Slides. Positions are auto-stored in frontmatter.
+   *
+   * @default false
+   */
+  draggableImages?: boolean
 }
 
 export interface Frontmatter extends TransitionOptions {

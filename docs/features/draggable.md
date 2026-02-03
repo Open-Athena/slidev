@@ -8,6 +8,18 @@ description: |
 
 Draggable elements give you the ability to move, resize, rotate, and crop elements by dragging them with the mouse. This is useful for creating floating elements in your slides.
 
+## Auto-Draggable Images
+
+You can make all markdown images (`![](...)`) draggable by default, similar to Google Slides:
+
+```yaml
+---
+draggableImages: true
+---
+```
+
+When enabled, every image in your slides becomes draggable without needing explicit `v-drag` attributes. Positions are automatically stored in the frontmatter.
+
 ## Directive Usage
 
 ### Data from the frontmatter
@@ -79,6 +91,13 @@ You can set `Height` to `NaN` (in directive) or `_` (in component props) to make
 - Use **arrow keys** to nudge the selected element.
 - Hold **Shift** while dragging or resizing to preserve aspect ratio.
 - **Click outside** the element to deselect it.
+
+### Rotation
+
+A circular **rotation handle** appears above selected elements (Google Slides style). Drag it to rotate:
+
+- The handle snaps to common angles (0°, 45°, 90°, etc.) when close.
+- A stem connects the handle to the element for visual clarity.
 
 ### Z-Order (Layering)
 
