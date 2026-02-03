@@ -7,7 +7,7 @@ context('v-drag', () => {
     cy.visit(`${BASE}/${no}`).wait(500)
   }
 
-  describe('Selection', () => {
+  describe('selection', () => {
     beforeEach(() => {
       goPage(14) // v-drag Resize & Position Tests page
     })
@@ -59,7 +59,7 @@ context('v-drag', () => {
     })
   })
 
-  describe('Dragging', () => {
+  describe('dragging', () => {
     beforeEach(() => {
       goPage(14) // v-drag Resize & Position Tests page
     })
@@ -91,7 +91,7 @@ context('v-drag', () => {
     })
   })
 
-  describe('Z-Order', () => {
+  describe('z-order', () => {
     beforeEach(() => {
       goPage(15) // v-drag Z-Order Tests page
     })
@@ -149,21 +149,18 @@ context('v-drag', () => {
     })
   })
 
-  describe('Link Detection', () => {
+  describe('link detection', () => {
     beforeEach(() => {
       goPage(16) // v-drag Link Detection Test page
     })
 
     it('clicking linked element does not navigate', () => {
-      // Store current URL
-      cy.url().then((url) => {
-        // Click on the linked element
-        cy.get('[data-testid="link-box"]').click()
-        cy.wait(500)
+      // Click on the linked element
+      cy.get('[data-testid="link-box"]').click()
+      cy.wait(500)
 
-        // Should still be on the same page (not navigated to example.com)
-        cy.url().should('include', 'localhost:3041')
-      })
+      // Should still be on the same page (not navigated to example.com)
+      cy.url().should('include', 'localhost:3041')
     })
 
     it('shows floating link button for linked elements', () => {
@@ -179,7 +176,7 @@ context('v-drag', () => {
     })
   })
 
-  describe('Resize', () => {
+  describe('resize', () => {
     beforeEach(() => {
       goPage(14) // v-drag Resize & Position Tests page
     })
@@ -206,7 +203,7 @@ context('v-drag', () => {
     })
   })
 
-  describe('Click Outside (Dedicated Test)', () => {
+  describe('click outside (dedicated test)', () => {
     beforeEach(() => {
       goPage(17) // v-drag Click Outside Test page
     })

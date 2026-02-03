@@ -22,7 +22,7 @@ export function createVDragDirective() {
           state.watchStopHandles.push(
             watch(state.containerStyle, (style) => {
               for (const [k, v] of Object.entries(style)) {
-                if (v)
+                if (v !== undefined && v !== null)
                   el.style[k as any] = v as any
               }
             }, { immediate: true }),
@@ -66,10 +66,21 @@ export function createVDragDirective() {
             ev.stopPropagation()
           }
 
+          // Double-click to enter crop mode (only for non-arrow elements)
+          function handleDblclick(ev: MouseEvent) {
+            ev.preventDefault()
+            ev.stopPropagation()
+            if (!state.isArrow) {
+              state.enterCropMode()
+            }
+          }
+
           el.addEventListener('pointerdown', handlePointerdown, { capture: true })
           el.addEventListener('click', handleClick, { capture: true })
+          el.addEventListener('dblclick', handleDblclick, { capture: true })
           ;(el as any)._vDragPointerdownHandler = handlePointerdown
           ;(el as any)._vDragClickHandler = handleClick
+          ;(el as any)._vDragDblclickHandler = handleDblclick
         },
         mounted(el) {
           el.draggingState.mounted()
@@ -96,6 +107,9 @@ export function createVDragDirective() {
           const clickHandler = (el as any)._vDragClickHandler
           if (clickHandler)
             el.removeEventListener('click', clickHandler, { capture: true })
+          const dblclickHandler = (el as any)._vDragDblclickHandler
+          if (dblclickHandler)
+            el.removeEventListener('dblclick', dblclickHandler, { capture: true })
           const parentAnchor = (el as any)._vDragParentAnchor
           const anchorClickHandler = (el as any)._vDragAnchorClickHandler
           if (parentAnchor && anchorClickHandler)

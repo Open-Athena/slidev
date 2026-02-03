@@ -159,6 +159,13 @@ export function useDragElement(directive: DirectiveBinding | null, posRaw?: stri
 
   const rotate = ref(isArrow ? 0 : (pos[4] ?? 0))
   const zIndex = ref(pos[5] ?? 100)
+
+  // Crop values (percentages from each edge, 0-100)
+  const cropTop = ref(pos[6] ?? 0)
+  const cropRight = ref(pos[7] ?? 0)
+  const cropBottom = ref(pos[8] ?? 0)
+  const cropLeft = ref(pos[9] ?? 0)
+  const isCropping = ref(false)
   const rotateRad = computed(() => rotate.value * Math.PI / 180)
   const rotateSin = computed(() => Math.sin(rotateRad.value))
   const rotateCos = computed(() => Math.cos(rotateRad.value))
@@ -195,35 +202,67 @@ export function useDragElement(directive: DirectiveBinding | null, posRaw?: stri
       })
     : configuredY0
 
+  // Check if any crop is applied
+  const hasCrop = computed(() =>
+    cropTop.value !== 0 || cropRight.value !== 0 || cropBottom.value !== 0 || cropLeft.value !== 0,
+  )
+
   const containerStyle = computed(() => {
-    return Number.isFinite(x0.value)
+    const baseStyle: CSSProperties = Number.isFinite(x0.value)
       ? {
-        position: 'absolute',
-        zIndex: zIndex.value,
-        left: `${x0.value - width.value / 2}px`,
-        top: `${y0.value - height.value / 2}px`,
-        width: `${width.value}px`,
-        height: autoHeight ? undefined : `${height.value}px`,
-        transformOrigin: 'center center',
-        transform: `rotate(${rotate.value}deg)`,
-      } satisfies CSSProperties
+          position: 'absolute',
+          zIndex: zIndex.value,
+          left: `${x0.value - width.value / 2}px`,
+          top: `${y0.value - height.value / 2}px`,
+          width: `${width.value}px`,
+          height: autoHeight ? undefined : `${height.value}px`,
+          transformOrigin: 'center center',
+          transform: `rotate(${rotate.value}deg)`,
+        }
       : {
-        position: 'absolute',
-        zIndex: zIndex.value,
-      } satisfies CSSProperties
+          position: 'absolute',
+          zIndex: zIndex.value,
+        }
+
+    // In crop mode, hide the original element so only DragControl's preview is visible
+    if (isCropping.value) {
+      baseStyle.opacity = 0
+    }
+    else {
+      // Reset opacity when not cropping
+      baseStyle.opacity = 1
+      // Apply crop via clip-path when not in crop mode
+      if (hasCrop.value) {
+        baseStyle.clipPath = `inset(${cropTop.value}% ${cropRight.value}% ${cropBottom.value}% ${cropLeft.value}%)`
+      }
+    }
+
+    return baseStyle
   })
 
   watchStopHandles.push(
     watch(
-      [x0, y0, width, height, rotate],
-      ([x0, y0, w, h, r]) => {
+      [x0, y0, width, height, rotate, zIndex, cropTop, cropRight, cropBottom, cropLeft],
+      ([x0, y0, w, h, r, z, cTop, cRight, cBottom, cLeft]) => {
         let posStr = [x0 - w / 2, y0 - h / 2, w].map(Math.round).join()
         if (autoHeight)
           posStr += dataSource === 'directive' ? ',NaN' : ',_'
         else
           posStr += `,${Math.round(h)}`
-        if (Math.round(r) !== 0)
+
+        // Add rotate if non-zero, or if we need subsequent values
+        const hasCrop = cTop !== 0 || cRight !== 0 || cBottom !== 0 || cLeft !== 0
+        const hasZIndex = z !== 100
+        if (Math.round(r) !== 0 || hasZIndex || hasCrop)
           posStr += `,${Math.round(r)}`
+
+        // Add zIndex if non-default, or if we need crop values
+        if (hasZIndex || hasCrop)
+          posStr += `,${Math.round(z)}`
+
+        // Add crop values if any are non-zero
+        if (hasCrop)
+          posStr += `,${Math.round(cTop)},${Math.round(cRight)},${Math.round(cBottom)},${Math.round(cLeft)}`
 
         if (dataSource === 'directive')
           posStr = `[${posStr}]`
@@ -246,6 +285,11 @@ export function useDragElement(directive: DirectiveBinding | null, posRaw?: stri
     height,
     rotate,
     zIndex,
+    cropTop,
+    cropRight,
+    cropBottom,
+    cropLeft,
+    isCropping,
     container,
     containerStyle,
     watchStopHandles,
@@ -278,8 +322,39 @@ export function useDragElement(directive: DirectiveBinding | null, posRaw?: stri
     stopDragging(): void {
       if (!enabled)
         return
+      isCropping.value = false
       if (activeDragElement.value === state)
         activeDragElement.value = null
+    },
+    // Saved crop values for cancel functionality
+    savedCropValues: null as { top: number, right: number, bottom: number, left: number } | null,
+    enterCropMode(): void {
+      if (!enabled || isArrow)
+        return
+      // Save current crop values so we can restore on cancel
+      state.savedCropValues = {
+        top: cropTop.value,
+        right: cropRight.value,
+        bottom: cropBottom.value,
+        left: cropLeft.value,
+      }
+      isCropping.value = true
+    },
+    exitCropMode(): void {
+      // Commit the crop (don't restore saved values)
+      state.savedCropValues = null
+      isCropping.value = false
+    },
+    cancelCropMode(): void {
+      // Restore saved crop values and exit
+      if (state.savedCropValues) {
+        cropTop.value = state.savedCropValues.top
+        cropRight.value = state.savedCropValues.right
+        cropBottom.value = state.savedCropValues.bottom
+        cropLeft.value = state.savedCropValues.left
+      }
+      state.savedCropValues = null
+      isCropping.value = false
     },
   }
 

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+/* eslint-disable vue/no-mutating-props -- Computed setters intentionally wrap parent refs for two-way binding */
 import type { Pausable } from '@vueuse/core'
 import type { DragElementState } from '../composables/useDragElements'
 import { clamp } from '@antfu/utils'
@@ -41,8 +42,49 @@ const zIndex = computed({
 })
 const isArrow = computed(() => props.data.isArrow)
 
-// Store original aspect ratio for reset (computed to update when data changes)
-const originalAspectRatio = computed(() => width.value / height.value)
+// Crop mode state
+const isCropping = computed(() => props.data.isCropping.value)
+const cropTop = computed({
+  get: () => props.data.cropTop.value,
+  set: (v: number) => props.data.cropTop.value = v,
+})
+const cropRight = computed({
+  get: () => props.data.cropRight.value,
+  set: (v: number) => props.data.cropRight.value = v,
+})
+const cropBottom = computed({
+  get: () => props.data.cropBottom.value,
+  set: (v: number) => props.data.cropBottom.value = v,
+})
+const cropLeft = computed({
+  get: () => props.data.cropLeft.value,
+  set: (v: number) => props.data.cropLeft.value = v,
+})
+
+// Store initial aspect ratio for reset - captured once when component mounts
+// Note: For images, ideally this would use natural dimensions, but we use initial dimensions
+const initialAspectRatio = width.value / height.value
+
+// Check if there's any crop applied
+const hasCrop = computed(() => cropTop.value > 0 || cropRight.value > 0 || cropBottom.value > 0 || cropLeft.value > 0)
+
+// Full dimensions (always the original size)
+const fullWidth = computed(() => Math.abs(width.value))
+const fullHeight = computed(() => Math.abs(height.value))
+
+// Cropped dimensions (the visible portion)
+const croppedWidth = computed(() => fullWidth.value * (100 - cropLeft.value - cropRight.value) / 100)
+const croppedHeight = computed(() => fullHeight.value * (100 - cropTop.value - cropBottom.value) / 100)
+
+// Cropped position offset (shift to center the visible portion)
+const cropOffsetX = computed(() => (cropLeft.value - cropRight.value) / 100 * fullWidth.value / 2)
+const cropOffsetY = computed(() => (cropTop.value - cropBottom.value) / 100 * fullHeight.value / 2)
+
+// Display dimensions: full size in crop mode, cropped size otherwise
+const displayWidth = computed(() => isCropping.value ? fullWidth.value : (hasCrop.value ? croppedWidth.value : fullWidth.value))
+const displayHeight = computed(() => isCropping.value ? fullHeight.value : (hasCrop.value ? croppedHeight.value : fullHeight.value))
+const displayX0 = computed(() => isCropping.value ? x0.value : (hasCrop.value ? x0.value + cropOffsetX.value : x0.value))
+const displayY0 = computed(() => isCropping.value ? y0.value : (hasCrop.value ? y0.value + cropOffsetY.value : y0.value))
 
 // Detect if the element has an associated link (wrapping <a> or internal <a>)
 const associatedLink = computed(() => {
@@ -63,6 +105,32 @@ const associatedLink = computed(() => {
   const childAnchor = el.querySelector('a')
   if (childAnchor)
     return childAnchor.href
+
+  return null
+})
+
+// Get image source from the dragged element (for rendering in crop mode)
+const imageSrc = computed(() => {
+  const el = props.data.container.value
+  if (!el)
+    return null
+
+  // Check if element itself is an image
+  if (el.tagName === 'IMG')
+    return (el as HTMLImageElement).src
+
+  // Check for img inside the element
+  const img = el.querySelector('img')
+  if (img)
+    return img.src
+
+  // Check for background-image style
+  const bgImage = window.getComputedStyle(el).backgroundImage
+  if (bgImage && bgImage !== 'none') {
+    const match = bgImage.match(/url\(["']?(.+?)["']?\)/)
+    if (match)
+      return match[1]
+  }
 
   return null
 })
@@ -143,7 +211,7 @@ function onPointerdown(ev: PointerEvent) {
   (ev.currentTarget as HTMLElement).setPointerCapture(ev.pointerId)
 }
 
-function onPointermove(ev: PointerEvent) {
+function _onPointermove(ev: PointerEvent) {
   if (!currentDrag || ev.buttons !== 1)
     return
 
@@ -419,8 +487,8 @@ function openLink() {
 }
 
 function resetAspectRatio() {
-  // Reset to original aspect ratio, keeping width constant
-  height.value = width.value / originalAspectRatio.value
+  // Reset to initial aspect ratio, keeping width constant
+  height.value = width.value / initialAspectRatio
 }
 
 function bringForward() {
@@ -459,6 +527,190 @@ watchEffect(() => {
     sendToBack()
   }
 })
+
+// Enter key to exit crop mode
+watchEffect(() => {
+  if (isCropping.value && magicKeys.enter?.value) {
+    props.data.exitCropMode()
+  }
+})
+
+// Escape key to cancel crop mode (revert changes) or deselect
+watchEffect(() => {
+  if (magicKeys.escape?.value) {
+    if (isCropping.value) {
+      props.data.cancelCropMode()
+    }
+    else {
+      props.data.stopDragging()
+    }
+  }
+})
+
+// Double-click to exit crop mode
+function handleDblclick() {
+  if (isCropping.value) {
+    props.data.exitCropMode()
+  }
+}
+
+// Crop handle dragging
+const cornerHandleSize = 28 // L-shaped corner handles are larger
+const edgeHandleLength = 20 // Length of edge midpoint handles
+let currentCropDrag: {
+  handle: 'top' | 'right' | 'bottom' | 'left' | 'topLeft' | 'topRight' | 'bottomLeft' | 'bottomRight'
+  startCropTop: number
+  startCropRight: number
+  startCropBottom: number
+  startCropLeft: number
+  startX: number
+  startY: number
+} | null = null
+
+function getCropHandleProps(handle: 'top' | 'right' | 'bottom' | 'left' | 'topLeft' | 'topRight' | 'bottomLeft' | 'bottomRight') {
+  const isCorner = handle.includes('top') || handle.includes('bottom') ? handle.includes('Left') || handle.includes('Right') : false
+  const isVertical = handle === 'top' || handle === 'bottom'
+
+  // Position calculations based on current crop values
+  let left = '0'
+  let top = '0'
+  let cursorStyle = 'default'
+
+  // Calculate crop region center for edge handle positioning
+  const cropCenterX = cropLeft.value + (100 - cropLeft.value - cropRight.value) / 2
+  const cropCenterY = cropTop.value + (100 - cropTop.value - cropBottom.value) / 2
+
+  // Vertical position (top edge of handle)
+  if (handle === 'top' || handle === 'topLeft' || handle === 'topRight') {
+    top = `${cropTop.value}%`
+  }
+  else if (handle === 'bottom' || handle === 'bottomLeft' || handle === 'bottomRight') {
+    top = `${100 - cropBottom.value}%`
+  }
+  else if (handle === 'left' || handle === 'right') {
+    // Edge handles at vertical center of crop region
+    top = `${cropCenterY}%`
+  }
+
+  // Horizontal position (left edge of handle)
+  if (handle === 'left' || handle === 'topLeft' || handle === 'bottomLeft') {
+    left = `${cropLeft.value}%`
+  }
+  else if (handle === 'right' || handle === 'topRight' || handle === 'bottomRight') {
+    left = `${100 - cropRight.value}%`
+  }
+  else if (handle === 'top' || handle === 'bottom') {
+    // Edge handles at horizontal center of crop region
+    left = `${cropCenterX}%`
+  }
+
+  // Cursor styles
+  if (handle === 'top' || handle === 'bottom') {
+    cursorStyle = 'ns-resize'
+  }
+  else if (handle === 'left' || handle === 'right') {
+    cursorStyle = 'ew-resize'
+  }
+  else if (handle === 'topLeft' || handle === 'bottomRight') {
+    cursorStyle = 'nwse-resize'
+  }
+  else if (handle === 'topRight' || handle === 'bottomLeft') {
+    cursorStyle = 'nesw-resize'
+  }
+
+  return {
+    onPointerdown: (ev: PointerEvent) => {
+      if (ev.buttons !== 1)
+        return
+      ev.preventDefault()
+      ev.stopPropagation()
+
+      currentCropDrag = {
+        handle,
+        startCropTop: cropTop.value,
+        startCropRight: cropRight.value,
+        startCropBottom: cropBottom.value,
+        startCropLeft: cropLeft.value,
+        startX: ev.clientX,
+        startY: ev.clientY,
+      }
+
+      ;(ev.currentTarget as HTMLElement).setPointerCapture(ev.pointerId)
+    },
+    onPointermove: (ev: PointerEvent) => {
+      if (!currentCropDrag || ev.buttons !== 1)
+        return
+      ev.preventDefault()
+      ev.stopPropagation()
+
+      // Calculate delta as percentage of element size
+      const dx = (ev.clientX - currentCropDrag.startX) / scale.value / width.value * 100
+      const dy = (ev.clientY - currentCropDrag.startY) / scale.value / height.value * 100
+
+      const h = currentCropDrag.handle
+
+      // Update crop values based on which handle is being dragged
+      if (h === 'top' || h === 'topLeft' || h === 'topRight') {
+        cropTop.value = clamp(currentCropDrag.startCropTop + dy, 0, 100 - cropBottom.value - 10)
+      }
+      if (h === 'bottom' || h === 'bottomLeft' || h === 'bottomRight') {
+        cropBottom.value = clamp(currentCropDrag.startCropBottom - dy, 0, 100 - cropTop.value - 10)
+      }
+      if (h === 'left' || h === 'topLeft' || h === 'bottomLeft') {
+        cropLeft.value = clamp(currentCropDrag.startCropLeft + dx, 0, 100 - cropRight.value - 10)
+      }
+      if (h === 'right' || h === 'topRight' || h === 'bottomRight') {
+        cropRight.value = clamp(currentCropDrag.startCropRight - dx, 0, 100 - cropLeft.value - 10)
+      }
+    },
+    onPointerup: (ev: PointerEvent) => {
+      if (!currentCropDrag)
+        return
+      ev.preventDefault()
+      ev.stopPropagation()
+      currentCropDrag = null
+    },
+    style: isCorner
+      ? {
+          // Corner handles: L-shaped brackets
+          position: 'absolute' as const,
+          left,
+          top,
+          width: `${cornerHandleSize}px`,
+          height: `${cornerHandleSize}px`,
+          // Position the L-bracket to wrap the corner
+          marginLeft: handle === 'topLeft' || handle === 'bottomLeft' ? '-2px' : `-${cornerHandleSize - 2}px`,
+          marginTop: handle === 'topLeft' || handle === 'topRight' ? '-2px' : `-${cornerHandleSize - 2}px`,
+          background: 'transparent',
+          // L-shape using thicker borders on two sides
+          borderTop: (handle === 'topLeft' || handle === 'topRight') ? '5px solid #4285f4' : 'none',
+          borderBottom: (handle === 'bottomLeft' || handle === 'bottomRight') ? '5px solid #4285f4' : 'none',
+          borderLeft: (handle === 'topLeft' || handle === 'bottomLeft') ? '5px solid #4285f4' : 'none',
+          borderRight: (handle === 'topRight' || handle === 'bottomRight') ? '5px solid #4285f4' : 'none',
+          // Add white outline for visibility on dark backgrounds
+          filter: 'drop-shadow(0 0 1px white) drop-shadow(0 0 1px white)',
+          cursor: cursorStyle,
+          pointerEvents: 'auto' as const,
+          zIndex: 10,
+        }
+      : {
+          // Edge handles: longer pill/oval shapes
+          position: 'absolute' as const,
+          left,
+          top,
+          width: isVertical ? `${edgeHandleLength}px` : '8px',
+          height: isVertical ? '8px' : `${edgeHandleLength}px`,
+          marginLeft: isVertical ? `-${edgeHandleLength / 2}px` : '-4px',
+          marginTop: isVertical ? '-4px' : `-${edgeHandleLength / 2}px`,
+          background: '#fff',
+          border: '2px solid #4285f4',
+          borderRadius: '4px',
+          cursor: cursorStyle,
+          pointerEvents: 'auto' as const,
+          zIndex: 10,
+        },
+  }
+}
 </script>
 
 <template>
@@ -468,17 +720,18 @@ watchEffect(() => {
     :data-drag-id="dragId"
     :style="{
       position: 'absolute',
-      zIndex: zIndex,
-      left: `${zoom * (x0 - Math.abs(width) / 2)}px`,
-      top: `${zoom * (y0 - Math.abs(height) / 2)}px`,
-      width: `${zoom * Math.abs(width)}px`,
-      height: `${zoom * Math.abs(height)}px`,
+      zIndex,
+      left: `${zoom * (displayX0 - displayWidth / 2)}px`,
+      top: `${zoom * (displayY0 - displayHeight / 2)}px`,
+      width: `${zoom * displayWidth}px`,
+      height: `${zoom * displayHeight}px`,
       transformOrigin: 'center center',
       transform: `rotate(${rotate}deg)`,
       pointerEvents: 'none',
     }"
   >
-    <div class="absolute inset-0 z-nav dark:b-gray-400" :class="isArrow ? '' : 'b b-dark'">
+    <!-- Normal selection mode -->
+    <div v-if="!isCropping" class="absolute inset-0 z-nav dark:b-gray-400" :class="isArrow ? '' : 'b b-dark'">
       <template v-if="!autoHeight">
         <div v-bind="getCornerProps(true, true)" />
         <div v-bind="getCornerProps(false, false)" />
@@ -504,8 +757,95 @@ watchEffect(() => {
         />
       </template>
     </div>
-    <!-- Floating toolbar -->
+
+    <!-- Crop mode -->
+    <div v-if="isCropping" class="absolute inset-0" :style="{ pointerEvents: 'auto' }" @dblclick="handleDblclick">
+      <!-- Background: Full image at reduced opacity (shows what will be cropped out) -->
+      <img
+        v-if="imageSrc"
+        :src="imageSrc"
+        class="absolute inset-0 w-full h-full object-fill"
+        :style="{ opacity: 0.35 }"
+      >
+
+      <!-- Foreground: Cropped region at full opacity (shows what will remain) -->
+      <img
+        v-if="imageSrc"
+        :src="imageSrc"
+        class="absolute inset-0 w-full h-full object-fill"
+        :style="{
+          clipPath: `inset(${cropTop}% ${cropRight}% ${cropBottom}% ${cropLeft}%)`,
+        }"
+      >
+
+      <!-- Fallback for non-image elements: checkerboard overlay -->
+      <template v-if="!imageSrc">
+        <div
+          class="absolute crop-overlay"
+          :style="{ top: 0, left: 0, right: 0, height: `${cropTop}%` }"
+        />
+        <div
+          class="absolute crop-overlay"
+          :style="{ bottom: 0, left: 0, right: 0, height: `${cropBottom}%` }"
+        />
+        <div
+          class="absolute crop-overlay"
+          :style="{ top: `${cropTop}%`, left: 0, bottom: `${cropBottom}%`, width: `${cropLeft}%` }"
+        />
+        <div
+          class="absolute crop-overlay"
+          :style="{ top: `${cropTop}%`, right: 0, bottom: `${cropBottom}%`, width: `${cropRight}%` }"
+        />
+      </template>
+
+      <!-- Crop region border - blue like Google's -->
+      <div
+        class="absolute"
+        :style="{
+          top: `${cropTop}%`,
+          left: `${cropLeft}%`,
+          right: `${cropRight}%`,
+          bottom: `${cropBottom}%`,
+          border: '2px solid #4285f4',
+        }"
+      />
+
+      <!-- Crop handles - edges -->
+      <div v-bind="getCropHandleProps('top')" />
+      <div v-bind="getCropHandleProps('right')" />
+      <div v-bind="getCropHandleProps('bottom')" />
+      <div v-bind="getCropHandleProps('left')" />
+
+      <!-- Crop handles - corners -->
+      <div v-bind="getCropHandleProps('topLeft')" />
+      <div v-bind="getCropHandleProps('topRight')" />
+      <div v-bind="getCropHandleProps('bottomLeft')" />
+      <div v-bind="getCropHandleProps('bottomRight')" />
+
+      <!-- Crop mode toolbar -->
+      <div
+        class="absolute flex items-center gap-2 bg-white dark:bg-gray-800 rounded shadow-lg px-3 py-1.5 text-xs"
+        :style="{
+          bottom: '-40px',
+          left: '50%',
+          transform: 'translateX(-50%)',
+          zIndex: 101,
+          pointerEvents: 'auto',
+          whiteSpace: 'nowrap',
+        }"
+      >
+        <span class="text-gray-500 dark:text-gray-400">Drag handles to crop</span>
+        <button
+          class="px-2 py-0.5 bg-blue-500 text-white rounded hover:bg-blue-600"
+          @click.stop="props.data.exitCropMode()"
+        >
+          Done
+        </button>
+      </div>
+    </div>
+    <!-- Floating toolbar (hidden in crop mode) -->
     <div
+      v-if="!isCropping"
       class="absolute flex items-center gap-1 bg-white dark:bg-gray-800 rounded shadow-lg px-2 py-1 text-xs"
       :style="{
         top: '-32px',
@@ -545,9 +885,9 @@ watchEffect(() => {
         </svg>
       </button>
     </div>
-    <!-- Floating link button -->
+    <!-- Floating link button (hidden in crop mode) -->
     <div
-      v-if="associatedLink"
+      v-if="associatedLink && !isCropping"
       class="absolute flex items-center gap-1 bg-white dark:bg-gray-800 rounded shadow-lg px-2 py-1 text-xs"
       :style="{
         bottom: '-32px',
@@ -578,3 +918,21 @@ watchEffect(() => {
     </div>
   </div>
 </template>
+
+<style scoped>
+.crop-overlay {
+  /* Semi-transparent checkerboard pattern for visibility on both light and dark backgrounds */
+  background-color: rgba(0, 0, 0, 0.4);
+  background-image:
+    linear-gradient(45deg, rgba(255, 255, 255, 0.1) 25%, transparent 25%),
+    linear-gradient(-45deg, rgba(255, 255, 255, 0.1) 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, rgba(255, 255, 255, 0.1) 75%),
+    linear-gradient(-45deg, transparent 75%, rgba(255, 255, 255, 0.1) 75%);
+  background-size: 20px 20px;
+  background-position:
+    0 0,
+    0 10px,
+    10px -10px,
+    -10px 0px;
+}
+</style>
