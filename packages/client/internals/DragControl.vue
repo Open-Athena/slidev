@@ -3,7 +3,7 @@
 import type { Pausable } from '@vueuse/core'
 import type { DragElementState } from '../composables/useDragElements'
 import { clamp } from '@antfu/utils'
-import { useIntervalFn } from '@vueuse/core'
+import { onKeyDown, useIntervalFn } from '@vueuse/core'
 import { computed, inject, ref, watchEffect } from 'vue'
 import { useSlideBounds } from '../composables/useSlideBounds'
 import { injectionSlideScale } from '../constants'
@@ -196,6 +196,10 @@ function onPointerdown(ev: PointerEvent) {
 
   ev.preventDefault()
   ev.stopPropagation()
+
+  // Save snapshot for undo before any manipulation
+  props.data.saveSnapshot()
+
   const el = ev.target as HTMLElement
   const elBounds = el.getBoundingClientRect()
 
@@ -435,6 +439,9 @@ function getRotateProps() {
       ev.preventDefault()
       ev.stopPropagation()
 
+      // Save snapshot for undo before rotation
+      props.data.saveSnapshot()
+
       // Store the visible center as the rotation pivot (stays fixed during rotation)
       rotationPivotX.value = hasCrop.value ? visibleCenterX.value : x0.value
       rotationPivotY.value = hasCrop.value ? visibleCenterY.value : y0.value
@@ -577,25 +584,54 @@ function openLink() {
 }
 
 function resetAspectRatio() {
+  props.data.saveSnapshot()
   // Reset to initial aspect ratio, keeping width constant
   height.value = width.value / initialAspectRatio
 }
 
 function bringForward() {
+  props.data.saveSnapshot()
   zIndex.value += 1
 }
 
 function sendBackward() {
+  props.data.saveSnapshot()
   zIndex.value = Math.max(1, zIndex.value - 1)
 }
 
 function bringToFront() {
+  props.data.saveSnapshot()
   zIndex.value = 1000
 }
 
 function sendToBack() {
+  props.data.saveSnapshot()
   zIndex.value = 1
 }
+
+// Undo/redo
+const canUndo = computed(() => props.data.canUndo.value)
+const canRedo = computed(() => props.data.canRedo.value)
+
+function undo() {
+  props.data.undo()
+}
+
+function redo() {
+  props.data.redo()
+}
+
+// Undo/redo keyboard shortcuts (Ctrl/Cmd+Z, Ctrl/Cmd+Shift+Z)
+// Use onKeyDown for reliable modifier detection from the event itself
+onKeyDown('z', (e) => {
+  if (!e.metaKey && !e.ctrlKey)
+    return
+  e.preventDefault()
+  if (e.shiftKey)
+    redo()
+  else
+    undo()
+})
 
 // Z-order keyboard shortcuts
 watchEffect(() => {
@@ -714,6 +750,9 @@ function getCropHandleProps(handle: 'top' | 'right' | 'bottom' | 'left' | 'topLe
         return
       ev.preventDefault()
       ev.stopPropagation()
+
+      // Save snapshot for undo before cropping
+      props.data.saveSnapshot()
 
       currentCropDrag = {
         handle,
@@ -995,6 +1034,28 @@ function getCropHandleProps(handle: 'top' | 'right' | 'bottom' | 'left' | 'topLe
         pointerEvents: 'auto',
       }"
     >
+      <!-- Undo/redo buttons -->
+      <button
+        class="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded disabled:opacity-30 disabled:cursor-not-allowed"
+        :disabled="!canUndo"
+        title="Undo (⌘Z)"
+        @click.stop="undo"
+      >
+        <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" />
+        </svg>
+      </button>
+      <button
+        class="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded disabled:opacity-30 disabled:cursor-not-allowed"
+        :disabled="!canRedo"
+        title="Redo (⌘⇧Z)"
+        @click.stop="redo"
+      >
+        <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 10h-10a8 8 0 00-8 8v2M21 10l-6 6m6-6l-6-6" />
+        </svg>
+      </button>
+      <div class="w-px h-4 bg-gray-300 dark:bg-gray-600 mx-1" />
       <!-- Reset aspect ratio button -->
       <button
         v-if="!isArrow && !autoHeight"

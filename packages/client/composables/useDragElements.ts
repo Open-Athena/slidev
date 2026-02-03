@@ -272,6 +272,51 @@ export function useDragElement(directive: DirectiveBinding | null, posRaw?: stri
     ),
   )
 
+  // Undo/redo history
+  interface HistorySnapshot {
+    x0: number
+    y0: number
+    width: number
+    height: number
+    rotate: number
+    zIndex: number
+    cropTop: number
+    cropRight: number
+    cropBottom: number
+    cropLeft: number
+  }
+  const history: HistorySnapshot[] = []
+  const redoStack: HistorySnapshot[] = []
+  const maxHistorySize = 50
+
+  function getCurrentSnapshot(): HistorySnapshot {
+    return {
+      x0: x0.value,
+      y0: y0.value,
+      width: width.value,
+      height: height.value,
+      rotate: rotate.value,
+      zIndex: zIndex.value,
+      cropTop: cropTop.value,
+      cropRight: cropRight.value,
+      cropBottom: cropBottom.value,
+      cropLeft: cropLeft.value,
+    }
+  }
+
+  function applySnapshot(snapshot: HistorySnapshot) {
+    x0.value = snapshot.x0
+    y0.value = snapshot.y0
+    width.value = snapshot.width
+    height.value = snapshot.height
+    rotate.value = snapshot.rotate
+    zIndex.value = snapshot.zIndex
+    cropTop.value = snapshot.cropTop
+    cropRight.value = snapshot.cropRight
+    cropBottom.value = snapshot.cropBottom
+    cropLeft.value = snapshot.cropLeft
+  }
+
   const state = {
     dragId,
     dataSource,
@@ -294,6 +339,35 @@ export function useDragElement(directive: DirectiveBinding | null, posRaw?: stri
     containerStyle,
     watchStopHandles,
     dragging: computed((): boolean => activeDragElement.value === state),
+    // Undo/redo
+    canUndo: computed(() => history.length > 0),
+    canRedo: computed(() => redoStack.length > 0),
+    saveSnapshot(): void {
+      // Save current state to history (call before making changes)
+      history.push(getCurrentSnapshot())
+      if (history.length > maxHistorySize)
+        history.shift()
+      // Clear redo stack when new action is taken
+      redoStack.length = 0
+    },
+    undo(): void {
+      if (history.length === 0)
+        return
+      // Save current state to redo stack
+      redoStack.push(getCurrentSnapshot())
+      // Restore previous state
+      const prev = history.pop()!
+      applySnapshot(prev)
+    },
+    redo(): void {
+      if (redoStack.length === 0)
+        return
+      // Save current state to history
+      history.push(getCurrentSnapshot())
+      // Restore from redo stack
+      const next = redoStack.pop()!
+      applySnapshot(next)
+    },
     mounted() {
       if (!enabled)
         return
