@@ -76,15 +76,9 @@ const fullHeight = computed(() => Math.abs(height.value))
 const croppedWidth = computed(() => fullWidth.value * (100 - cropLeft.value - cropRight.value) / 100)
 const croppedHeight = computed(() => fullHeight.value * (100 - cropTop.value - cropBottom.value) / 100)
 
-// Cropped position offset (shift to center the visible portion)
-const cropOffsetX = computed(() => (cropLeft.value - cropRight.value) / 100 * fullWidth.value / 2)
-const cropOffsetY = computed(() => (cropTop.value - cropBottom.value) / 100 * fullHeight.value / 2)
-
-// Display dimensions: full size in crop mode, cropped size otherwise
-const displayWidth = computed(() => isCropping.value ? fullWidth.value : (hasCrop.value ? croppedWidth.value : fullWidth.value))
-const displayHeight = computed(() => isCropping.value ? fullHeight.value : (hasCrop.value ? croppedHeight.value : fullHeight.value))
-const displayX0 = computed(() => isCropping.value ? x0.value : (hasCrop.value ? x0.value + cropOffsetX.value : x0.value))
-const displayY0 = computed(() => isCropping.value ? y0.value : (hasCrop.value ? y0.value + cropOffsetY.value : y0.value))
+// Crop offset in LOCAL element coordinates (before rotation)
+const cropOffsetLocalX = computed(() => (cropLeft.value - cropRight.value) / 100 * fullWidth.value / 2)
+const cropOffsetLocalY = computed(() => (cropTop.value - cropBottom.value) / 100 * fullHeight.value / 2)
 
 // Detect if the element has an associated link (wrapping <a> or internal <a>)
 const associatedLink = computed(() => {
@@ -147,8 +141,19 @@ const rotateRad = computed(() => rotate.value * Math.PI / 180)
 const rotateSin = computed(() => Math.sin(rotateRad.value))
 const rotateCos = computed(() => Math.cos(rotateRad.value))
 
-const boundingWidth = computed(() => width.value * rotateCos.value + height.value * rotateSin.value)
-const boundingHeight = computed(() => width.value * rotateSin.value + height.value * rotateCos.value)
+// Visible center in WORLD coordinates (crop offset rotated by element rotation)
+const visibleCenterX = computed(() => x0.value + cropOffsetLocalX.value * rotateCos.value - cropOffsetLocalY.value * rotateSin.value)
+const visibleCenterY = computed(() => y0.value + cropOffsetLocalX.value * rotateSin.value + cropOffsetLocalY.value * rotateCos.value)
+
+// Display dimensions: full size in crop mode, cropped size otherwise
+const displayWidth = computed(() => isCropping.value ? fullWidth.value : (hasCrop.value ? croppedWidth.value : fullWidth.value))
+const displayHeight = computed(() => isCropping.value ? fullHeight.value : (hasCrop.value ? croppedHeight.value : fullHeight.value))
+// Selection box should be at visible center (for cropped images) or element center
+const displayX0 = computed(() => isCropping.value ? x0.value : (hasCrop.value ? visibleCenterX.value : x0.value))
+const displayY0 = computed(() => isCropping.value ? y0.value : (hasCrop.value ? visibleCenterY.value : y0.value))
+
+const boundingWidth = computed(() => Math.abs(width.value * rotateCos.value) + Math.abs(height.value * rotateSin.value))
+const boundingHeight = computed(() => Math.abs(width.value * rotateSin.value) + Math.abs(height.value * rotateCos.value))
 
 const boundingLeft = computed(() => x0.value - boundingWidth.value / 2)
 const boundingTop = computed(() => y0.value - boundingHeight.value / 2)
@@ -157,6 +162,15 @@ const boundingBottom = computed(() => y0.value + boundingHeight.value / 2)
 
 const arrowRevX = computed(() => isArrow.value && width.value < 0)
 const arrowRevY = computed(() => isArrow.value && height.value < 0)
+
+// Rotation state
+const isRotating = ref(false)
+const rotationStartAngle = ref(0) // Original element rotation when started (for ghost preview)
+const rotationStartMouseAngle = ref(0) // Mouse angle from center when rotation started
+const currentRotationAngle = ref(0) // Live angle during rotation (for display)
+// Store the visible center position at rotation start (to keep it fixed during rotation)
+const rotationPivotX = ref(0)
+const rotationPivotY = ref(0)
 
 let currentDrag: {
   x0: number
@@ -403,9 +417,56 @@ function getBorderProps(dir: 'l' | 'r' | 't' | 'b') {
   }
 }
 
+const rotateHandleSize = 18
+const rotateHandleOffset = 32 // Distance from top of element
+
+// Helper to calculate angle from a pivot point to a mouse position (0° = up/12 o'clock)
+function getAngleFromPivot(clientX: number, clientY: number, pivotX: number, pivotY: number): number {
+  const mouseX = (clientX - slideLeft.value) / scale.value
+  const mouseY = (clientY - slideTop.value) / scale.value
+  return Math.atan2(mouseX - pivotX, -(mouseY - pivotY)) * 180 / Math.PI
+}
+
 function getRotateProps() {
   return {
-    onPointerdown,
+    onPointerdown: (ev: PointerEvent) => {
+      if (ev.buttons !== 1)
+        return
+      ev.preventDefault()
+      ev.stopPropagation()
+
+      // Store the visible center as the rotation pivot (stays fixed during rotation)
+      rotationPivotX.value = hasCrop.value ? visibleCenterX.value : x0.value
+      rotationPivotY.value = hasCrop.value ? visibleCenterY.value : y0.value
+
+      // Store initial rotation for ghost preview
+      rotationStartAngle.value = rotate.value
+      currentRotationAngle.value = rotate.value
+      // Store where the mouse started (angle from pivot) so we can calculate delta
+      rotationStartMouseAngle.value = getAngleFromPivot(ev.clientX, ev.clientY, rotationPivotX.value, rotationPivotY.value)
+      isRotating.value = true
+
+      // We still need currentDrag for the general infrastructure
+      currentDrag = {
+        x0: x0.value,
+        y0: y0.value,
+        width: width.value,
+        height: height.value,
+        rotate: rotate.value,
+        dx0: 0,
+        dy0: 0,
+        ltx: 0,
+        lty: 0,
+        rtx: 0,
+        rty: 0,
+        lbx: 0,
+        lby: 0,
+        rbx: 0,
+        rby: 0,
+      }
+
+      ;(ev.currentTarget as HTMLElement).setPointerCapture(ev.pointerId)
+    },
     onPointermove: (ev: PointerEvent) => {
       if (!currentDrag || ev.buttons !== 1)
         return
@@ -413,33 +474,62 @@ function getRotateProps() {
       ev.preventDefault()
       ev.stopPropagation()
 
-      const x = (ev.clientX - slideLeft.value - currentDrag.dx0) / scale.value - ctrlSize / 4
-      const y = (ev.clientY - slideTop.value - currentDrag.dy0) / scale.value - ctrlSize / 4
+      // Calculate current mouse angle from the rotation pivot
+      const currentMouseAngle = getAngleFromPivot(ev.clientX, ev.clientY, rotationPivotX.value, rotationPivotY.value)
 
-      let angle = Math.atan2(y - y0.value, x - x0.value) * 180 / Math.PI + 90
+      // Calculate delta from where we started dragging
+      const delta = currentMouseAngle - rotationStartMouseAngle.value
 
-      const commonAngles = [0, 90, 180, 270, 360]
-      for (const a of commonAngles) {
-        if (Math.abs(angle - a) < 5) {
-          angle = a % 360
-          break
-        }
+      // New rotation = starting rotation + delta
+      let angle = rotationStartAngle.value + delta
+
+      // Normalize to 0-360
+      angle = ((angle % 360) + 360) % 360
+
+      // Snap to 15° increments only when holding Shift
+      if (ev.shiftKey) {
+        angle = Math.round(angle / 15) * 15
       }
 
+      currentRotationAngle.value = angle
       rotate.value = angle
+
+      // For cropped images, adjust x0/y0 to keep the visible center at the pivot
+      if (hasCrop.value) {
+        const newAngleRad = angle * Math.PI / 180
+        const cos = Math.cos(newAngleRad)
+        const sin = Math.sin(newAngleRad)
+        // x0 = pivot - rotated offset
+        x0.value = rotationPivotX.value - (cropOffsetLocalX.value * cos - cropOffsetLocalY.value * sin)
+        y0.value = rotationPivotY.value - (cropOffsetLocalX.value * sin + cropOffsetLocalY.value * cos)
+      }
     },
-    onPointerup,
+    onPointerup: (ev: PointerEvent) => {
+      if (!currentDrag)
+        return
+      ev.preventDefault()
+      ev.stopPropagation()
+      isRotating.value = false
+      currentDrag = null
+    },
     style: {
-      width: `${ctrlSize}px`,
-      height: `${ctrlSize}px`,
-      margin: `-${ctrlSize / 2}px`,
+      position: 'absolute' as const,
+      width: `${rotateHandleSize}px`,
+      height: `${rotateHandleSize}px`,
       left: '50%',
-      top: '-20px',
+      marginLeft: `-${rotateHandleSize / 2}px`,
+      top: `-${rotateHandleOffset}px`,
       cursor: 'grab',
       borderRadius: '50%',
       pointerEvents: 'auto',
+      // Google Draw style: white fill with blue border
+      background: '#fff',
+      border: '2px solid #4285f4',
+      boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
     },
-    class: ctrlClasses,
   }
 }
 
@@ -714,6 +804,24 @@ function getCropHandleProps(handle: 'top' | 'right' | 'bottom' | 'left' | 'topLe
 </script>
 
 <template>
+  <!-- Ghost preview showing original position during rotation -->
+  <div
+    v-if="Number.isFinite(x0) && isRotating && !isArrow"
+    :style="{
+      position: 'absolute',
+      zIndex: zIndex - 1,
+      left: `${zoom * (displayX0 - displayWidth / 2)}px`,
+      top: `${zoom * (displayY0 - displayHeight / 2)}px`,
+      width: `${zoom * displayWidth}px`,
+      height: `${zoom * displayHeight}px`,
+      transformOrigin: 'center center',
+      transform: `rotate(${rotationStartAngle}deg)`,
+      pointerEvents: 'none',
+      border: '1px solid rgba(66, 133, 244, 0.4)',
+      background: 'rgba(66, 133, 244, 0.05)',
+    }"
+  />
+
   <div
     v-if="Number.isFinite(x0)"
     id="drag-control-container"
@@ -747,14 +855,47 @@ function getCropHandleProps(handle: 'top' | 'right' | 'bottom' | 'left' | 'topLe
           <div v-bind="getBorderProps('t')" />
           <div v-bind="getBorderProps('b')" />
         </template>
-        <div v-bind="getRotateProps()" />
+        <!-- Rotation handle with rotate icon -->
+        <div v-bind="getRotateProps()">
+          <!-- Rotate icon (circular arrow) -->
+          <svg
+            width="12"
+            height="12"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="#4285f4"
+            stroke-width="2.5"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          >
+            <path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8" />
+            <path d="M21 3v5h-5" />
+          </svg>
+        </div>
+        <!-- Stem connecting rotation handle to element -->
         <div
-          class="absolute -top-15px w-0 b b-dashed b-dark dark:b-gray-400"
+          class="absolute w-0"
           :style="{
-            left: 'calc(50% - 1px)',
-            height: autoHeight ? '14px' : '10px',
+            left: '50%',
+            top: `-${rotateHandleOffset - rotateHandleSize / 2}px`,
+            height: `${rotateHandleOffset - rotateHandleSize / 2}px`,
+            borderLeft: '1px solid #4285f4',
           }"
         />
+        <!-- Angle display during rotation -->
+        <div
+          v-if="isRotating"
+          class="absolute text-xs font-medium whitespace-nowrap"
+          :style="{
+            left: '50%',
+            top: `-${rotateHandleOffset + rotateHandleSize + 4}px`,
+            transform: `translateX(-50%) rotate(-${rotate}deg)`,
+            color: '#4285f4',
+            pointerEvents: 'none',
+          }"
+        >
+          {{ Math.round(currentRotationAngle) }}°
+        </div>
       </template>
     </div>
 
