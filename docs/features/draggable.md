@@ -1,12 +1,12 @@
 ---
 tags: [layout]
 description: |
-  Move, resize, and rotate elements by dragging them with the mouse.
+  Move, resize, rotate, and crop elements by dragging them with the mouse.
 ---
 
 # Draggable Elements
 
-Draggable elements give you the ability to move, resize, and rotate elements by dragging them with the mouse. This is useful for creating floating elements in your slides.
+Draggable elements give you the ability to move, resize, rotate, and crop elements by dragging them with the mouse. This is useful for creating floating elements in your slides.
 
 ## Directive Usage
 
@@ -15,16 +15,22 @@ Draggable elements give you the ability to move, resize, and rotate elements by 
 ```md
 ---
 dragPos:
-  square: Left,Top,Width,Height,Rotate
+  square: Left,Top,Width,Height,Rotate,ZIndex,CropTop,CropRight,CropBottom,CropLeft
 ---
 
 <img v-drag="'square'" src="https://sli.dev/logo.png">
 ```
 
+Only `Left,Top,Width,Height` are required. The optional parameters are:
+
+- `Rotate`: Rotation angle in degrees (default: 0)
+- `ZIndex`: Stack order (default: 100)
+- `CropTop,CropRight,CropBottom,CropLeft`: Crop percentages from each edge (default: 0)
+
 ### Data from the directive value
 
 ::: warning
-Slidev use regex to update the position value in the slide content. If you meet problems, please use the frontmatter to define the values instead.
+Slidev uses regex to update the position value in the slide content. If you encounter problems, please use the frontmatter to define the values instead.
 :::
 
 ```md
@@ -62,14 +68,39 @@ When you create a new draggable element, you don't need to specify the position 
 
 ## Automatic Height
 
-You can set `Height` to `NaN` (in) or `_` (if you use the component) to make the height of the draggable element automatically adjust to its content.
+You can set `Height` to `NaN` (in directive) or `_` (in component props) to make the height of the draggable element automatically adjust to its content.
 
 ## Controls
 
-- Double-click the draggable element to start dragging it.
-- You can also use the arrow keys to move the element.
-- Hold `Shift` while dragging to preserve its aspect ratio.
-- Click outside the draggable element to stop dragging it.
+### Selection and Movement
+
+- **Click** a draggable element to select it. A selection box with resize handles appears.
+- **Click and drag** to move the element immediately (no need to select first).
+- Use **arrow keys** to nudge the selected element.
+- Hold **Shift** while dragging or resizing to preserve aspect ratio.
+- **Click outside** the element to deselect it.
+
+### Z-Order (Layering)
+
+When an element is selected, z-order buttons appear in the toolbar:
+
+- **Bring Forward**: Increases the element's z-index, moving it above other elements.
+- **Send Backward**: Decreases the element's z-index, moving it below other elements.
+
+### Crop Mode
+
+**Double-click** a selected element to enter crop mode. In crop mode:
+
+- The full image is shown faded, with the kept region displayed at full brightness.
+- Drag the **L-shaped corner handles** or **pill-shaped edge handles** to adjust the crop.
+- Press **Enter** or click the **Done** button to apply the crop.
+- Press **Escape** to cancel and revert any changes.
+
+Crop values are stored as percentages from each edge (0-100%) in the position string.
+
+### Link Detection
+
+If a draggable element wraps a link (`<a>` tag), clicking the element selects it instead of following the link. A floating button appears showing the link URL, allowing you to open the link when needed.
 
 ## Draggable Arrow
 
