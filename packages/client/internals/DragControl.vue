@@ -41,6 +41,7 @@ const zIndex = computed({
   set: (v: number) => props.data.zIndex.value = v,
 })
 const isArrow = computed(() => props.data.isArrow)
+const activeSnapLines = computed(() => props.data.activeSnapLines.value)
 
 // Crop mode state
 const isCropping = computed(() => props.data.isCropping.value)
@@ -227,20 +228,6 @@ function onPointerdown(ev: PointerEvent) {
   };
 
   (ev.currentTarget as HTMLElement).setPointerCapture(ev.pointerId)
-}
-
-function _onPointermove(ev: PointerEvent) {
-  if (!currentDrag || ev.buttons !== 1)
-    return
-
-  ev.preventDefault()
-  ev.stopPropagation()
-
-  const x = (ev.clientX - slideLeft.value - currentDrag.dx0) / scale.value
-  const y = (ev.clientY - slideTop.value - currentDrag.dy0) / scale.value
-
-  x0.value = clamp(x, -boundingWidth.value / 2 + minRemain, slideWidth.value + boundingWidth.value / 2 - minRemain)
-  y0.value = clamp(y, -boundingHeight.value / 2 + minRemain, slideHeight.value + boundingHeight.value / 2 - minRemain)
 }
 
 function onPointerup(ev: PointerEvent) {
@@ -843,6 +830,38 @@ function getCropHandleProps(handle: 'top' | 'right' | 'bottom' | 'left' | 'topLe
 </script>
 
 <template>
+  <!-- Snap alignment guides -->
+  <div
+    v-for="lineX in activeSnapLines.x"
+    :key="`snap-x-${lineX}`"
+    class="snap-guide snap-guide-x"
+    :style="{
+      position: 'absolute',
+      left: `${zoom * lineX}px`,
+      top: 0,
+      width: '1px',
+      height: '100%',
+      background: '#f43f5e',
+      pointerEvents: 'none',
+      zIndex: 9999,
+    }"
+  />
+  <div
+    v-for="lineY in activeSnapLines.y"
+    :key="`snap-y-${lineY}`"
+    class="snap-guide snap-guide-y"
+    :style="{
+      position: 'absolute',
+      left: 0,
+      top: `${zoom * lineY}px`,
+      width: '100%',
+      height: '1px',
+      background: '#f43f5e',
+      pointerEvents: 'none',
+      zIndex: 9999,
+    }"
+  />
+
   <!-- Ghost preview showing original position during rotation -->
   <div
     v-if="Number.isFinite(x0) && isRotating && !isArrow"

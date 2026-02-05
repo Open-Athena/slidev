@@ -279,3 +279,25 @@ Click the box to select, then click elsewhere to deselect
   border-radius: 8px;
 }
 </style>
+
+---
+dragPos:
+  snap-target: 480,270,120,80
+  snap-mover: 100,100,100,80
+---
+
+# Page 18 - v-drag Snap Alignment Tests
+
+<div v-drag="'snap-target'" class="cy-snap-box bg-teal-500" data-testid="snap-target">Target</div>
+<div v-drag="'snap-mover'" class="cy-snap-box bg-pink-500" data-testid="snap-mover">Mover</div>
+
+<style>
+.cy-snap-box {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  font-weight: bold;
+  border-radius: 8px;
+}
+</style>

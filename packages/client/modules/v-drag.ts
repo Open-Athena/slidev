@@ -45,13 +45,15 @@ export function createVDragDirective() {
               moveEv.preventDefault()
               // Calculate delta and update position
               const scale = state.zoom.value
-              const dx = (moveEv.clientX - startX) / scale
-              const dy = (moveEv.clientY - startY) / scale
-              state.x0.value = startX0 + dx
-              state.y0.value = startY0 + dy
+              const rawX = startX0 + (moveEv.clientX - startX) / scale
+              const rawY = startY0 + (moveEv.clientY - startY) / scale
+              const snapped = state.applySnap(rawX, rawY, moveEv.altKey)
+              state.x0.value = snapped.x
+              state.y0.value = snapped.y
             }
 
             function handlePointerup() {
+              state.clearSnapLines()
               document.removeEventListener('pointermove', handlePointermove)
               document.removeEventListener('pointerup', handlePointerup)
             }

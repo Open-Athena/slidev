@@ -4,6 +4,7 @@ import { debounce, ensureSuffix } from '@antfu/utils'
 import { injectLocal, useSessionStorage, useWindowFocus } from '@vueuse/core'
 import { computed, ref, watch } from 'vue'
 import { injectionCurrentPage, injectionFrontmatter, injectionRenderContext, injectionSlideElement, injectionSlideScale, injectionSlideZoom } from '../constants'
+import { slideHeight, slideWidth } from '../env'
 import { makeId } from '../logic/utils'
 import { activeDragElement } from '../state'
 import { directiveInject } from '../utils'
@@ -20,6 +21,112 @@ export type DragElementMarkdownSource = [startLine: number, endLine: number, ind
 export type DragElementsUpdater = (id: string, posStr: string, type: DragElementDataSource, markdownSource?: DragElementMarkdownSource) => void
 
 const map: Record<number, DragElementsUpdater> = {}
+
+// Registry of all drag elements per page for snap alignment
+export interface DragElementInfo {
+  dragId: string
+  x0: () => number
+  y0: () => number
+  width: () => number
+  height: () => number
+  rotate: () => number
+  cropTop: () => number
+  cropRight: () => number
+  cropBottom: () => number
+  cropLeft: () => number
+}
+
+// Compute visible (cropped) center and dimensions for an element
+function getVisibleBounds(el: DragElementInfo) {
+  const w = el.width()
+  const h = el.height()
+  const cT = el.cropTop()
+  const cR = el.cropRight()
+  const cB = el.cropBottom()
+  const cL = el.cropLeft()
+  const visW = w * (100 - cL - cR) / 100
+  const visH = h * (100 - cT - cB) / 100
+  // Crop offset in local coords (before rotation)
+  const offX = (cL - cR) / 100 * w / 2
+  const offY = (cT - cB) / 100 * h / 2
+  const rad = el.rotate() * Math.PI / 180
+  const cos = Math.cos(rad)
+  const sin = Math.sin(rad)
+  // Visible center in world coords
+  const cx = el.x0() + offX * cos - offY * sin
+  const cy = el.y0() + offX * sin + offY * cos
+  return { cx, cy, w: visW, h: visH }
+}
+const dragElementRegistry: Map<number, Map<string, DragElementInfo>> = new Map()
+
+export function getDragElementsForPage(page: number): DragElementInfo[] {
+  const pageElements = dragElementRegistry.get(page)
+  return pageElements ? Array.from(pageElements.values()) : []
+}
+
+function registerDragElement(page: number, info: DragElementInfo) {
+  if (!dragElementRegistry.has(page))
+    dragElementRegistry.set(page, new Map())
+  dragElementRegistry.get(page)!.set(info.dragId, info)
+}
+
+function unregisterDragElement(page: number, dragId: string) {
+  dragElementRegistry.get(page)?.delete(dragId)
+}
+
+// Snap alignment logic
+const SNAP_THRESHOLD = 8
+
+function getSnapTargets(pageNum: number, selfDragId: string) {
+  const targets = { x: new Set<number>(), y: new Set<number>() }
+
+  // Slide edges and center
+  targets.x.add(0)
+  targets.x.add(slideWidth.value / 2)
+  targets.x.add(slideWidth.value)
+  targets.y.add(0)
+  targets.y.add(slideHeight.value / 2)
+  targets.y.add(slideHeight.value)
+
+  // Other elements on this page (use visible/cropped bounds)
+  const elements = getDragElementsForPage(pageNum)
+  for (const el of elements) {
+    if (el.dragId === selfDragId)
+      continue
+    const { cx, cy, w, h } = getVisibleBounds(el)
+    targets.x.add(cx - w / 2)
+    targets.x.add(cx)
+    targets.x.add(cx + w / 2)
+    targets.y.add(cy - h / 2)
+    targets.y.add(cy)
+    targets.y.add(cy + h / 2)
+  }
+
+  return { x: Array.from(targets.x), y: Array.from(targets.y) }
+}
+
+function findSnap(value: number, elementHalfSize: number, targets: number[]): { value: number, lines: number[] } {
+  let best: { dist: number, val: number, line: number } | null = null
+
+  const leftEdge = value - elementHalfSize
+  const rightEdge = value + elementHalfSize
+
+  for (const t of targets) {
+    const centerDist = Math.abs(value - t)
+    if (centerDist < SNAP_THRESHOLD && (!best || centerDist < best.dist))
+      best = { dist: centerDist, val: t, line: t }
+
+    const leftDist = Math.abs(leftEdge - t)
+    if (leftDist < SNAP_THRESHOLD && (!best || leftDist < best.dist))
+      best = { dist: leftDist, val: t + elementHalfSize, line: t }
+
+    const rightDist = Math.abs(rightEdge - t)
+    if (rightDist < SNAP_THRESHOLD && (!best || rightDist < best.dist))
+      best = { dist: rightDist, val: t - elementHalfSize, line: t }
+  }
+
+  return best ? { value: best.val, lines: [best.line] } : { value, lines: [] }
+}
 
 export function useDragElementsUpdater(no: number) {
   if (!(__DEV__ && __SLIDEV_FEATURE_EDITOR__))
@@ -318,8 +425,11 @@ export function useDragElement(directive: DirectiveBinding | null, posRaw?: stri
     cropLeft.value = snapshot.cropLeft
   }
 
+  const activeSnapLines = ref<{ x: number[], y: number[] }>({ x: [], y: [] })
+
   const state = {
     dragId,
+    page,
     dataSource,
     markdownSource,
     isArrow,
@@ -339,7 +449,41 @@ export function useDragElement(directive: DirectiveBinding | null, posRaw?: stri
     container,
     containerStyle,
     watchStopHandles,
+    activeSnapLines,
     dragging: computed((): boolean => activeDragElement.value === state),
+    // Snap alignment: compute snapped position and update guide lines
+    // x/y are proposed x0/y0 (full element center); snap uses visible (cropped) bounds
+    applySnap(x: number, y: number, altKey: boolean): { x: number, y: number } {
+      if (altKey) {
+        activeSnapLines.value = { x: [], y: [] }
+        return { x, y }
+      }
+      const cT = cropTop.value
+      const cR = cropRight.value
+      const cB = cropBottom.value
+      const cL = cropLeft.value
+      const visHalfW = width.value * (100 - cL - cR) / 200
+      const visHalfH = height.value * (100 - cT - cB) / 200
+      // Crop offset in local coords
+      const offX = (cL - cR) / 100 * width.value / 2
+      const offY = (cT - cB) / 100 * height.value / 2
+      // Visible center from proposed x0/y0
+      const visCX = x + offX * rotateCos.value - offY * rotateSin.value
+      const visCY = y + offX * rotateSin.value + offY * rotateCos.value
+
+      const targets = getSnapTargets(page.value, dragId)
+      const snapX = findSnap(visCX, visHalfW, targets.x)
+      const snapY = findSnap(visCY, visHalfH, targets.y)
+      activeSnapLines.value = { x: snapX.lines, y: snapY.lines }
+
+      // Convert snapped visible center back to x0/y0
+      const newX0 = snapX.value - offX * rotateCos.value + offY * rotateSin.value
+      const newY0 = snapY.value - offX * rotateSin.value - offY * rotateCos.value
+      return { x: newX0, y: newY0 }
+    },
+    clearSnapLines(): void {
+      activeSnapLines.value = { x: [], y: [] }
+    },
     // Undo/redo (persisted to sessionStorage)
     canUndo: computed(() => history.value.length > 0),
     canRedo: computed(() => redoStack.value.length > 0),
@@ -373,6 +517,19 @@ export function useDragElement(directive: DirectiveBinding | null, posRaw?: stri
       if (!enabled)
         return
       updateBounds()
+      // Register for snap alignment
+      registerDragElement(page.value, {
+        dragId,
+        x0: () => x0.value,
+        y0: () => y0.value,
+        width: () => width.value,
+        height: () => height.value,
+        rotate: () => rotate.value,
+        cropTop: () => cropTop.value,
+        cropRight: () => cropRight.value,
+        cropBottom: () => cropBottom.value,
+        cropLeft: () => cropLeft.value,
+      })
       if (!posRaw) {
         setTimeout(() => {
           updateBounds()
@@ -386,6 +543,7 @@ export function useDragElement(directive: DirectiveBinding | null, posRaw?: stri
     unmounted() {
       if (!enabled)
         return
+      unregisterDragElement(page.value, dragId)
       state.stopDragging()
     },
     startDragging(): void {

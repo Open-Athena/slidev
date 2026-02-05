@@ -224,4 +224,99 @@ context('v-drag', () => {
       cy.get('#drag-control-container').should('not.exist')
     })
   })
+
+  describe('snap alignment', () => {
+    // Page 18: snap-target at dragPos 480,270,120,80 (center x0=540, y0=310)
+    //          snap-mover at dragPos 100,100,100,80  (center x0=150, y0=140)
+    beforeEach(() => {
+      goPage(18)
+    })
+
+    it('initial layout: two boxes at distinct positions', () => {
+      cy.get('[data-testid="snap-target"]').should('exist')
+      cy.get('[data-testid="snap-mover"]').should('exist')
+      cy.screenshot('snap-initial-layout')
+    })
+
+    it('snap guide lines appear when dragging near a snap target', () => {
+      // No snap guides initially
+      cy.get('.snap-guide').should('not.exist')
+
+      cy.get('[data-testid="snap-target"]').then(($target) => {
+        const targetRect = $target[0].getBoundingClientRect()
+        // Drag near the target's center (slightly offset to trigger snap)
+        const nearTargetX = targetRect.left + targetRect.width / 2 + 3
+        const nearTargetY = targetRect.top + targetRect.height / 2 + 3
+
+        cy.get('[data-testid="snap-mover"]')
+          .trigger('pointerdown', { button: 0, pointerId: 1, buttons: 1, force: true })
+
+        // Move near the target - should trigger snap guides
+        cy.document()
+          .trigger('pointermove', { clientX: nearTargetX, clientY: nearTargetY, buttons: 1 })
+
+        cy.wait(100)
+
+        // Snap guide lines should appear
+        cy.get('.snap-guide').should('have.length.at.least', 1)
+        cy.screenshot('snap-guides-visible')
+
+        cy.document().trigger('pointerup')
+        cy.wait(100)
+
+        // Snap guides should disappear after drag ends
+        cy.get('.snap-guide').should('not.exist')
+      })
+    })
+
+    it('snap guide lines do NOT appear when Alt is held', () => {
+      cy.get('[data-testid="snap-target"]').then(($target) => {
+        const targetRect = $target[0].getBoundingClientRect()
+        const nearTargetX = targetRect.left + targetRect.width / 2 + 3
+        const nearTargetY = targetRect.top + targetRect.height / 2 + 3
+
+        cy.get('[data-testid="snap-mover"]')
+          .trigger('pointerdown', { button: 0, pointerId: 1, buttons: 1, force: true })
+
+        // Move near target with Alt key held - should NOT snap
+        cy.document()
+          .trigger('pointermove', {
+            clientX: nearTargetX,
+            clientY: nearTargetY,
+            buttons: 1,
+            altKey: true,
+          })
+
+        cy.wait(100)
+
+        // No snap guides when Alt is held
+        cy.get('.snap-guide').should('not.exist')
+        cy.screenshot('snap-alt-no-guides')
+
+        cy.document().trigger('pointerup')
+      })
+    })
+
+    it('element snaps to slide center', () => {
+      // Get the slide element to compute center coordinates
+      cy.get('#slide-content').then(($slide) => {
+        const slideRect = $slide[0].getBoundingClientRect()
+        // Drag mover to approximate slide center
+        const centerX = slideRect.left + slideRect.width / 2 + 3
+        const centerY = slideRect.top + slideRect.height / 2 + 3
+
+        cy.get('[data-testid="snap-mover"]')
+          .trigger('pointerdown', { button: 0, pointerId: 1, buttons: 1, force: true })
+
+        cy.document()
+          .trigger('pointermove', { clientX: centerX, clientY: centerY, buttons: 1 })
+
+        cy.wait(100)
+        cy.get('.snap-guide').should('have.length.at.least', 1)
+        cy.screenshot('snap-to-slide-center')
+
+        cy.document().trigger('pointerup')
+      })
+    })
+  })
 })
