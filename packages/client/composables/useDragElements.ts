@@ -77,7 +77,7 @@ function unregisterDragElement(page: number, dragId: string) {
 // Snap alignment logic
 const SNAP_THRESHOLD = 8
 
-function getSnapTargets(pageNum: number, selfDragId: string) {
+export function getSnapTargets(pageNum: number, selfDragId: string) {
   const targets = { x: new Set<number>(), y: new Set<number>() }
 
   // Slide edges and center
@@ -105,7 +105,7 @@ function getSnapTargets(pageNum: number, selfDragId: string) {
   return { x: Array.from(targets.x), y: Array.from(targets.y) }
 }
 
-function findSnap(value: number, elementHalfSize: number, targets: number[]): { value: number, lines: number[] } {
+export function findSnap(value: number, elementHalfSize: number, targets: number[]): { value: number, lines: number[] } {
   let best: { dist: number, val: number, line: number } | null = null
 
   const leftEdge = value - elementHalfSize
@@ -453,8 +453,8 @@ export function useDragElement(directive: DirectiveBinding | null, posRaw?: stri
     dragging: computed((): boolean => activeDragElement.value === state),
     // Snap alignment: compute snapped position and update guide lines
     // x/y are proposed x0/y0 (full element center); snap uses visible (cropped) bounds
-    applySnap(x: number, y: number, altKey: boolean): { x: number, y: number } {
-      if (altKey) {
+    applySnap(x: number, y: number, metaKey: boolean): { x: number, y: number } {
+      if (metaKey) {
         activeSnapLines.value = { x: [], y: [] }
         return { x, y }
       }

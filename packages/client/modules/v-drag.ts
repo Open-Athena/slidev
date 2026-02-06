@@ -47,7 +47,7 @@ export function createVDragDirective() {
               const scale = state.zoom.value
               const rawX = startX0 + (moveEv.clientX - startX) / scale
               const rawY = startY0 + (moveEv.clientY - startY) / scale
-              const snapped = state.applySnap(rawX, rawY, moveEv.altKey)
+              const snapped = state.applySnap(rawX, rawY, moveEv.metaKey)
               state.x0.value = snapped.x
               state.y0.value = snapped.y
             }

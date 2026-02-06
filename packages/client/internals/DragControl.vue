@@ -5,6 +5,7 @@ import type { DragElementState } from '../composables/useDragElements'
 import { clamp } from '@antfu/utils'
 import { onKeyDown, useIntervalFn } from '@vueuse/core'
 import { computed, inject, ref, watchEffect } from 'vue'
+import { findSnap, getSnapTargets } from '../composables/useDragElements'
 import { useSlideBounds } from '../composables/useSlideBounds'
 import { injectionSlideScale } from '../constants'
 import { slideHeight, slideWidth } from '../env'
@@ -65,6 +66,12 @@ const cropLeft = computed({
 // Store initial aspect ratio for reset - captured once when component mounts
 // Note: For images, ideally this would use natural dimensions, but we use initial dimensions
 const initialAspectRatio = width.value / height.value
+
+// Check if aspect ratio has changed from initial (with small tolerance for floating point)
+const hasAspectRatioChanged = computed(() => {
+  const currentAR = width.value / height.value
+  return Math.abs(currentAR - initialAspectRatio) > 0.01
+})
 
 // Check if there's any crop applied
 const hasCrop = computed(() => cropTop.value > 0 || cropRight.value > 0 || cropBottom.value > 0 || cropLeft.value > 0)
@@ -230,6 +237,68 @@ function onPointerdown(ev: PointerEvent) {
   (ev.currentTarget as HTMLElement).setPointerCapture(ev.pointerId)
 }
 
+function applyPointSnap(px: number, py: number, metaKey: boolean): { x: number, y: number, linesX: number[], linesY: number[] } {
+  if (metaKey)
+    return { x: px, y: py, linesX: [], linesY: [] }
+  const targets = getSnapTargets(props.data.page.value, props.data.dragId)
+  const snapX = findSnap(px, 0, targets.x)
+  const snapY = findSnap(py, 0, targets.y)
+  return { x: snapX.value, y: snapY.value, linesX: snapX.lines, linesY: snapY.lines }
+}
+
+// Snap a point while constraining it to a line through anchor with given direction (for aspect-ratio-preserving resize)
+function applyDiagonalSnap(
+  px: number,
+  py: number,
+  anchorX: number,
+  anchorY: number,
+  metaKey: boolean,
+): { x: number, y: number, linesX: number[], linesY: number[] } {
+  if (metaKey)
+    return { x: px, y: py, linesX: [], linesY: [] }
+
+  const targets = getSnapTargets(props.data.page.value, props.data.dragId)
+  const dx = px - anchorX
+  const dy = py - anchorY
+
+  // Avoid division by zero
+  if (Math.abs(dx) < 0.001 && Math.abs(dy) < 0.001)
+    return { x: px, y: py, linesX: [], linesY: [] }
+
+  // Try snapping X and compute corresponding Y on the diagonal
+  const snapX = findSnap(px, 0, targets.x)
+  let xSnapDist = Infinity
+  let xSnappedX = px
+  let xSnappedY = py
+  if (snapX.lines.length > 0 && Math.abs(dx) > 0.001) {
+    xSnappedX = snapX.value
+    const t = (xSnappedX - anchorX) / dx
+    xSnappedY = anchorY + t * dy
+    xSnapDist = Math.abs(snapX.value - px)
+  }
+
+  // Try snapping Y and compute corresponding X on the diagonal
+  const snapY = findSnap(py, 0, targets.y)
+  let ySnapDist = Infinity
+  let ySnappedX = px
+  let ySnappedY = py
+  if (snapY.lines.length > 0 && Math.abs(dy) > 0.001) {
+    ySnappedY = snapY.value
+    const t = (ySnappedY - anchorY) / dy
+    ySnappedX = anchorX + t * dx
+    ySnapDist = Math.abs(snapY.value - py)
+  }
+
+  // Pick the closer snap - show line at actual snapped position, not target
+  if (xSnapDist < ySnapDist && xSnapDist < Infinity) {
+    return { x: xSnappedX, y: xSnappedY, linesX: [xSnappedX], linesY: [] }
+  }
+  else if (ySnapDist < Infinity) {
+    return { x: ySnappedX, y: ySnappedY, linesX: [], linesY: [ySnappedY] }
+  }
+  return { x: px, y: py, linesX: [], linesY: [] }
+}
+
 function onPointerup(ev: PointerEvent) {
   if (!currentDrag)
     return
@@ -237,6 +306,7 @@ function onPointerup(ev: PointerEvent) {
   ev.preventDefault()
   ev.stopPropagation()
 
+  props.data.clearSnapLines()
   currentDrag = null
 }
 
@@ -303,6 +373,17 @@ function getCornerProps(isLeft: boolean, isTop: boolean) {
         }
       }
 
+      // Snap the dragged corner to alignment targets
+      // When shift is held (aspect ratio lock), snap along the diagonal to preserve aspect ratio
+      const anchorX = isLeft ? (isTop ? rbx : rtx) : (isTop ? lbx : ltx)
+      const anchorY = isLeft ? (isTop ? rby : rty) : (isTop ? lby : lty)
+      const snapped = ev.shiftKey
+        ? applyDiagonalSnap(x, y, anchorX, anchorY, ev.metaKey)
+        : applyPointSnap(x, y, ev.metaKey)
+      x = snapped.x
+      y = snapped.y
+      props.data.activeSnapLines.value = { x: snapped.linesX, y: snapped.linesY }
+
       if (isLeft) {
         if (isTop) {
           x0.value = (x + rbx) / 2
@@ -368,6 +449,14 @@ function getBorderProps(dir: 'l' | 'r' | 't' | 'b') {
         const rx = (rtx + rbx) / 2
         const ry = (rty + rby) / 2
         width.value = Math.max((rx - x) * rotateCos.value + (ry - y) * rotateSin.value, minSize.value)
+        // Snap the moving left edge midpoint
+        let mx = rx - width.value * rotateCos.value
+        let my = ry - width.value * rotateSin.value
+        const snapped = applyPointSnap(mx, my, ev.metaKey)
+        mx = snapped.x
+        my = snapped.y
+        props.data.activeSnapLines.value = { x: snapped.linesX, y: snapped.linesY }
+        width.value = Math.max((rx - mx) * rotateCos.value + (ry - my) * rotateSin.value, minSize.value)
         x0.value = rx - width.value * rotateCos.value / 2
         y0.value = ry - width.value * rotateSin.value / 2
       }
@@ -375,6 +464,14 @@ function getBorderProps(dir: 'l' | 'r' | 't' | 'b') {
         const lx = (ltx + lbx) / 2
         const ly = (lty + lby) / 2
         width.value = Math.max((x - lx) * rotateCos.value + (y - ly) * rotateSin.value, minSize.value)
+        // Snap the moving right edge midpoint
+        let mx = lx + width.value * rotateCos.value
+        let my = ly + width.value * rotateSin.value
+        const snapped = applyPointSnap(mx, my, ev.metaKey)
+        mx = snapped.x
+        my = snapped.y
+        props.data.activeSnapLines.value = { x: snapped.linesX, y: snapped.linesY }
+        width.value = Math.max((mx - lx) * rotateCos.value + (my - ly) * rotateSin.value, minSize.value)
         x0.value = lx + width.value * rotateCos.value / 2
         y0.value = ly + width.value * rotateSin.value / 2
       }
@@ -382,6 +479,14 @@ function getBorderProps(dir: 'l' | 'r' | 't' | 'b') {
         const bx = (lbx + rbx) / 2
         const by = (lby + rby) / 2
         height.value = Math.max((by - y) * rotateCos.value - (bx - x) * rotateSin.value, minSize.value)
+        // Snap the moving top edge midpoint
+        let mx = bx + height.value * rotateSin.value
+        let my = by - height.value * rotateCos.value
+        const snapped = applyPointSnap(mx, my, ev.metaKey)
+        mx = snapped.x
+        my = snapped.y
+        props.data.activeSnapLines.value = { x: snapped.linesX, y: snapped.linesY }
+        height.value = Math.max((by - my) * rotateCos.value - (bx - mx) * rotateSin.value, minSize.value)
         x0.value = bx + height.value * rotateSin.value / 2
         y0.value = by - height.value * rotateCos.value / 2
       }
@@ -389,6 +494,14 @@ function getBorderProps(dir: 'l' | 'r' | 't' | 'b') {
         const tx = (ltx + rtx) / 2
         const ty = (lty + rty) / 2
         height.value = Math.max((y - ty) * rotateCos.value - (x - tx) * rotateSin.value, minSize.value)
+        // Snap the moving bottom edge midpoint
+        let mx = tx - height.value * rotateSin.value
+        let my = ty + height.value * rotateCos.value
+        const snapped = applyPointSnap(mx, my, ev.metaKey)
+        mx = snapped.x
+        my = snapped.y
+        props.data.activeSnapLines.value = { x: snapped.linesX, y: snapped.linesY }
+        height.value = Math.max((my - ty) * rotateCos.value - (mx - tx) * rotateSin.value, minSize.value)
         x0.value = tx - height.value * rotateSin.value / 2
         y0.value = ty + height.value * rotateCos.value / 2
       }
@@ -596,10 +709,7 @@ function sendToBack() {
   zIndex.value = 1
 }
 
-// Undo/redo
-const canUndo = computed(() => props.data.canUndo.value)
-const canRedo = computed(() => props.data.canRedo.value)
-
+// Undo/redo (keyboard shortcuts only, no buttons)
 function undo() {
   props.data.undo()
 }
@@ -778,12 +888,72 @@ function getCropHandleProps(handle: 'top' | 'right' | 'bottom' | 'left' | 'topLe
       if (h === 'right' || h === 'topRight' || h === 'bottomRight') {
         cropRight.value = clamp(currentCropDrag.startCropRight - dx, 0, 100 - cropLeft.value - 10)
       }
+
+      // Snap crop boundaries to alignment targets
+      if (!ev.metaKey) {
+        const cos = rotateCos.value
+        const sin = rotateSin.value
+        const w = width.value
+        const hv = height.value
+        const cx = x0.value
+        const cy = y0.value
+        let linesX: number[] = []
+        let linesY: number[] = []
+
+        // Snap each active crop edge's midpoint in world coords
+        if (h === 'left' || h === 'topLeft' || h === 'bottomLeft') {
+          const localX = -w / 2 + cropLeft.value / 100 * w
+          const worldX = cx + localX * cos
+          const worldY = cy + localX * sin
+          const snapped = applyPointSnap(worldX, worldY, false)
+          const snappedLocalX = (snapped.x - cx) * cos + (snapped.y - cy) * sin
+          cropLeft.value = clamp((snappedLocalX + w / 2) / w * 100, 0, 100 - cropRight.value - 10)
+          linesX = linesX.concat(snapped.linesX)
+          linesY = linesY.concat(snapped.linesY)
+        }
+        if (h === 'right' || h === 'topRight' || h === 'bottomRight') {
+          const localX = w / 2 - cropRight.value / 100 * w
+          const worldX = cx + localX * cos
+          const worldY = cy + localX * sin
+          const snapped = applyPointSnap(worldX, worldY, false)
+          const snappedLocalX = (snapped.x - cx) * cos + (snapped.y - cy) * sin
+          cropRight.value = clamp((w / 2 - snappedLocalX) / w * 100, 0, 100 - cropLeft.value - 10)
+          linesX = linesX.concat(snapped.linesX)
+          linesY = linesY.concat(snapped.linesY)
+        }
+        if (h === 'top' || h === 'topLeft' || h === 'topRight') {
+          const localY = -hv / 2 + cropTop.value / 100 * hv
+          const worldX = cx - localY * sin
+          const worldY = cy + localY * cos
+          const snapped = applyPointSnap(worldX, worldY, false)
+          const snappedLocalY = -(snapped.x - cx) * sin + (snapped.y - cy) * cos
+          cropTop.value = clamp((snappedLocalY + hv / 2) / hv * 100, 0, 100 - cropBottom.value - 10)
+          linesX = linesX.concat(snapped.linesX)
+          linesY = linesY.concat(snapped.linesY)
+        }
+        if (h === 'bottom' || h === 'bottomLeft' || h === 'bottomRight') {
+          const localY = hv / 2 - cropBottom.value / 100 * hv
+          const worldX = cx - localY * sin
+          const worldY = cy + localY * cos
+          const snapped = applyPointSnap(worldX, worldY, false)
+          const snappedLocalY = -(snapped.x - cx) * sin + (snapped.y - cy) * cos
+          cropBottom.value = clamp((hv / 2 - snappedLocalY) / hv * 100, 0, 100 - cropTop.value - 10)
+          linesX = linesX.concat(snapped.linesX)
+          linesY = linesY.concat(snapped.linesY)
+        }
+
+        props.data.activeSnapLines.value = { x: linesX, y: linesY }
+      }
+      else {
+        props.data.activeSnapLines.value = { x: [], y: [] }
+      }
     },
     onPointerup: (ev: PointerEvent) => {
       if (!currentCropDrag)
         return
       ev.preventDefault()
       ev.stopPropagation()
+      props.data.clearSnapLines()
       currentCropDrag = null
     },
     style: isCorner
@@ -1042,74 +1212,10 @@ function getCropHandleProps(handle: 'top' | 'right' | 'bottom' | 'left' | 'topLe
         </button>
       </div>
     </div>
-    <!-- Floating toolbar (hidden in crop mode) -->
+    <!-- Bottom floating bar: link info and/or reset AR button (hidden in crop mode) -->
     <div
-      v-if="!isCropping"
-      class="absolute flex items-center gap-1 bg-white dark:bg-gray-800 rounded shadow-lg px-2 py-1 text-xs"
-      :style="{
-        top: '-32px',
-        right: '0',
-        zIndex: 101,
-        pointerEvents: 'auto',
-      }"
-    >
-      <!-- Undo/redo buttons -->
-      <button
-        class="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded disabled:opacity-30 disabled:cursor-not-allowed"
-        :disabled="!canUndo"
-        title="Undo (⌘Z)"
-        @click.stop="undo"
-      >
-        <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" />
-        </svg>
-      </button>
-      <button
-        class="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded disabled:opacity-30 disabled:cursor-not-allowed"
-        :disabled="!canRedo"
-        title="Redo (⌘⇧Z)"
-        @click.stop="redo"
-      >
-        <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 10h-10a8 8 0 00-8 8v2M21 10l-6 6m6-6l-6-6" />
-        </svg>
-      </button>
-      <div class="w-px h-4 bg-gray-300 dark:bg-gray-600 mx-1" />
-      <!-- Reset aspect ratio button -->
-      <button
-        v-if="!isArrow && !autoHeight"
-        class="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded"
-        title="Reset aspect ratio"
-        @click.stop="resetAspectRatio"
-      >
-        <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" />
-        </svg>
-      </button>
-      <!-- Z-order buttons -->
-      <button
-        class="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded"
-        title="Bring forward (⌘↑)"
-        @click.stop="bringForward"
-      >
-        <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 15l7-7 7 7" />
-        </svg>
-      </button>
-      <button
-        class="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded"
-        title="Send backward (⌘↓)"
-        @click.stop="sendBackward"
-      >
-        <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
-        </svg>
-      </button>
-    </div>
-    <!-- Floating link button (hidden in crop mode) -->
-    <div
-      v-if="associatedLink && !isCropping"
-      class="absolute flex items-center gap-1 bg-white dark:bg-gray-800 rounded shadow-lg px-2 py-1 text-xs"
+      v-if="(associatedLink || (hasAspectRatioChanged && !isArrow && !autoHeight)) && !isCropping"
+      class="absolute flex items-center gap-2 bg-white dark:bg-gray-800 rounded shadow-lg px-2 py-1 text-xs"
       :style="{
         bottom: '-32px',
         left: '50%',
@@ -1118,23 +1224,40 @@ function getCropHandleProps(handle: 'top' | 'right' | 'bottom' | 'left' | 'topLe
         pointerEvents: 'auto',
       }"
     >
-      <a
-        :href="associatedLink"
-        target="_blank"
-        rel="noopener noreferrer"
-        class="text-blue-600 dark:text-blue-400 hover:underline max-w-40 truncate"
-        @click.stop
-      >
-        {{ associatedLink }}
-      </a>
+      <!-- Link info -->
+      <template v-if="associatedLink">
+        <a
+          :href="associatedLink"
+          target="_blank"
+          rel="noopener noreferrer"
+          class="text-blue-600 dark:text-blue-400 hover:underline max-w-40 truncate"
+          @click.stop
+        >
+          {{ associatedLink }}
+        </a>
+        <button
+          class="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded"
+          title="Open link"
+          @click.stop="openLink"
+        >
+          <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+          </svg>
+        </button>
+      </template>
+      <!-- Divider if both link and reset AR are shown -->
+      <div v-if="associatedLink && hasAspectRatioChanged && !isArrow && !autoHeight" class="w-px h-4 bg-gray-300 dark:bg-gray-600" />
+      <!-- Reset aspect ratio button (only when AR has changed) -->
       <button
-        class="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded"
-        title="Open link"
-        @click.stop="openLink"
+        v-if="hasAspectRatioChanged && !isArrow && !autoHeight"
+        class="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded flex items-center gap-1"
+        title="Reset aspect ratio"
+        @click.stop="resetAspectRatio"
       >
         <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" />
         </svg>
+        <span class="text-gray-600 dark:text-gray-400">Reset AR</span>
       </button>
     </div>
   </div>

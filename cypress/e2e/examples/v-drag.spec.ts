@@ -269,7 +269,7 @@ context('v-drag', () => {
       })
     })
 
-    it('snap guide lines do NOT appear when Alt is held', () => {
+    it('snap guide lines do NOT appear when Meta is held', () => {
       cy.get('[data-testid="snap-target"]').then(($target) => {
         const targetRect = $target[0].getBoundingClientRect()
         const nearTargetX = targetRect.left + targetRect.width / 2 + 3
@@ -278,20 +278,20 @@ context('v-drag', () => {
         cy.get('[data-testid="snap-mover"]')
           .trigger('pointerdown', { button: 0, pointerId: 1, buttons: 1, force: true })
 
-        // Move near target with Alt key held - should NOT snap
+        // Move near target with Meta key held - should NOT snap
         cy.document()
           .trigger('pointermove', {
             clientX: nearTargetX,
             clientY: nearTargetY,
             buttons: 1,
-            altKey: true,
+            metaKey: true,
           })
 
         cy.wait(100)
 
-        // No snap guides when Alt is held
+        // No snap guides when Meta is held
         cy.get('.snap-guide').should('not.exist')
-        cy.screenshot('snap-alt-no-guides')
+        cy.screenshot('snap-meta-no-guides')
 
         cy.document().trigger('pointerup')
       })
