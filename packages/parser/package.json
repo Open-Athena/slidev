@@ -1,6 +1,6 @@
 {
   "name": "@slidev/parser",
-  "version": "52.11.5",
+  "version": "52.11.5-dist.aa0f5f5",
   "description": "Markdown parser for Slidev",
   "author": "Anthony Fu <anthonyfu117@hotmail.com>",
   "license": "MIT",
@@ -28,14 +28,13 @@
   "engines": {
     "node": ">=18.0.0"
   },
+  "dependencies": {
+    "@antfu/utils": "^9.3.0",
+    "yaml": "^2.8.2",
+    "@slidev/types": "52.11.5"
+  },
   "scripts": {
     "build": "tsdown",
-    "dev": "nr build --watch",
-    "prepublishOnly": "npm run build"
-  },
-  "dependencies": {
-    "@antfu/utils": "catalog:frontend",
-    "@slidev/types": "workspace:*",
-    "yaml": "catalog:prod"
+    "dev": "nr build --watch"
   }
 }

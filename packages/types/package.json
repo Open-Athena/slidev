@@ -1,6 +1,6 @@
 {
   "name": "@slidev/types",
-  "version": "52.11.5",
+  "version": "52.11.5-dist.aa0f5f5",
   "description": "Shared types declarations for Slidev",
   "author": "Anthony Fu <anthonyfu117@hotmail.com>",
   "license": "MIT",
@@ -22,28 +22,27 @@
   "engines": {
     "node": ">=18.0.0"
   },
+  "dependencies": {
+    "@antfu/utils": "^9.3.0",
+    "@shikijs/markdown-it": "^3.21.0",
+    "@vitejs/plugin-vue": "^6.0.3",
+    "@vitejs/plugin-vue-jsx": "^5.1.3",
+    "katex": "^0.16.28",
+    "mermaid": "^11.12.2",
+    "monaco-editor": "^0.55.1",
+    "shiki": "^3.21.0",
+    "unocss": "^66.6.0",
+    "unplugin-icons": "^23.0.1",
+    "unplugin-vue-markdown": "^29.2.0",
+    "vite-plugin-inspect": "^11.3.3",
+    "vite-plugin-remote-assets": "^2.1.0",
+    "vite-plugin-static-copy": "^3.2.0",
+    "vite-plugin-vue-server-ref": "^1.0.0",
+    "vue": "^3.5.27",
+    "vue-router": "^4.6.4"
+  },
   "scripts": {
     "build": "tsdown src/index.ts",
-    "dev": "nr build --watch",
-    "prepublishOnly": "npm run build"
-  },
-  "dependencies": {
-    "@antfu/utils": "catalog:frontend",
-    "@shikijs/markdown-it": "catalog:frontend",
-    "@vitejs/plugin-vue": "catalog:prod",
-    "@vitejs/plugin-vue-jsx": "catalog:prod",
-    "katex": "catalog:frontend",
-    "mermaid": "catalog:frontend",
-    "monaco-editor": "catalog:monaco",
-    "shiki": "catalog:frontend",
-    "unocss": "catalog:prod",
-    "unplugin-icons": "catalog:prod",
-    "unplugin-vue-markdown": "catalog:prod",
-    "vite-plugin-inspect": "catalog:prod",
-    "vite-plugin-remote-assets": "catalog:prod",
-    "vite-plugin-static-copy": "catalog:prod",
-    "vite-plugin-vue-server-ref": "catalog:prod",
-    "vue": "catalog:frontend",
-    "vue-router": "catalog:frontend"
+    "dev": "nr build --watch"
   }
 }
