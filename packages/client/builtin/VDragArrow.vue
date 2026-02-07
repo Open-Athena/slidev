@@ -2,6 +2,7 @@
 import type { DragElementMarkdownSource } from '../composables/useDragElements'
 import { computed, onMounted, onUnmounted } from 'vue'
 import { useDragElement } from '../composables/useDragElements'
+import { addToSelection, isSelected, removeFromSelection } from '../composables/useMultiSelect'
 import Arrow from './Arrow.vue'
 
 const props = defineProps<{
@@ -12,7 +13,22 @@ const props = defineProps<{
   twoWay?: boolean
 }>()
 
-const { dragId, mounted, unmounted, startDragging, stopDragging, x0, y0, width, height } = useDragElement(null, props.pos ?? '100,100,300,300', props.markdownSource, true)
+const state = useDragElement(null, props.pos ?? '100,100,300,300', props.markdownSource, true)
+const { dragId, mounted, unmounted, startDragging, stopDragging, x0, y0, width, height } = state
+
+function handleClick(ev: MouseEvent) {
+  // Handle multi-select with shift key
+  if (ev.shiftKey) {
+    if (isSelected(state)) {
+      removeFromSelection(state)
+    }
+    else {
+      addToSelection(state)
+    }
+    return
+  }
+  startDragging()
+}
 
 onMounted(mounted)
 onUnmounted(unmounted)
@@ -30,7 +46,7 @@ const y2 = computed(() => y0.value + height.value / 2)
     :width="props.width"
     :color="props.color"
     :two-way="props.twoWay"
-    @click="startDragging"
+    @click="handleClick"
     @click-outside="stopDragging"
   />
 </template>

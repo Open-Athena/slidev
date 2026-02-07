@@ -6,8 +6,8 @@ import { computed, ref, watch } from 'vue'
 import { injectionCurrentPage, injectionFrontmatter, injectionRenderContext, injectionSlideElement, injectionSlideScale, injectionSlideZoom } from '../constants'
 import { slideHeight, slideWidth } from '../env'
 import { makeId } from '../logic/utils'
-import { activeDragElement } from '../state'
 import { directiveInject } from '../utils'
+import { clearSelection, isSelected, removeFromSelection, selectElement } from './useMultiSelect'
 import { useNav } from './useNav'
 import { useSlideBounds } from './useSlideBounds'
 import { useDynamicSlideInfo } from './useSlideInfo'
@@ -450,7 +450,7 @@ export function useDragElement(directive: DirectiveBinding | null, posRaw?: stri
     containerStyle,
     watchStopHandles,
     activeSnapLines,
-    dragging: computed((): boolean => activeDragElement.value === state),
+    dragging: computed((): boolean => isSelected(state)),
     // Snap alignment: compute snapped position and update guide lines
     // x/y are proposed x0/y0 (full element center); snap uses visible (cropped) bounds
     applySnap(x: number, y: number, metaKey: boolean): { x: number, y: number } {
@@ -550,14 +550,13 @@ export function useDragElement(directive: DirectiveBinding | null, posRaw?: stri
       if (!enabled)
         return
       updateBounds()
-      activeDragElement.value = state
+      selectElement(state)
     },
     stopDragging(): void {
       if (!enabled)
         return
       isCropping.value = false
-      if (activeDragElement.value === state)
-        activeDragElement.value = null
+      removeFromSelection(state)
     },
     // Saved crop values for cancel functionality
     savedCropValues: null as { top: number, right: number, bottom: number, left: number } | null,
@@ -594,18 +593,24 @@ export function useDragElement(directive: DirectiveBinding | null, posRaw?: stri
   // Handle click-outside-to-deselect with our own listener instead of VueUse's onClickOutside
   // (VueUse's onClickOutside has timing issues with our pointerdown-based selection)
   function handleDocumentPointerdown(ev: PointerEvent) {
-    // Only process if this element is currently active
-    if (activeDragElement.value !== state)
+    // Only process if this element is currently selected
+    if (!isSelected(state))
       return
+    // Shift-click on another element should not clear selection (handled by v-drag)
+    if (ev.shiftKey) {
+      return
+    }
     const target = ev.target as HTMLElement
-    // Don't deselect if clicking on the DragControl UI
+    // Don't deselect if clicking on the DragControl UI or GroupDragControl
     const dragControlContainer = document.querySelector('#drag-control-container')
-    if (dragControlContainer?.contains(target))
+    const groupDragControlContainer = document.querySelector('#group-drag-control-container')
+    if (dragControlContainer?.contains(target) || groupDragControlContainer?.contains(target))
       return
     // Don't deselect if clicking on this element or any v-drag element
     if (target?.closest('[data-drag-id]') || container.value?.contains(target))
       return
-    state.stopDragging()
+    // Clear entire selection when clicking outside
+    clearSelection()
   }
   document.addEventListener('pointerdown', handleDocumentPointerdown)
   watchStopHandles.push(() => document.removeEventListener('pointerdown', handleDocumentPointerdown))

@@ -2,6 +2,7 @@ import type { App } from 'vue'
 import type { DragElementState } from '../composables/useDragElements'
 import { watch } from 'vue'
 import { useDragElement } from '../composables/useDragElements'
+import { addToSelection, getSelectedElements, isSelected, removeFromSelection } from '../composables/useMultiSelect'
 
 export function createVDragDirective() {
   return {
@@ -34,22 +35,72 @@ export function createVDragDirective() {
             ev.preventDefault()
             ev.stopPropagation()
             ev.stopImmediatePropagation()
-            state.startDragging()
+
+            // Handle multi-select with shift key
+            if (ev.shiftKey) {
+              // Toggle selection
+              if (isSelected(state)) {
+                removeFromSelection(state)
+              }
+              else {
+                addToSelection(state)
+              }
+              return // Don't start drag on shift-click
+            }
+
+            // If element is already selected (possibly as part of multi-select),
+            // don't replace selection - just proceed with group drag
+            const wasAlreadySelected = isSelected(state)
+            if (!wasAlreadySelected) {
+              state.startDragging() // This calls selectElement, replacing selection
+            }
+
             // Store initial pointer position for immediate drag
             const startX = ev.clientX
             const startY = ev.clientY
-            const startX0 = state.x0.value
-            const startY0 = state.y0.value
+
+            // For group drag, store start positions of all selected elements
+            const selectedElements = Array.from(getSelectedElements())
+            const startPositions = selectedElements.map(s => ({
+              state: s,
+              x0: s.x0.value,
+              y0: s.y0.value,
+            }))
+
+            // Save snapshots for all selected elements before dragging
+            for (const s of selectedElements) {
+              s.saveSnapshot()
+            }
 
             function handlePointermove(moveEv: PointerEvent) {
               moveEv.preventDefault()
-              // Calculate delta and update position
+              // Calculate delta
               const scale = state.zoom.value
-              const rawX = startX0 + (moveEv.clientX - startX) / scale
-              const rawY = startY0 + (moveEv.clientY - startY) / scale
-              const snapped = state.applySnap(rawX, rawY, moveEv.metaKey)
-              state.x0.value = snapped.x
-              state.y0.value = snapped.y
+              const dx = (moveEv.clientX - startX) / scale
+              const dy = (moveEv.clientY - startY) / scale
+
+              // For single selection, apply snap to the primary element
+              if (selectedElements.length === 1) {
+                const rawX = startPositions[0].x0 + dx
+                const rawY = startPositions[0].y0 + dy
+                const snapped = state.applySnap(rawX, rawY, moveEv.metaKey)
+                state.x0.value = snapped.x
+                state.y0.value = snapped.y
+              }
+              else {
+                // For multi-select, move all elements by same delta
+                // Apply snap based on the clicked element, apply same offset to all
+                const rawX = startPositions.find(p => p.state === state)!.x0 + dx
+                const rawY = startPositions.find(p => p.state === state)!.y0 + dy
+                const snapped = state.applySnap(rawX, rawY, moveEv.metaKey)
+                const snapDx = snapped.x - rawX
+                const snapDy = snapped.y - rawY
+
+                for (const { state: s, x0, y0 } of startPositions) {
+                  s.x0.value = x0 + dx + snapDx
+                  s.y0.value = y0 + dy + snapDy
+                }
+              }
             }
 
             function handlePointerup() {
