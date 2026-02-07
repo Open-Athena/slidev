@@ -152,3 +152,22 @@ html {
 .slidev-note ul {
   margin: 0;
 }
+
+/* Footnotes (from markdown-it-footnote) */
+.footnotes-sep {
+  display: none;
+}
+
+.footnotes {
+  position: absolute;
+  bottom: 0.5rem;
+  left: 0;
+  right: 0;
+  padding: 0 2rem;
+  font-size: 0.75rem;
+  opacity: 0.5;
+}
+
+.footnote-backref {
+  display: none;
+}
