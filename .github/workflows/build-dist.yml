@@ -10,123 +10,15 @@ on:
         required: false
         default: 'main'
 
+permissions:
+  contents: write
+
 jobs:
   build-dist:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout source
-        uses: actions/checkout@v4
+      - uses: runsascoded/npm-dist@pkgs
         with:
-          ref: ${{ inputs.source_ref || 'main' }}
-          fetch-depth: 0
-
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          cache: 'pnpm'
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-
-      - name: Get source commit info
-        id: source
-        run: |
-          echo "sha=$(git rev-parse HEAD)" >> $GITHUB_OUTPUT
-          echo "sha_short=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
-          echo "message=$(git log -1 --pretty=%s)" >> $GITHUB_OUTPUT
-
-      - name: Pack packages
-        run: |
-          # Pack each package (resolves catalog: and workspace: refs)
-          for pkg in client parser slidev types; do
-            echo "Packing @slidev/$pkg..."
-            cd packages/$pkg
-            pnpm pack
-            cd ../..
-          done
-
-      - name: Prepare dist branch content
-        run: |
-          mkdir -p dist-content/packages
-
-          # Extract each packed tarball to dist structure
-          for pkg in client parser slidev types; do
-            echo "Extracting $pkg..."
-            mkdir -p dist-content/packages/$pkg
-            tar -xzf packages/$pkg/*.tgz -C dist-content/packages/$pkg --strip-components=1
-          done
-
-          # Create root package.json for the dist branch
-          cat > dist-content/package.json << 'EOF'
-          {
-            "name": "@open-athena/slidev-dist",
-            "private": true,
-            "description": "Dist branch with resolved dependencies for Open-Athena/slidev fork",
-            "repository": {
-              "type": "git",
-              "url": "https://github.com/Open-Athena/slidev"
-            }
-          }
-          EOF
-
-          # Add README
-          cat > dist-content/README.md << EOF
-          # Slidev Dist Branch
-
-          This branch contains packed versions of Slidev packages with resolved dependencies.
-
-          **Source commit:** ${{ steps.source.outputs.sha }}
-          **Built from:** ${{ inputs.source_ref || 'main' }}
-
-          ## Usage
-
-          In your \`package.json\`, use pnpm's git subdirectory syntax:
-
-          \`\`\`json
-          {
-            "dependencies": {
-              "@slidev/cli": "git+https://github.com/Open-Athena/slidev.git?path=/packages/slidev#dist"
-            },
-            "pnpm": {
-              "overrides": {
-                "@slidev/client": "git+https://github.com/Open-Athena/slidev.git?path=/packages/client#dist",
-                "@slidev/parser": "git+https://github.com/Open-Athena/slidev.git?path=/packages/parser#dist",
-                "@slidev/types": "git+https://github.com/Open-Athena/slidev.git?path=/packages/types#dist"
-              }
-            }
-          }
-          \`\`\`
-
-          Or pin to a specific commit:
-
-          \`\`\`json
-          "@slidev/client": "git+https://github.com/Open-Athena/slidev.git?path=/packages/client#${{ steps.source.outputs.sha }}"
-          \`\`\`
-          EOF
-
-      - name: Push to dist branch
-        run: |
-          cd dist-content
-
-          git init
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-
-          git add -A
-          git commit -m "dist: ${{ steps.source.outputs.message }}
-
-          Source: ${{ steps.source.outputs.sha }}
-
-          🤖 Generated with GitHub Actions"
-
-          # Force push to dist branch
-          git push --force "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" HEAD:dist
-
-          echo "✅ Pushed to dist branch"
-          echo ""
-          echo "Install with:"
-          echo '  "@slidev/client": "git+https://github.com/${{ github.repository }}.git?path=/packages/client#dist"'
+          source_ref: ${{ inputs.source_ref || 'main' }}
+          pkgs: packages/client,packages/parser,packages/slidev,packages/types
+          build_command: pnpm run build
