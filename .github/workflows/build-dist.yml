@@ -17,8 +17,12 @@ jobs:
   build-dist:
     runs-on: ubuntu-latest
     steps:
-      - uses: runsascoded/npm-dist@pkgs
+      - uses: runsascoded/npm-dist@v1
         with:
           source_ref: ${{ inputs.source_ref || 'main' }}
-          pkgs: packages/client,packages/parser,packages/slidev,packages/types
           build_command: pnpm run build
+          pkgs: |
+            packages/client
+            packages/parser
+            packages/slidev
+            packages/types
