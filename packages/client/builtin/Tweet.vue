@@ -9,13 +9,17 @@ Usage:
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
 import { isDark } from '../logic/dark'
+import VDrag from './VDrag.vue'
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   id: string | number
   scale?: string | number
   conversation?: string
   cards?: 'hidden' | 'visible'
-}>()
+  draggable?: boolean
+}>(), {
+  draggable: true,
+})
 
 const tweet = ref<HTMLElement | null>()
 
@@ -51,7 +55,19 @@ onMounted(() => {
 </script>
 
 <template>
-  <Transform :scale="scale || 1">
+  <VDrag v-if="props.draggable !== false" :pos="`tweet-${id}`">
+    <Transform :scale="scale || 1">
+      <div ref="tweet" class="tweet slidev-tweet">
+        <div v-if="!loaded || tweetNotFound" class="w-30 h-30 my-10px bg-gray-400 bg-opacity-10 rounded-lg flex opacity-50">
+          <div class="m-auto animate-pulse text-4xl">
+            <div class="i-carbon:logo-twitter" />
+            <span v-if="tweetNotFound">Could not load tweet with id="{{ props.id }}"</span>
+          </div>
+        </div>
+      </div>
+    </Transform>
+  </VDrag>
+  <Transform v-else :scale="scale || 1">
     <div ref="tweet" class="tweet slidev-tweet">
       <div v-if="!loaded || tweetNotFound" class="w-30 h-30 my-10px bg-gray-400 bg-opacity-10 rounded-lg flex opacity-50">
         <div class="m-auto animate-pulse text-4xl">
