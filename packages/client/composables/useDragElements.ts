@@ -273,6 +273,7 @@ export function useDragElement(directive: DirectiveBinding | null, posRaw?: stri
   const cropBottom = ref(pos[8] ?? 0)
   const cropLeft = ref(pos[9] ?? 0)
   const isCropping = ref(false)
+  const isInteracting = ref(false)
   const rotateRad = computed(() => rotate.value * Math.PI / 180)
   const rotateSin = computed(() => Math.sin(rotateRad.value))
   const rotateCos = computed(() => Math.cos(rotateRad.value))
@@ -433,6 +434,7 @@ export function useDragElement(directive: DirectiveBinding | null, posRaw?: stri
     dataSource,
     markdownSource,
     isArrow,
+    enabled,
     zoom,
     autoHeight,
     x0,
@@ -446,10 +448,12 @@ export function useDragElement(directive: DirectiveBinding | null, posRaw?: stri
     cropBottom,
     cropLeft,
     isCropping,
+    isInteracting,
     container,
     containerStyle,
     watchStopHandles,
     activeSnapLines,
+    positioned: computed((): boolean => Number.isFinite(x0.value)),
     dragging: computed((): boolean => isSelected(state)),
     // Snap alignment: compute snapped position and update guide lines
     // x/y are proposed x0/y0 (full element center); snap uses visible (cropped) bounds
@@ -530,15 +534,8 @@ export function useDragElement(directive: DirectiveBinding | null, posRaw?: stri
         cropBottom: () => cropBottom.value,
         cropLeft: () => cropLeft.value,
       })
-      if (!posRaw) {
-        setTimeout(() => {
-          updateBounds()
-          x0.value = (bounds.value.left + bounds.value.width / 2 - slideLeft.value) / scale.value
-          y0.value = (bounds.value.top - slideTop.value) / scale.value
-          width.value = bounds.value.width / scale.value
-          height.value = bounds.value.height / scale.value
-        }, 100)
-      }
+      // Elements without dragPos stay in natural document flow until first click
+      // (auto-positioned in startDragging)
     },
     unmounted() {
       if (!enabled)
@@ -550,12 +547,20 @@ export function useDragElement(directive: DirectiveBinding | null, posRaw?: stri
       if (!enabled)
         return
       updateBounds()
+      // Auto-position unpositioned elements from their current layout position
+      if (!Number.isFinite(x0.value)) {
+        x0.value = (bounds.value.left + bounds.value.width / 2 - slideLeft.value) / scale.value
+        y0.value = (bounds.value.top + bounds.value.height / 2 - slideTop.value) / scale.value
+        width.value = bounds.value.width / scale.value
+        height.value = bounds.value.height / scale.value
+      }
       selectElement(state)
     },
     stopDragging(): void {
       if (!enabled)
         return
       isCropping.value = false
+      isInteracting.value = false
       removeFromSelection(state)
     },
     // Saved crop values for cancel functionality
@@ -587,6 +592,14 @@ export function useDragElement(directive: DirectiveBinding | null, posRaw?: stri
       }
       state.savedCropValues = null
       isCropping.value = false
+    },
+    enterInteractMode(): void {
+      if (!enabled)
+        return
+      isInteracting.value = true
+    },
+    exitInteractMode(): void {
+      isInteracting.value = false
     },
   }
 
@@ -620,6 +633,15 @@ export function useDragElement(directive: DirectiveBinding | null, posRaw?: stri
       if (!focused)
         state.stopDragging()
     }),
+    // Toggle data-drag-positioned for CSS iframe sizing (avoids circular dependency with auto-sized containers)
+    watch(state.positioned, (positioned) => {
+      if (container.value) {
+        if (positioned)
+          container.value.dataset.dragPositioned = ''
+        else
+          delete container.value.dataset.dragPositioned
+      }
+    }, { flush: 'post' }),
   )
 
   return state

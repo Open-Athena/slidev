@@ -10,7 +10,7 @@ const props = defineProps<{
 }>()
 
 const state = useDragElement(null, props.pos, props.markdownSource)
-const { dragId, container, containerStyle, mounted, unmounted, startDragging } = state
+const { dragId, container, containerStyle, mounted, unmounted, startDragging, enabled, isInteracting } = state
 
 function handlePointerdown(ev: PointerEvent) {
   if (ev.button !== 0)
@@ -32,6 +32,15 @@ function handlePointerdown(ev: PointerEvent) {
   startDragging()
 }
 
+function handleDblclick(ev: MouseEvent) {
+  ev.preventDefault()
+  ev.stopPropagation()
+  if (container.value?.querySelector('iframe'))
+    state.enterInteractMode()
+  else
+    state.enterCropMode()
+}
+
 onMounted(mounted)
 onUnmounted(unmounted)
 </script>
@@ -40,10 +49,13 @@ onUnmounted(unmounted)
   <div
     ref="container"
     :data-drag-id="dragId"
+    :data-drag-editing="enabled ? '' : undefined"
+    :data-drag-interact="isInteracting ? '' : undefined"
     :style="containerStyle"
     class="p-1"
     @pointerdown="handlePointerdown"
     @click.prevent.stop
+    @dblclick.prevent.stop="handleDblclick"
   >
     <slot />
   </div>

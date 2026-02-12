@@ -171,3 +171,20 @@ html {
 .footnote-backref {
   display: none;
 }
+
+/* Make iframes fill their v-drag containers (only after positioned, to avoid
+   circular dependency during initial auto-sizing when container has no explicit dimensions) */
+[data-drag-positioned] iframe {
+  width: 100% !important;
+  height: 100% !important;
+}
+
+/* Block iframe clicks in edit mode so v-drag can capture them */
+[data-drag-editing] iframe {
+  pointer-events: none !important;
+}
+
+/* Restore iframe interaction in interact mode (double-click to enter) */
+[data-drag-editing][data-drag-interact] iframe {
+  pointer-events: auto !important;
+}

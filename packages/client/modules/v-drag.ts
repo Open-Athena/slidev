@@ -20,6 +20,8 @@ export function createVDragDirective() {
           state.container.value = el
           el.draggingState = state
           el.dataset.dragId = state.dragId
+          if (state.enabled)
+            el.dataset.dragEditing = ''
           state.watchStopHandles.push(
             watch(state.containerStyle, (style) => {
               for (const [k, v] of Object.entries(style)) {
@@ -27,6 +29,12 @@ export function createVDragDirective() {
                   el.style[k as any] = v as any
               }
             }, { immediate: true }),
+            watch(state.isInteracting, (interacting) => {
+              if (interacting)
+                el.dataset.dragInteract = ''
+              else
+                delete el.dataset.dragInteract
+            }),
           )
           function handlePointerdown(ev: PointerEvent) {
             if (ev.button !== 0)
@@ -119,12 +127,15 @@ export function createVDragDirective() {
             ev.stopPropagation()
           }
 
-          // Double-click to enter crop mode (only for non-arrow elements)
+          // Double-click to enter crop mode or interact mode (iframes)
           function handleDblclick(ev: MouseEvent) {
             ev.preventDefault()
             ev.stopPropagation()
             if (!state.isArrow) {
-              state.enterCropMode()
+              if (el.querySelector('iframe'))
+                state.enterInteractMode()
+              else
+                state.enterCropMode()
             }
           }
 

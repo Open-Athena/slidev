@@ -751,18 +751,24 @@ watchEffect(() => {
   }
 })
 
-// Enter key to exit crop mode
+// Enter key to exit crop mode or interact mode
 watchEffect(() => {
-  if (isCropping.value && magicKeys.enter?.value) {
-    props.data.exitCropMode()
+  if (magicKeys.enter?.value) {
+    if (isCropping.value)
+      props.data.exitCropMode()
+    else if (props.data.isInteracting.value)
+      props.data.exitInteractMode()
   }
 })
 
-// Escape key to cancel crop mode (revert changes) or deselect
+// Escape key to cancel crop mode (revert changes), exit interact mode, or deselect
 watchEffect(() => {
   if (magicKeys.escape?.value) {
     if (isCropping.value) {
       props.data.cancelCropMode()
+    }
+    else if (props.data.isInteracting.value) {
+      props.data.exitInteractMode()
     }
     else {
       props.data.stopDragging()

@@ -32,11 +32,12 @@ export function toggleSelection(state: DragElementState): void {
 }
 
 export function clearSelection(): void {
-  // Exit crop mode on all selected elements before clearing
+  // Exit crop/interact mode on all selected elements before clearing
   for (const state of selectedDragElements.value) {
-    if (state.isCropping.value) {
+    if (state.isCropping.value)
       state.exitCropMode()
-    }
+    if (state.isInteracting.value)
+      state.exitInteractMode()
   }
   selectedDragElements.value.clear()
   triggerRef(selectedDragElements)
