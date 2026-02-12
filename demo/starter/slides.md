@@ -288,6 +288,8 @@ Check out [the guides](https://sli.dev/builtin/components.html) for more.
 
 <Tweet id="1390115482657726468" scale="0.65" />
 
+<Youtube id="dQw4w9WgXcQ" />
+
 </div>
 </div>
 
