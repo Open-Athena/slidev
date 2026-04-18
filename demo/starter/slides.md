@@ -263,7 +263,7 @@ const author = {
 
 ---
 dragPos:
-  tweet-1390115482657726468: 508,78,264,260
+  tweet-1390115482657726468: 500,60,260,400
   yt-dQw4w9WgXcQ: 96,75,371,205
   img-logo-square: 716,148,140,140
 ---
@@ -297,7 +297,7 @@ Drag comparison — the image below is auto-draggable via `draggableImages: true
 <Tweet id="1390115482657726468" />
 ```
 
-<Tweet id="1390115482657726468" scale="0.65" />
+<Tweet id="1390115482657726468" />
 
 <Youtube id="dQw4w9WgXcQ" />
 
