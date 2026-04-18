@@ -574,6 +574,12 @@
           "markdownDescription": "Preload images extracted from slides for faster navigation.\n\n- `true` - enable with default look-ahead of 3 slides\n- `false` - disable image preloading\n- `{ ahead: number }` - enable with custom look-ahead window",
           "default": true
         },
+        "draggableImages": {
+          "type": "boolean",
+          "description": "Make all markdown images (`![](...)`) draggable by default\n\nWhen enabled, images can be moved, resized, rotated, and cropped like in Google Slides. Positions are auto-stored in frontmatter.",
+          "markdownDescription": "Make all markdown images (`![](...)`) draggable by default\n\nWhen enabled, images can be moved, resized, rotated, and cropped\nlike in Google Slides. Positions are auto-stored in frontmatter.",
+          "default": false
+        },
         "defaults": {
           "$ref": "#/definitions/Frontmatter",
           "description": "Default frontmatter options applied to all slides",

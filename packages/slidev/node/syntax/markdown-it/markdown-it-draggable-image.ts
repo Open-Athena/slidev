@@ -1,6 +1,8 @@
 import type MagicString from 'magic-string-stack'
-import type MarkdownIt from 'markdown-it'
+import type MarkdownExit from 'markdown-exit'
 import { SourceMapConsumer } from 'source-map-js'
+
+type ImageRenderer = NonNullable<MarkdownExit['renderer']['rules']['image']>
 
 export interface DraggableImageOptions {
   /**
@@ -32,7 +34,7 @@ function extractImageId(src: string): string {
  * Transforms `![alt](src)` to `<img v-drag="'img-NAME'" src="..." alt="...">` where NAME is derived from the image basename.
  */
 export default function MarkdownItDraggableImage(
-  md: MarkdownIt,
+  md: MarkdownExit,
   markdownTransformMap: Map<string, MagicString>,
   options: DraggableImageOptions = {},
 ) {
@@ -57,7 +59,7 @@ export default function MarkdownItDraggableImage(
     return smc
   }
 
-  const defaultImageRender = md.renderer.rules.image
+  const defaultImageRender: ImageRenderer = md.renderer.rules.image
     ?? ((tokens, idx, options, _env, self) => self.renderToken(tokens, idx, options))
 
   md.renderer.rules.image = function (tokens, idx, options, env, self) {
