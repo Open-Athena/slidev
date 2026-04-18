@@ -730,25 +730,23 @@ onKeyDown('z', (e) => {
     undo()
 })
 
-// Z-order keyboard shortcuts
-watchEffect(() => {
-  const meta = magicKeys.meta?.value || magicKeys.ctrl?.value
-  const shift = magicKeys.shift?.value
-  const up = magicKeys.ArrowUp?.value
-  const down = magicKeys.ArrowDown?.value
-
-  if (meta && up && !shift) {
-    bringForward()
-  }
-  else if (meta && down && !shift) {
-    sendBackward()
-  }
-  else if (meta && shift && up) {
-    bringToFront()
-  }
-  else if (meta && shift && down) {
-    sendToBack()
-  }
+// Z-order keyboard shortcuts — use onKeyDown (not watchEffect/magicKeys) so we can
+// preventDefault/stopPropagation and suppress the browser's/Slidev's default arrow-key
+// handling (e.g. Shift+Arrow moving the selection or changing slides).
+function handleZOrderKey(e: KeyboardEvent, action: () => void) {
+  e.preventDefault()
+  e.stopPropagation()
+  action()
+}
+onKeyDown('ArrowUp', (e) => {
+  if (!e.metaKey && !e.ctrlKey)
+    return
+  handleZOrderKey(e, e.shiftKey ? bringToFront : bringForward)
+})
+onKeyDown('ArrowDown', (e) => {
+  if (!e.metaKey && !e.ctrlKey)
+    return
+  handleZOrderKey(e, e.shiftKey ? sendToBack : sendBackward)
 })
 
 // Enter key to exit crop mode or interact mode
