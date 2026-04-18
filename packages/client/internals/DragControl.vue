@@ -741,8 +741,6 @@ onKeyDown('z', (e) => {
 // stopImmediatePropagation here runs before VueUse's own keydown listener
 // has a chance to update `magicKeys`, preventing the nudge from triggering).
 function onZOrderKeyDown(e: KeyboardEvent) {
-  // eslint-disable-next-line no-console
-  console.log('[DBG z-order keydown]', { key: e.key, meta: e.metaKey, ctrl: e.ctrlKey, shift: e.shiftKey, defaultPrevented: e.defaultPrevented })
   if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown')
     return
   if (!e.metaKey && !e.ctrlKey)
@@ -750,14 +748,10 @@ function onZOrderKeyDown(e: KeyboardEvent) {
   e.preventDefault()
   e.stopPropagation()
   e.stopImmediatePropagation()
-  const action = e.key === 'ArrowUp'
-    ? (e.shiftKey ? bringToFront : bringForward)
-    : (e.shiftKey ? sendToBack : sendBackward)
-  // eslint-disable-next-line no-console
-  console.log('[DBG z-order] firing action:', action.name, 'zIndex before:', zIndex.value)
-  action()
-  // eslint-disable-next-line no-console
-  console.log('[DBG z-order] zIndex after:', zIndex.value)
+  if (e.key === 'ArrowUp')
+    (e.shiftKey ? bringToFront : bringForward)()
+  else
+    (e.shiftKey ? sendToBack : sendBackward)()
 }
 
 onMounted(() => {
