@@ -1,10 +1,10 @@
 import type { ResolvedSlidevOptions } from '@slidev/types'
 import type MagicString from 'magic-string'
 import type MarkdownExit from 'markdown-exit'
+import MarkdownItComark from '@comark/markdown-it'
 import { taskLists as MarkdownItTaskList } from '@hedgedoc/markdown-it-plugins'
 // @ts-expect-error missing types
 import MarkdownItFootnote from 'markdown-it-footnote'
-import MarkdownItMdc from 'markdown-it-mdc'
 import MarkdownItDraggableImage from './markdown-it-draggable-image'
 import MarkdownItEscapeInlineCode from './markdown-it-escape-code'
 import MarkdownItKatex from './markdown-it-katex'
@@ -28,6 +28,6 @@ export async function useMarkdownItPlugins(md: MarkdownExit, options: ResolvedSl
     md.use(MarkdownItKatex, katexOptions)
   md.use(MarkdownItDraggableImage, markdownTransformMap, { enabled: config.draggableImages })
   md.use(MarkdownItVDrag, markdownTransformMap)
-  if (config.mdc)
-    md.use(MarkdownItMdc)
+  if (config.comark || config.mdc)
+    md.use(MarkdownItComark)
 }

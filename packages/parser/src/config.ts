@@ -46,6 +46,7 @@ export function getDefaultConfig(): SlidevConfig {
     wakeLock: true,
     remote: false,
     mdc: false,
+    comark: false,
     seoMeta: {},
     notesAutoRuby: {},
     duration: '30min',
