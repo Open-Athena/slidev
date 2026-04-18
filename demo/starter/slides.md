@@ -22,6 +22,8 @@ transition: slide-left
 comark: true
 # duration of the presentation
 duration: 35min
+# make markdown images draggable by default (fork feature)
+draggableImages: true
 ---
 
 # Welcome to Slidev
@@ -260,6 +262,11 @@ const author = {
 ````
 
 ---
+dragPos:
+  tweet-1390115482657726468: 500,140,258,370
+  yt-dQw4w9WgXcQ: 500,10,380,210
+  img-logo-square: 780,40,140,140
+---
 
 # Components
 
@@ -278,6 +285,10 @@ We have provided a few built-in components like `<Tweet/>` and `<Youtube/>` that
 <Counter :count="10" m="t-4" />
 
 Check out [the guides](https://sli.dev/builtin/components.html) for more.
+
+Drag comparison — the image below is auto-draggable via `draggableImages: true`; try dragging it vs. the Tweet/YouTube embeds:
+
+![logo-square](https://sli.dev/logo-square.png)
 
 </div>
 <div>

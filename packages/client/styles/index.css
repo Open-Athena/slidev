@@ -173,8 +173,10 @@ html {
 }
 
 /* Make iframes fill their v-drag containers (only after positioned, to avoid
-   circular dependency during initial auto-sizing when container has no explicit dimensions) */
-[data-drag-positioned] iframe {
+   circular dependency during initial auto-sizing when container has no explicit dimensions).
+   Scoped to .youtube so widgets that self-size (e.g. the Twitter widget, which sets an
+   inline height via postMessage resize from inside the iframe) aren't clobbered. */
+[data-drag-positioned] iframe.youtube {
   width: 100% !important;
   height: 100% !important;
 }

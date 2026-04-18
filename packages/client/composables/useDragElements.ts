@@ -435,6 +435,7 @@ export function useDragElement(directive: DirectiveBinding | null, posRaw?: stri
     markdownSource,
     isArrow,
     enabled,
+    scale,
     zoom,
     autoHeight,
     x0,
