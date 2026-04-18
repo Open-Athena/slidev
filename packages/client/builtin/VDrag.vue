@@ -87,8 +87,8 @@ function handlePointermove(ev: PointerEvent) {
   const rawX = drag.startX0 + dxPx / s
   const rawY = drag.startY0 + dyPx / s
 
-  // Apply snap (metaKey = cmd = disable snap, matching the corner/border handler convention).
-  const snapped = state.applySnap(rawX, rawY, ev.metaKey)
+  // Apply snap. Hold Shift or Cmd (metaKey) to disable snap.
+  const snapped = state.applySnap(rawX, rawY, ev.shiftKey || ev.metaKey)
   x0.value = snapped.x
   y0.value = snapped.y
 }

@@ -87,11 +87,13 @@ export function createVDragDirective() {
               const dx = (moveEv.clientX - startX) / scale
               const dy = (moveEv.clientY - startY) / scale
 
+              // Hold Shift or Cmd (metaKey) to disable snap alignment.
+              const disableSnap = moveEv.shiftKey || moveEv.metaKey
               // For single selection, apply snap to the primary element
               if (selectedElements.length === 1) {
                 const rawX = startPositions[0].x0 + dx
                 const rawY = startPositions[0].y0 + dy
-                const snapped = state.applySnap(rawX, rawY, moveEv.metaKey)
+                const snapped = state.applySnap(rawX, rawY, disableSnap)
                 state.x0.value = snapped.x
                 state.y0.value = snapped.y
               }
@@ -100,7 +102,7 @@ export function createVDragDirective() {
                 // Apply snap based on the clicked element, apply same offset to all
                 const rawX = startPositions.find(p => p.state === state)!.x0 + dx
                 const rawY = startPositions.find(p => p.state === state)!.y0 + dy
-                const snapped = state.applySnap(rawX, rawY, moveEv.metaKey)
+                const snapped = state.applySnap(rawX, rawY, disableSnap)
                 const snapDx = snapped.x - rawX
                 const snapDy = snapped.y - rawY
 

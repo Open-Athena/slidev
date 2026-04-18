@@ -452,7 +452,7 @@ function getBorderProps(dir: 'l' | 'r' | 't' | 'b') {
         // Snap the moving left edge midpoint
         let mx = rx - width.value * rotateCos.value
         let my = ry - width.value * rotateSin.value
-        const snapped = applyPointSnap(mx, my, ev.metaKey)
+        const snapped = applyPointSnap(mx, my, ev.shiftKey || ev.metaKey)
         mx = snapped.x
         my = snapped.y
         props.data.activeSnapLines.value = { x: snapped.linesX, y: snapped.linesY }
@@ -467,7 +467,7 @@ function getBorderProps(dir: 'l' | 'r' | 't' | 'b') {
         // Snap the moving right edge midpoint
         let mx = lx + width.value * rotateCos.value
         let my = ly + width.value * rotateSin.value
-        const snapped = applyPointSnap(mx, my, ev.metaKey)
+        const snapped = applyPointSnap(mx, my, ev.shiftKey || ev.metaKey)
         mx = snapped.x
         my = snapped.y
         props.data.activeSnapLines.value = { x: snapped.linesX, y: snapped.linesY }
@@ -482,7 +482,7 @@ function getBorderProps(dir: 'l' | 'r' | 't' | 'b') {
         // Snap the moving top edge midpoint
         let mx = bx + height.value * rotateSin.value
         let my = by - height.value * rotateCos.value
-        const snapped = applyPointSnap(mx, my, ev.metaKey)
+        const snapped = applyPointSnap(mx, my, ev.shiftKey || ev.metaKey)
         mx = snapped.x
         my = snapped.y
         props.data.activeSnapLines.value = { x: snapped.linesX, y: snapped.linesY }
@@ -497,7 +497,7 @@ function getBorderProps(dir: 'l' | 'r' | 't' | 'b') {
         // Snap the moving bottom edge midpoint
         let mx = tx - height.value * rotateSin.value
         let my = ty + height.value * rotateCos.value
-        const snapped = applyPointSnap(mx, my, ev.metaKey)
+        const snapped = applyPointSnap(mx, my, ev.shiftKey || ev.metaKey)
         mx = snapped.x
         my = snapped.y
         props.data.activeSnapLines.value = { x: snapped.linesX, y: snapped.linesY }

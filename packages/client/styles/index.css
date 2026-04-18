@@ -172,11 +172,15 @@ html {
   display: none;
 }
 
-/* Make iframes fill their v-drag containers (only after positioned, to avoid
-   circular dependency during initial auto-sizing when container has no explicit dimensions).
-   Scoped to .youtube so widgets that self-size (e.g. the Twitter widget, which sets an
-   inline height via postMessage resize from inside the iframe) aren't clobbered. */
-[data-drag-positioned] iframe.youtube {
+/* Make iframes in positioned v-drag wrappers fill their container.
+   Without this, iframes fall back to HTML's 300x150 default (YouTube) or to whatever the
+   embedded widget negotiates — Twitter's widget in particular sets the iframe to 0x0 +
+   flex-grow:1 initially and only grows after a postMessage measure, which behaves oddly
+   depending on which dims are CSS-constrained. Forcing both to 100% is the most
+   predictable: the iframe matches the wrapper, Twitter content inside scrolls if it
+   exceeds the wrapper height. Users tune `dragPos` height to show as much of the widget
+   content as they want. */
+[data-drag-positioned] iframe {
   width: 100% !important;
   height: 100% !important;
 }
