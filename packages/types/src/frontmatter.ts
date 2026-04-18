@@ -312,6 +312,16 @@ export interface HeadmatterConfig extends TransitionOptions {
    */
   magicMoveDuration?: number
   /**
+   * Preload images extracted from slides for faster navigation.
+   *
+   * - `true` - enable with default look-ahead of 3 slides
+   * - `false` - disable image preloading
+   * - `{ ahead: number }` - enable with custom look-ahead window
+   *
+   * @default true
+   */
+  preloadImages?: boolean | { ahead?: number }
+  /**
    * Make all markdown images (`![](...)`) draggable by default
    *
    * When enabled, images can be moved, resized, rotated, and cropped
