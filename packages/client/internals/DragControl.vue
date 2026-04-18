@@ -4,7 +4,7 @@ import type { Pausable } from '@vueuse/core'
 import type { DragElementState } from '../composables/useDragElements'
 import { clamp } from '@antfu/utils'
 import { onKeyDown, useIntervalFn } from '@vueuse/core'
-import { computed, inject, ref, watchEffect } from 'vue'
+import { computed, inject, onMounted, onUnmounted, ref, watchEffect } from 'vue'
 import { findSnap, getSnapTargets } from '../composables/useDragElements'
 import { useSlideBounds } from '../composables/useSlideBounds'
 import { injectionSlideScale } from '../constants'
@@ -667,8 +667,11 @@ const moveDown = useIntervalFn(() => {
 }, moveInterval, intervalFnOptions)
 
 watchEffect(() => {
+  // Suppress arrow-key nudge when a modifier is held, so Cmd/Shift+Arrow can be used
+  // for other shortcuts (z-order change below) without also translating the element.
+  const hasModifier = !!(magicKeys.meta?.value || magicKeys.ctrl?.value || magicKeys.shift?.value || magicKeys.alt?.value)
   function shortcut(key: string, fn: Pausable) {
-    if (magicKeys[key].value)
+    if (magicKeys[key].value && !hasModifier)
       fn.resume()
     else fn.pause()
   }
@@ -730,23 +733,32 @@ onKeyDown('z', (e) => {
     undo()
 })
 
-// Z-order keyboard shortcuts — use onKeyDown (not watchEffect/magicKeys) so we can
-// preventDefault/stopPropagation and suppress the browser's/Slidev's default arrow-key
-// handling (e.g. Shift+Arrow moving the selection or changing slides).
-function handleZOrderKey(e: KeyboardEvent, action: () => void) {
+// Z-order keyboard shortcuts: Meta/Ctrl + Arrow for forward/back one step,
+// add Shift for to-front/to-back. We attach a plain `keydown` capture-phase
+// listener so we can `stopImmediatePropagation` and block other handlers
+// (like the `magicKeys`-driven nudge above, which observes reactive state
+// rather than the event — preventDefault on the event doesn't stop it, but
+// stopImmediatePropagation here runs before VueUse's own keydown listener
+// has a chance to update `magicKeys`, preventing the nudge from triggering).
+function onZOrderKeyDown(e: KeyboardEvent) {
+  if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown')
+    return
+  if (!e.metaKey && !e.ctrlKey)
+    return
   e.preventDefault()
   e.stopPropagation()
-  action()
+  e.stopImmediatePropagation()
+  if (e.key === 'ArrowUp')
+    (e.shiftKey ? bringToFront : bringForward)()
+  else
+    (e.shiftKey ? sendToBack : sendBackward)()
 }
-onKeyDown('ArrowUp', (e) => {
-  if (!e.metaKey && !e.ctrlKey)
-    return
-  handleZOrderKey(e, e.shiftKey ? bringToFront : bringForward)
+
+onMounted(() => {
+  window.addEventListener('keydown', onZOrderKeyDown, { capture: true })
 })
-onKeyDown('ArrowDown', (e) => {
-  if (!e.metaKey && !e.ctrlKey)
-    return
-  handleZOrderKey(e, e.shiftKey ? sendToBack : sendBackward)
+onUnmounted(() => {
+  window.removeEventListener('keydown', onZOrderKeyDown, { capture: true })
 })
 
 // Enter key to exit crop mode or interact mode
