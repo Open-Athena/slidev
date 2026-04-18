@@ -263,9 +263,9 @@ const author = {
 
 ---
 dragPos:
-  tweet-1390115482657726468: 546,80,258,400
-  yt-dQw4w9WgXcQ: 73,55,380,210
-  img-logo-square: 780,40,140,140
+  tweet-1390115482657726468: 508,78,264,260
+  yt-dQw4w9WgXcQ: 96,75,371,205
+  img-logo-square: 716,148,140,140
 ---
 
 # Components

@@ -56,7 +56,7 @@ onMounted(() => {
 
 <template>
   <VDrag v-if="props.draggable !== false" :pos="`tweet-${id}`">
-    <Transform :scale="scale || 1">
+    <Transform :scale="scale || 1" class="h-full">
       <div ref="tweet" class="tweet slidev-tweet">
         <div v-if="!loaded || tweetNotFound" class="w-30 h-30 my-10px bg-gray-400 bg-opacity-10 rounded-lg flex opacity-50">
           <div class="m-auto animate-pulse text-4xl">
