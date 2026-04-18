@@ -192,6 +192,12 @@ html {
 [data-drag-positioned] .twitter-tweet {
   height: 100% !important;
 }
+/* Twitter's widget sets `margin: 10px 0` on `.twitter-tweet`, which pushes the tweet
+   content ~10px below the top of the v-drag selection box and adds 10px at the bottom.
+   Zero it out so the selection box hugs the rendered tweet. */
+[data-drag-positioned] .twitter-tweet {
+  margin: 0 !important;
+}
 
 /* Block iframe clicks in edit mode so v-drag can capture them */
 [data-drag-editing] iframe {
