@@ -520,6 +520,11 @@ export function useDragElement(directive: DirectiveBinding | null, posRaw?: stri
     mounted() {
       if (!enabled)
         return
+      // Set data-drag-positioned so [data-drag-positioned] iframe CSS (width/height: 100%) applies.
+      // Doing this in mounted (vs the reactive watcher below) covers the initial render, when the
+      // watcher's callback would see container.value === null and skip.
+      if (container.value && Number.isFinite(x0.value))
+        container.value.dataset.dragPositioned = ''
       updateBounds()
       // Register for snap alignment
       registerDragElement(page.value, {
