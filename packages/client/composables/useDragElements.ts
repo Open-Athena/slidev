@@ -348,6 +348,26 @@ export function useDragElement(directive: DirectiveBinding | null, posRaw?: stri
     return baseStyle
   })
 
+  // Set by wrappers around fixed-AR content (YouTube iframe, Twitter widget) to lock the
+  // wrapper's height to width / lockAspectRatio. Number = the AR (w/h) the content wants
+  // to render at; null = no lock (free resize). When set:
+  //   - height stays in sync with width × AR (sync watcher below)
+  //   - DragControl's corner resize preserves AR; border handles are hidden
+  const lockAspectRatio = ref<number | null>(null)
+
+  // Keep height in sync with width / lockAspectRatio. Without this, saved dragPos drifts
+  // away from the locked AR.
+  watchStopHandles.push(
+    watch(
+      [width, lockAspectRatio],
+      ([w, ar]) => {
+        if (ar && Math.abs(height.value - w / ar) > 0.5)
+          height.value = w / ar
+      },
+      { immediate: true },
+    ),
+  )
+
   watchStopHandles.push(
     watch(
       [x0, y0, width, height, rotate, zIndex, cropTop, cropRight, cropBottom, cropLeft],
@@ -438,6 +458,7 @@ export function useDragElement(directive: DirectiveBinding | null, posRaw?: stri
     scale,
     zoom,
     autoHeight,
+    lockAspectRatio,
     x0,
     y0,
     width,

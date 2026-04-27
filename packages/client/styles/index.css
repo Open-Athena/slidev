@@ -172,26 +172,14 @@ html {
   display: none;
 }
 
-/* Force iframes to fill their v-drag wrapper. Wrapper's `dragPos` dims are authoritative:
-   iframe matches the selection box, content inside scrolls. Notes:
-   - YouTube: otherwise falls back to HTML's 300×150 default.
-   - Twitter widget: self-sizes via postMessage from inside the iframe, but its inline
-     `height` is unreliable (sometimes `0px` when Twitter's flex-grow assumptions fail).
-     Forcing 100% is the predictable choice; set `dragPos` height to the portion of the
-     tweet you want visible. */
-[data-drag-positioned] iframe {
+/* Generic v-drag iframes (other than Youtube/Tweet, which scale-to-fit via
+   transform — see Youtube.vue / Tweet.vue) fill their wrapper.
+   - Without this, generic iframes fall back to HTML's 300×150 default. */
+[data-drag-positioned] iframe:not(.youtube):not(.twitter-tweet > iframe) {
   width: 100% !important;
   height: 100% !important;
 }
 
-/* The Tweet component nests its iframe inside several auto-height divs
-   (Transform wrapper → `.slidev-tweet` → `.twitter-tweet` → iframe). For the iframe's
-   `height: 100%` (above) to resolve against the v-drag wrapper (rather than iframe's
-   150px default), each intermediate parent also needs `height: 100%`. */
-[data-drag-positioned] .slidev-tweet,
-[data-drag-positioned] .twitter-tweet {
-  height: 100% !important;
-}
 /* Twitter's widget sets `margin: 10px 0` on `.twitter-tweet`, which pushes the tweet
    content ~10px below the top of the v-drag selection box and adds 10px at the bottom.
    Zero it out so the selection box hugs the rendered tweet. */

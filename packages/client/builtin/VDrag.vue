@@ -1,16 +1,23 @@
 <script setup lang="ts">
 import type { DragElementMarkdownSource } from '../composables/useDragElements'
-import { onMounted, onUnmounted } from 'vue'
+import { onMounted, onUnmounted, watchEffect } from 'vue'
 import { useDragElement } from '../composables/useDragElements'
 import { addToSelection, isSelected, removeFromSelection } from '../composables/useMultiSelect'
 
 const props = defineProps<{
   pos?: string
   markdownSource?: DragElementMarkdownSource
+  // Lock the wrapper's aspect ratio (width / height) to this value. Used by Youtube /
+  // Tweet wrappers around fixed-AR content. Falsy = free resize.
+  lockAspectRatio?: number
 }>()
 
 const state = useDragElement(null, props.pos, props.markdownSource)
 const { dragId, container, containerStyle, mounted, unmounted, startDragging, enabled, isInteracting, x0, y0, scale } = state
+
+watchEffect(() => {
+  state.lockAspectRatio.value = props.lockAspectRatio || null
+})
 
 // Body-drag-to-move state. Null when no drag is in progress.
 // `movedSlideDelta` tracks how far (in slide coords) we've moved total — we use this to
