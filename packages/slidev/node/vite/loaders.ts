@@ -6,6 +6,7 @@ import * as parser from '@slidev/parser/fs'
 import equal from 'fast-deep-equal'
 import MarkdownExit from 'markdown-exit'
 import YAML from 'yaml'
+import { saveCoordsForSlide } from '../coords'
 import { createDataUtils } from '../options'
 import MarkdownItKatex from '../syntax/markdown-it/markdown-it-katex'
 import markdownItLink from '../syntax/markdown-it/markdown-it-link'
@@ -108,8 +109,30 @@ export function createSlidesLoader(
           if (body.note)
             slide.note = slide.source.note = body.note
           if (body.frontmatter) {
-            updateFrontmatterPatch(slide.source, body.frontmatter)
-            Object.assign(slide.frontmatter, body.frontmatter)
+            // Drag coords are stored in slides.coords.yaml (sibling of slides.md), not in
+            // each slide's frontmatter. Pull `dragPos` out of the patch, persist it to the
+            // sidecar file, and clear any stale `dragPos` left in the source frontmatter so
+            // slides.md gets cleaned up on its next save.
+            const { dragPos, ...rest } = body.frontmatter
+            if (dragPos !== undefined) {
+              await saveCoordsForSlide(options.userRoot, idx + 1, dragPos ?? {})
+              slide.frontmatter.dragPos = dragPos
+              if (slide.source.frontmatter && 'dragPos' in slide.source.frontmatter) {
+                updateFrontmatterPatch(slide.source, { dragPos: null })
+                delete slide.source.frontmatter.dragPos
+                // If frontmatter is now empty, drop the YAML doc entirely so prettifySlide
+                // emits no `---{}---` block.
+                const remaining = Object.keys(slide.source.frontmatter)
+                if (remaining.length === 0) {
+                  slide.source.frontmatterDoc = undefined
+                  slide.source.frontmatterStyle = undefined
+                }
+              }
+            }
+            if (Object.keys(rest).length > 0) {
+              updateFrontmatterPatch(slide.source, rest)
+              Object.assign(slide.frontmatter, rest)
+            }
           }
 
           parser.prettifySlide(slide.source)
@@ -119,13 +142,13 @@ export function createSlidesLoader(
               filePath: slide.source.filepath,
               fileContent,
             }
-            server?.moduleGraph.invalidateModule(
-              server.moduleGraph.getModuleById(sourceIds.md[idx])!,
-            )
+            const mdModule = server?.moduleGraph.getModuleById(sourceIds.md[idx])
+            if (mdModule)
+              server?.moduleGraph.invalidateModule(mdModule)
             if (body.frontmatter) {
-              server?.moduleGraph.invalidateModule(
-                server.moduleGraph.getModuleById(sourceIds.frontmatter[idx])!,
-              )
+              const fmModule = server?.moduleGraph.getModuleById(sourceIds.frontmatter[idx])
+              if (fmModule)
+                server?.moduleGraph.invalidateModule(fmModule)
             }
           }
 

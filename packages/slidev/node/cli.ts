@@ -15,6 +15,7 @@ import openBrowser from 'open'
 import yargs from 'yargs'
 import { version } from '../package.json'
 import { createServer } from './commands/serve'
+import { applyCoords, loadCoords } from './coords'
 import { getThemeMeta, resolveTheme } from './integrations/themes'
 import { resolveOptions } from './options'
 import { parser } from './parser'
@@ -183,6 +184,10 @@ cli.command(
               restartServer()
               return false
             }
+
+            // Re-apply external coords (slides.coords.yaml) so reloads pick up positions.
+            const coords = await loadCoords(options.userRoot)
+            applyCoords(newData, coords)
 
             return newData
           },

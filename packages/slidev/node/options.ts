@@ -4,6 +4,7 @@ import { objectMap, uniq } from '@antfu/utils'
 import fg from 'fast-glob'
 import { createDebug } from 'obug'
 import pm from 'picomatch'
+import { applyCoords, loadCoords } from './coords'
 import { resolveAddons } from './integrations/addons'
 import { getThemeMeta, resolveTheme } from './integrations/themes'
 import { parser } from './parser'
@@ -54,6 +55,13 @@ export async function resolveOptions(
     config,
     themeMeta,
   }
+
+  // Merge external drag coords (slides.coords.yaml) into per-slide frontmatter.dragPos.
+  // The coords file wins over inline dragPos; new writes go to the coords file (see loaders.ts).
+  // The dev server is the sole writer of this file — external edits require a server restart
+  // for v1; intentionally not added to data.watchFiles to avoid an HMR loop on our own writes.
+  const coords = await loadCoords(rootsInfo.userRoot)
+  applyCoords(data, coords)
 
   const resolved: Omit<ResolvedSlidevOptions, 'utils'> = {
     ...rootsInfo,

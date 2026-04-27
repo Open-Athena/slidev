@@ -2,6 +2,26 @@
 
 The single `slides.md` file is mixing two very different kinds of data — markdown an author hand-edits and machine-managed state (drag positions, crop, z-order, future history). That mixing is the root of three pain points: IDE-autosave-vs-server-edit races, opaque diffs full of `dragPos: 459,35,260,400,0,1000` lines, and a fragile "edit history lives in `sessionStorage`" undo experience that disappears with the tab. This spec scopes a staged migration toward more durable, less brittle state storage.
 
+## Status: stage 1 shipped
+
+Stage 1 (coords in a separate file) is implemented as `<userRoot>/slides.coords.yaml`. Notes on what shipped:
+
+- **Format**: kept the existing positional-tuple string (`"459,35,260,400,0,1000,20,17,17,20"`) instead of switching to structured named keys. The format change is independently valuable but non-trivial (touches the client-side `useDragElements.ts` parser and the writeback path); deferred to a follow-up. File layout:
+  ```yaml
+  "7":
+    tweet-1390115482657726468: 700,165,262,286,0,1000
+    yt-dQw4w9WgXcQ: 321,266,278,156,0,1
+  ```
+- **Read path**: `loadCoords` runs in `resolveOptions` (initial load) and in the dev `loadData` callback (HMR reload). The merged coords win over inline `dragPos`.
+- **Write path**: `loaders.ts` POST handler intercepts `body.frontmatter.dragPos`, routes to `saveCoordsForSlide` (atomic full-file rewrite via `writeFile`), strips the `dragPos` key from the slide's source frontmatter, and clears the YAML doc entirely if frontmatter is now empty (so `slides.md` ends up with no `---{}---` block).
+- **No file watcher**: `slides.coords.yaml` is intentionally not added to `data.watchFiles`. The dev server is the sole writer; external edits require a server restart. This avoids a force-HMR-all-slides loop on every drag write.
+- **Backward compat**: existing decks with inline `dragPos` keep working unchanged. The first drag in any slide silently migrates that slide's coords into the sidecar file. No explicit migration CLI; it's organic.
+- **Side effect**: this also fixes a pre-existing crash in `loaders.ts` where `getModuleById` could return undefined and crash `invalidateModule` when `skipHmr: true` arrived before the slide module was loaded.
+
+Files: `packages/slidev/node/coords.ts` (new, all helpers), `packages/slidev/node/options.ts` (initial-load merge), `packages/slidev/node/cli.ts` (HMR-reload merge), `packages/slidev/node/vite/loaders.ts` (POST interception + frontmatter cleanup).
+
+Stages 2 (per-slide source files) and 3 (SQLite-backed state) are still on deck; see below.
+
 ## Problem statement
 
 Today, when an author drags an element in the browser, the dev server text-edits `slides.md`'s frontmatter to update `dragPos`. That round-trip is brittle:
