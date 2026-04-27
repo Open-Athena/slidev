@@ -265,7 +265,7 @@ const author = {
 dragPos:
   tweet-1390115482657726468: 674,165,262,286,0,1000
   yt-dQw4w9WgXcQ: 321,266,278,156,0,1
-  img-logo-square: 480,126,140,140,0,1000
+  img-logo-square: 487,130,140,140,0,1000,20,17,17,20
 ---
 
 # Components
@@ -606,6 +606,30 @@ Click on the draggable elements to edit their positions.
 ```
 
 <v-drag-arrow pos="67,452,253,46" two-way op70 />
+
+---
+title: Drag, Resize, Crop, Stack
+dragPos:
+  demo-card-a: 60,260,180,90,0,1
+  demo-card-b: 180,290,180,90,0,2
+  demo-card-c: 300,320,180,90,0,3
+  img-logo-square: 580,230,260,200,0,1000
+---
+
+# Drag · Resize · Crop · Stack
+
+These are real `v-drag` wrappers — try them:
+
+- **Drag** body to move (**Shift**/**⌘** = no snap)
+- **Resize** corner handles (**Shift** = lock AR)
+- **Crop** double-click to enter (**Alt** = lock wrapper AR), double-click to exit
+- **Stack** **⌘↑/⌘↓** = forward/back; add **Shift** = to-front/to-back
+
+<div v-drag="'demo-card-a'" class="rounded-lg shadow-lg flex items-center justify-center text-white text-2xl font-bold bg-blue-500">A</div>
+<div v-drag="'demo-card-b'" class="rounded-lg shadow-lg flex items-center justify-center text-white text-2xl font-bold bg-purple-500">B</div>
+<div v-drag="'demo-card-c'" class="rounded-lg shadow-lg flex items-center justify-center text-white text-2xl font-bold bg-emerald-500">C</div>
+
+![drag-demo](https://sli.dev/logo-square.png)
 
 ---
 src: ./pages/imported-slides.md
