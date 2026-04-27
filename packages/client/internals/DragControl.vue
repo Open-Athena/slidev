@@ -17,6 +17,7 @@ const props = defineProps<{ data: DragElementState }>()
 const dragId = computed(() => props.data.dragId)
 const zoom = computed(() => props.data.zoom.value)
 const autoHeight = computed(() => props.data.autoHeight)
+const lockAspectRatio = computed(() => props.data.lockAspectRatio.value)
 const x0 = computed({
   get: () => props.data.x0.value,
   set: (v: number) => props.data.x0.value = v,
@@ -327,12 +328,16 @@ function getCornerProps(isLeft: boolean, isTop: boolean) {
 
       const { ltx, lty, rtx, rty, lbx, lby, rbx, rby } = currentDrag
 
-      const ratio = currentDrag.width / currentDrag.height
-      const wMin = Math.max(minSize.value, minSize.value * ratio)
+      // AR is locked when shift is held OR the wrapper sets lockAspectRatio (e.g. YT/Tweet).
+      // The wrapper's value is the *natural* AR of the content (16:9 for YT, dynamic for
+      // Tweet); falls back to the wrapper's current AR when shift-resizing arbitrary content.
+      const lockARValue = props.data.lockAspectRatio.value
+      const lockAR = lockARValue || (ev.shiftKey ? currentDrag.width / currentDrag.height : 0)
+      const wMin = Math.max(minSize.value, minSize.value * (lockAR || 1))
       function getSize(w1: number, h1: number) {
-        if (ev.shiftKey) {
-          const w = Math.max(w1, h1 * ratio, wMin)
-          const h = w / ratio
+        if (lockAR) {
+          const w = Math.max(w1, h1 * lockAR, wMin)
+          const h = w / lockAR
           return { w, h }
         }
         else {
@@ -373,11 +378,11 @@ function getCornerProps(isLeft: boolean, isTop: boolean) {
         }
       }
 
-      // Snap the dragged corner to alignment targets
-      // When shift is held (aspect ratio lock), snap along the diagonal to preserve aspect ratio
+      // Snap the dragged corner to alignment targets. When AR is locked (above),
+      // snap projects guide-aligned positions onto the AR-preserving diagonal.
       const anchorX = isLeft ? (isTop ? rbx : rtx) : (isTop ? lbx : ltx)
       const anchorY = isLeft ? (isTop ? rby : rty) : (isTop ? lby : lty)
-      const snapped = ev.shiftKey
+      const snapped = lockAR
         ? applyDiagonalSnap(x, y, anchorX, anchorY, ev.metaKey)
         : applyPointSnap(x, y, ev.metaKey)
       x = snapped.x
@@ -1093,11 +1098,14 @@ function getCropHandleProps(handle: 'top' | 'right' | 'bottom' | 'left' | 'topLe
         </template>
       </template>
       <template v-if="!isArrow">
-        <div v-bind="getBorderProps('l')" />
-        <div v-bind="getBorderProps('r')" />
-        <template v-if="!autoHeight">
-          <div v-bind="getBorderProps('t')" />
-          <div v-bind="getBorderProps('b')" />
+        <!-- Border handles only resize one dim, which would distort fixed-AR content. -->
+        <template v-if="!lockAspectRatio">
+          <div v-bind="getBorderProps('l')" />
+          <div v-bind="getBorderProps('r')" />
+          <template v-if="!autoHeight">
+            <div v-bind="getBorderProps('t')" />
+            <div v-bind="getBorderProps('b')" />
+          </template>
         </template>
         <!-- Rotation handle with rotate icon -->
         <div v-bind="getRotateProps()">
@@ -1228,12 +1236,16 @@ function getCropHandleProps(handle: 'top' | 'right' | 'bottom' | 'left' | 'topLe
         </button>
       </div>
     </div>
-    <!-- Bottom floating bar: link info and/or reset AR button (hidden in crop mode) -->
+    <!-- Bottom floating bar: link info and/or reset AR button (hidden in crop mode).
+         Use top:100% + margin so the bar sits cleanly *below* the bottom resize handles
+         (which extend ~5px past the wrapper edge); `bottom:-32px` left them overlapping
+         and made the bottom corner / edge handles hard to grab. -->
     <div
       v-if="(associatedLink || (hasAspectRatioChanged && !isArrow && !autoHeight)) && !isCropping"
       class="absolute flex items-center gap-2 bg-white dark:bg-gray-800 rounded shadow-lg px-2 py-1 text-xs"
       :style="{
-        bottom: '-32px',
+        top: '100%',
+        marginTop: '12px',
         left: '50%',
         transform: 'translateX(-50%)',
         zIndex: 101,
