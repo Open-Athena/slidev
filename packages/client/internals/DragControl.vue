@@ -112,16 +112,6 @@ const associatedLink = computed(() => {
   return null
 })
 
-// Image element under the wrapper (for natural-AR readback in crop mode)
-function findImageElement(): HTMLImageElement | null {
-  const el = props.data.container.value
-  if (!el)
-    return null
-  if (el.tagName === 'IMG')
-    return el as HTMLImageElement
-  return el.querySelector('img')
-}
-
 // Get image source from the dragged element (for rendering in crop mode)
 const imageSrc = computed(() => {
   const el = props.data.container.value
@@ -920,22 +910,22 @@ function getCropHandleProps(handle: 'top' | 'right' | 'bottom' | 'left' | 'topLe
         cropRight.value = clamp(currentCropDrag.startCropRight - dx, 0, 100 - cropLeft.value - 10)
       }
 
-      // Hold Alt (Option) to constrain the crop region to the image's natural AR.
+      // Hold Alt (Option) to constrain the crop region to the wrapper's AR — so the
+      // cropped image fills the frame without distortion. (We pick wrapper AR, not the
+      // image's natural AR, because the wrapper is already the user-chosen frame; a crop
+      // at any other AR would be visibly stretched when scaled to fit it.)
       // Edge handles: keep the dragged edge, symmetrically adjust the perpendicular pair
       // (centered crop). Corner handles: pick the larger drag axis as primary, derive the
       // perpendicular edge belonging to the corner. Snap is skipped while Alt is held to
       // avoid pulling edges off the AR-preserving position.
       if (ev.altKey) {
-        const img = findImageElement()
-        const naturalAR = img && img.naturalWidth > 0 && img.naturalHeight > 0
-          ? img.naturalWidth / img.naturalHeight
-          : null
-        if (naturalAR) {
-          const w = width.value
-          const hv = height.value
+        const w = width.value
+        const hv = height.value
+        const wrapperAR = w > 0 && hv > 0 ? w / hv : null
+        if (wrapperAR) {
           if (h === 'top' || h === 'bottom') {
             const visH = hv * (100 - cropTop.value - cropBottom.value) / 100
-            const targetVisW = visH * naturalAR
+            const targetVisW = visH * wrapperAR
             const totalCropX = Math.max(0, 100 - 100 * targetVisW / w)
             const sideCrop = totalCropX / 2
             cropLeft.value = clamp(sideCrop, 0, 100 - cropRight.value - 10)
@@ -943,7 +933,7 @@ function getCropHandleProps(handle: 'top' | 'right' | 'bottom' | 'left' | 'topLe
           }
           else if (h === 'left' || h === 'right') {
             const visW = w * (100 - cropLeft.value - cropRight.value) / 100
-            const targetVisH = visW / naturalAR
+            const targetVisH = visW / wrapperAR
             const totalCropY = Math.max(0, 100 - 100 * targetVisH / hv)
             const sideCrop = totalCropY / 2
             cropTop.value = clamp(sideCrop, 0, 100 - cropBottom.value - 10)
@@ -955,7 +945,7 @@ function getCropHandleProps(handle: 'top' | 'right' | 'bottom' | 'left' | 'topLe
             const dyAbs = Math.abs(dy)
             if (dxAbs >= dyAbs) {
               const visW = w * (100 - cropLeft.value - cropRight.value) / 100
-              const targetVisH = visW / naturalAR
+              const targetVisH = visW / wrapperAR
               const totalCropY = Math.max(0, 100 - 100 * targetVisH / hv)
               if (h === 'topLeft' || h === 'topRight')
                 cropTop.value = clamp(totalCropY - cropBottom.value, 0, 100 - cropBottom.value - 10)
@@ -964,7 +954,7 @@ function getCropHandleProps(handle: 'top' | 'right' | 'bottom' | 'left' | 'topLe
             }
             else {
               const visH = hv * (100 - cropTop.value - cropBottom.value) / 100
-              const targetVisW = visH * naturalAR
+              const targetVisW = visH * wrapperAR
               const totalCropX = Math.max(0, 100 - 100 * targetVisW / w)
               if (h === 'topLeft' || h === 'bottomLeft')
                 cropLeft.value = clamp(totalCropX - cropRight.value, 0, 100 - cropRight.value - 10)
