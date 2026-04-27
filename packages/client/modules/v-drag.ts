@@ -82,8 +82,11 @@ export function createVDragDirective() {
 
             function handlePointermove(moveEv: PointerEvent) {
               moveEv.preventDefault()
-              // Calculate delta
-              const scale = state.zoom.value
+              // Convert viewport-pixel delta to slide coords. `state.scale` is the
+              // combined on-screen scale (container fit, see SlideContainer.vue);
+              // dividing by `state.zoom` (per-slide frontmatter zoom, default 1)
+              // makes the element move ~container_scale× faster than the cursor.
+              const scale = state.scale.value || 1
               const dx = (moveEv.clientX - startX) / scale
               const dy = (moveEv.clientY - startY) / scale
 
