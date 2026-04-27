@@ -5,6 +5,7 @@ import { slideAspect } from '../env'
 export const showRecordingDialog = ref(false)
 export const showInfoDialog = ref(false)
 export const showGotoDialog = ref(false)
+export const showInsertImageDialog = ref(false)
 export const showOverview = ref(false)
 
 /**

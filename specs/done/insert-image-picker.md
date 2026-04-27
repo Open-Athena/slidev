@@ -2,6 +2,20 @@
 
 Let an author insert images (and other media) into the current slide from anywhere on disk via the Slidev web UI. The chosen file is copied into the deck's `public/` directory and a markdown image link is inserted into the slide source — so the slide becomes self-contained / portable, independent of the picker user's local paths.
 
+## Status: shipped (initial cut)
+
+Implementation deltas from the design below:
+
+- **Wire format**: ships as `POST /__slidev/upload?filename=…` with the file as the raw request body (`Content-Type` = the file's MIME). Simpler than `multipart/form-data` — no multipart parser needed, no new server deps. Headers carry the only metadata (filename + type), body is pure bytes. Browser-side just `fetch(url, { method: 'POST', body: file })`.
+- **Source-patch**: no new endpoint added. The existing `POST /__slidev/slides/{no}.json` already accepts `{ content }` patches and atomically rewrites the file via `parser.save()`. Insert flow is: GET slide content → append `![](url)` line → POST it back.
+- **Headmatter knobs** are wired into the server (`data.headmatter.insert.{dir,acceptedTypes,maxBytes}`) but no demo deck sets them. Defaults: `images/`, `image/*`+`video/*`, 50 MB.
+- **Picker UI**: native file `<input>`, list of pending files with sizes, Cancel / Insert buttons. No thumbnail strip; the OS picker is good enough.
+
+Files:
+- Server: `packages/slidev/node/vite/upload.ts`, registered in `vite/index.ts`.
+- Client: `packages/client/composables/useImageInsert.ts` (upload + slide patch helpers), `packages/client/composables/useFileDrop.ts` (window-level drag handlers, depth counter, MIME filter), `packages/client/internals/InsertImageDialog.vue` (dialog modeled on `Goto.vue`), mounted in `Controls.vue`.
+- State: `showInsertImageDialog` ref in `state/storage.ts`; `i` shortcut in `setup/shortcuts.ts`.
+
 ## Motivation
 
 Today the only ways to add an image to a slide are:

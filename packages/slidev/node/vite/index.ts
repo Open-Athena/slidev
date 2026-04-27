@@ -18,6 +18,7 @@ import { createRemoteAssetsPlugin } from './remoteAssets'
 import { createServerRefPlugin } from './serverRef'
 import { createStaticCopyPlugin } from './staticCopy'
 import { createUnocssPlugin } from './unocss'
+import { createUploadPlugin } from './upload'
 import { createVuePlugin } from './vue'
 
 export function ViteSlidevPlugin(
@@ -27,6 +28,7 @@ export function ViteSlidevPlugin(
 ): Promise<PluginOption[]> {
   return Promise.all([
     createSlidesLoader(options, serverOptions),
+    createUploadPlugin(options),
     createMarkdownPlugin(options, pluginOptions),
     createLayoutWrapperPlugin(options),
     createContextInjectionPlugin(),

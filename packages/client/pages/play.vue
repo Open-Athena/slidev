@@ -2,6 +2,7 @@
 import { useStyleTag } from '@vueuse/core'
 import { computed, ref, shallowRef } from 'vue'
 import { useDrawings } from '../composables/useDrawings'
+import { useFileDrop } from '../composables/useFileDrop'
 import { useHideCursorIdle } from '../composables/useHideCursorIdle'
 import { useNav } from '../composables/useNav'
 import { useSwipeControls } from '../composables/useSwipeControls'
@@ -34,6 +35,7 @@ function onClick(e: MouseEvent) {
 
 useSwipeControls(root)
 registerShortcuts()
+const { dropActive: fileDropActive, inFlight: fileDropInFlight } = useFileDrop()
 if (__SLIDEV_FEATURE_WAKE_LOCK__)
   useWakeLock()
 useHideCursorIdle(computed(() => isPlaying.value && !isEmbedded.value && !showEditor.value))
@@ -97,6 +99,15 @@ const contentStyle = computed(() => {
       <template #default>
         <SlidesShow render-context="slide" />
         <PresenterMouse />
+        <div
+          v-if="fileDropActive || fileDropInFlight"
+          class="absolute inset-0 pointer-events-none flex items-center justify-center"
+          :class="fileDropActive ? 'bg-blue-500/10 border-4 border-dashed border-blue-400' : 'bg-blue-500/5'"
+        >
+          <div class="bg-main px-4 py-2 rounded shadow text-sm op-90">
+            {{ fileDropInFlight ? 'Inserting…' : 'Drop image / video to insert into this slide' }}
+          </div>
+        </div>
       </template>
       <template #controls>
         <div

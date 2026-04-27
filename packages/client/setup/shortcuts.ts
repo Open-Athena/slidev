@@ -5,14 +5,14 @@ import { useDrawings } from '../composables/useDrawings'
 import { hasSelection } from '../composables/useMultiSelect'
 import { useNav } from '../composables/useNav'
 import { toggleDark } from '../logic/dark'
-import { magicKeys, showGotoDialog, showOverview, toggleOverview } from '../state'
+import { magicKeys, showGotoDialog, showInsertImageDialog, showOverview, toggleOverview } from '../state'
 import { downloadPDF } from '../utils'
 import { currentOverviewPage, downOverviewPage, nextOverviewPage, prevOverviewPage, upOverviewPage } from './../logic/overview'
 
 export default function setupShortcuts() {
   const { go, goFirst, goLast, next, nextSlide, prev, prevSlide } = useNav()
   const { drawingEnabled } = useDrawings()
-  const { escape, space, shift, left, right, up, down, enter, d, g, o, '`': backtick } = magicKeys
+  const { escape, space, shift, left, right, up, down, enter, d, g, i, o, '`': backtick } = magicKeys
 
   const context: NavOperations = {
     next,
@@ -47,6 +47,7 @@ export default function setupShortcuts() {
     { name: 'toggle_overview', key: and(or(o, backtick), not(drawingEnabled)), fn: toggleOverview },
     { name: 'hide_overview', key: and(escape, not(drawingEnabled)), fn: () => showOverview.value = false },
     { name: 'goto', key: and(g, not(drawingEnabled)), fn: () => showGotoDialog.value = !showGotoDialog.value },
+    { name: 'insert_image', key: and(i, not(drawingEnabled)), fn: () => showInsertImageDialog.value = !showInsertImageDialog.value },
     { name: 'next_overview', key: and(right, showOverview), fn: nextOverviewPage },
     { name: 'prev_overview', key: and(left, showOverview), fn: prevOverviewPage },
     { name: 'up_overview', key: and(up, showOverview), fn: upOverviewPage },
