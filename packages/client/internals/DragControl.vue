@@ -3,7 +3,7 @@
 import type { Pausable } from '@vueuse/core'
 import type { DragElementState } from '../composables/useDragElements'
 import { clamp } from '@antfu/utils'
-import { onKeyDown, useIntervalFn } from '@vueuse/core'
+import { useIntervalFn } from '@vueuse/core'
 import { computed, inject, onMounted, onUnmounted, ref, watchEffect } from 'vue'
 import { findSnap, getSnapTargets } from '../composables/useDragElements'
 import { useSlideBounds } from '../composables/useSlideBounds'
@@ -207,7 +207,7 @@ function onPointerdown(ev: PointerEvent) {
   ev.stopPropagation()
 
   // Save snapshot for undo before any manipulation
-  props.data.saveSnapshot()
+  props.data.saveSnapshot('resize')
 
   const el = ev.target as HTMLElement
   const elBounds = el.getBoundingClientRect()
@@ -545,7 +545,7 @@ function getRotateProps() {
       ev.stopPropagation()
 
       // Save snapshot for undo before rotation
-      props.data.saveSnapshot()
+      props.data.saveSnapshot('rotate')
 
       // Store the visible center as the rotation pivot (stays fixed during rotation)
       rotationPivotX.value = hasCrop.value ? visibleCenterX.value : x0.value
@@ -692,51 +692,34 @@ function openLink() {
 }
 
 function resetAspectRatio() {
-  props.data.saveSnapshot()
+  props.data.saveSnapshot('resize')
   // Reset to initial aspect ratio, keeping width constant
   height.value = width.value / initialAspectRatio
 }
 
 function bringForward() {
-  props.data.saveSnapshot()
+  props.data.saveSnapshot('zorder')
   zIndex.value += 1
 }
 
 function sendBackward() {
-  props.data.saveSnapshot()
+  props.data.saveSnapshot('zorder')
   zIndex.value = Math.max(1, zIndex.value - 1)
 }
 
 function bringToFront() {
-  props.data.saveSnapshot()
+  props.data.saveSnapshot('zorder')
   zIndex.value = 1000
 }
 
 function sendToBack() {
-  props.data.saveSnapshot()
+  props.data.saveSnapshot('zorder')
   zIndex.value = 1
 }
 
-// Undo/redo (keyboard shortcuts only, no buttons)
-function undo() {
-  props.data.undo()
-}
-
-function redo() {
-  props.data.redo()
-}
-
-// Undo/redo keyboard shortcuts (Ctrl/Cmd+Z, Ctrl/Cmd+Shift+Z)
-// Use onKeyDown for reliable modifier detection from the event itself
-onKeyDown('z', (e) => {
-  if (!e.metaKey && !e.ctrlKey)
-    return
-  e.preventDefault()
-  if (e.shiftKey)
-    redo()
-  else
-    undo()
-})
+// Undo/redo for this fork is handled by a deck-global stack with shortcuts and toolbar
+// buttons registered in `logic/shortcuts.ts` and `NavControls.vue` — no per-component
+// keyboard handler is needed here.
 
 // Z-order keyboard shortcuts: Meta/Ctrl + Arrow for forward/back one step,
 // add Shift for to-front/to-back. We attach a plain `keydown` capture-phase
@@ -870,7 +853,7 @@ function getCropHandleProps(handle: 'top' | 'right' | 'bottom' | 'left' | 'topLe
       ev.stopPropagation()
 
       // Save snapshot for undo before cropping
-      props.data.saveSnapshot()
+      props.data.saveSnapshot('crop')
 
       currentCropDrag = {
         handle,

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import CustomNavControls from '#slidev/custom-nav-controls'
 import { computed, ref, shallowRef } from 'vue'
+import { describeEntry, canRedo as historyCanRedo, canUndo as historyCanUndo, redo as historyRedo, undo as historyUndo, topRedoEntry, topUndoEntry } from '../composables/useDragHistory'
 import { useDrawings } from '../composables/useDrawings'
 import { useNav } from '../composables/useNav'
 import { configs } from '../env'
@@ -51,6 +52,13 @@ const barStyle = computed(() => props.persist
   ? 'text-$slidev-controls-foreground bg-transparent'
   : 'rounded-md bg-main shadow-xl border border-main')
 
+const undoTitle = computed(() => historyCanUndo.value
+  ? `Undo ${describeEntry(topUndoEntry.value)} (⌘Z)`
+  : 'Nothing to undo')
+const redoTitle = computed(() => historyCanRedo.value
+  ? `Redo ${describeEntry(topRedoEntry.value)} (⇧⌘Z)`
+  : 'Nothing to redo')
+
 const RecordingControls = shallowRef<any>()
 if (__SLIDEV_FEATURE_RECORD__)
   import('./RecordingControls.vue').then(v => RecordingControls.value = v.default)
@@ -75,6 +83,12 @@ if (__SLIDEV_FEATURE_RECORD__)
       </IconButton>
       <IconButton v-if="!isEmbedded" title="Show slide overview" @click="toggleOverview()">
         <div class="i-carbon:apps" />
+      </IconButton>
+      <IconButton :class="{ disabled: !historyCanUndo }" :title="undoTitle" @click="historyUndo()">
+        <div class="i-carbon:undo" />
+      </IconButton>
+      <IconButton :class="{ disabled: !historyCanRedo }" :title="redoTitle" @click="historyRedo()">
+        <div class="i-carbon:redo" />
       </IconButton>
       <IconButton
         v-if="!isColorSchemaConfigured"

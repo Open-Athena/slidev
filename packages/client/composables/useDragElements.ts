@@ -1,12 +1,14 @@
 import type { SlidePatch } from '@slidev/types'
 import type { CSSProperties, DirectiveBinding, InjectionKey, WatchStopHandle } from 'vue'
+import type { EditKind, ElementSnapshot, RegisteredState } from './useDragHistory'
 import { debounce, ensureSuffix } from '@antfu/utils'
-import { injectLocal, useSessionStorage, useWindowFocus } from '@vueuse/core'
+import { injectLocal, useWindowFocus } from '@vueuse/core'
 import { computed, ref, watch } from 'vue'
 import { injectionCurrentPage, injectionFrontmatter, injectionRenderContext, injectionSlideElement, injectionSlideScale, injectionSlideZoom } from '../constants'
 import { slideHeight, slideWidth } from '../env'
 import { makeId } from '../logic/utils'
 import { directiveInject } from '../utils'
+import { discardTopMatching, canRedo as historyCanRedo, canUndo as historyCanUndo, redo as historyRedo, undo as historyUndo, pushEdit, registerHistoryState, unregisterHistoryState } from './useDragHistory'
 import { clearSelection, isSelected, removeFromSelection, selectElement } from './useMultiSelect'
 import { useNav } from './useNav'
 import { useSlideBounds } from './useSlideBounds'
@@ -400,25 +402,9 @@ export function useDragElement(directive: DirectiveBinding | null, posRaw?: stri
     ),
   )
 
-  // Undo/redo history (persisted to sessionStorage)
-  interface HistorySnapshot {
-    x0: number
-    y0: number
-    width: number
-    height: number
-    rotate: number
-    zIndex: number
-    cropTop: number
-    cropRight: number
-    cropBottom: number
-    cropLeft: number
-  }
-  const storageKey = `slidev-drag-history-${page.value}-${dragId}`
-  const history = useSessionStorage<HistorySnapshot[]>(`${storageKey}-undo`, [])
-  const redoStack = useSessionStorage<HistorySnapshot[]>(`${storageKey}-redo`, [])
-  const maxHistorySize = 50
-
-  function getCurrentSnapshot(): HistorySnapshot {
+  // Undo/redo history is managed globally per-deck (`useDragHistory`); each element exposes
+  // its current state through the registered capture/apply hooks below.
+  function getCurrentSnapshot(): ElementSnapshot {
     return {
       x0: x0.value,
       y0: y0.value,
@@ -433,7 +419,7 @@ export function useDragElement(directive: DirectiveBinding | null, posRaw?: stri
     }
   }
 
-  function applySnapshot(snapshot: HistorySnapshot) {
+  function applySnapshot(snapshot: ElementSnapshot) {
     x0.value = snapshot.x0
     y0.value = snapshot.y0
     width.value = snapshot.width
@@ -444,6 +430,13 @@ export function useDragElement(directive: DirectiveBinding | null, posRaw?: stri
     cropRight.value = snapshot.cropRight
     cropBottom.value = snapshot.cropBottom
     cropLeft.value = snapshot.cropLeft
+  }
+
+  const historyState: RegisteredState = {
+    page,
+    dragId,
+    capture: getCurrentSnapshot,
+    apply: applySnapshot,
   }
 
   const activeSnapLines = ref<{ x: number[], y: number[] }>({ x: [], y: [] })
@@ -510,43 +503,25 @@ export function useDragElement(directive: DirectiveBinding | null, posRaw?: stri
     clearSnapLines(): void {
       activeSnapLines.value = { x: [], y: [] }
     },
-    // Undo/redo (persisted to sessionStorage)
-    canUndo: computed(() => history.value.length > 0),
-    canRedo: computed(() => redoStack.value.length > 0),
-    saveSnapshot(): void {
-      // Save current state to history (call before making changes)
-      history.value.push(getCurrentSnapshot())
-      if (history.value.length > maxHistorySize)
-        history.value.shift()
-      // Clear redo stack when new action is taken
-      redoStack.value = []
+    // Undo/redo: delegates to the deck-global stack in `useDragHistory`.
+    canUndo: historyCanUndo,
+    canRedo: historyCanRedo,
+    // Save current state as the "before" snapshot for the next edit. Pass `kind` to label the
+    // entry — used in tooltips and (later) per-kind filtering. Defaults to 'move' for body drags.
+    saveSnapshot(kind: EditKind = 'move'): void {
+      pushEdit(page.value, kind, dragId, getCurrentSnapshot())
+    },
+    // Pop the last snapshot pushed by THIS state, without applying or polluting redo. Used by
+    // abort paths (pinch detected mid-drag, pointercancel) so a never-committed drag never
+    // appears in the global stack.
+    discardSnapshot(): void {
+      discardTopMatching(page.value, [dragId])
     },
     undo(): void {
-      if (history.value.length === 0)
-        return
-      // Save current state to redo stack
-      redoStack.value.push(getCurrentSnapshot())
-      // Restore previous state
-      const prev = history.value.pop()!
-      applySnapshot(prev)
-    },
-    // Pop the last snapshot and restore it without polluting the redo stack.
-    // Used to revert drags that were aborted (e.g. by a pinch detected mid-drag),
-    // which the user never intended as edits and shouldn't see in undo/redo.
-    discardSnapshot(): void {
-      if (history.value.length === 0)
-        return
-      const prev = history.value.pop()!
-      applySnapshot(prev)
+      void historyUndo()
     },
     redo(): void {
-      if (redoStack.value.length === 0)
-        return
-      // Save current state to history
-      history.value.push(getCurrentSnapshot())
-      // Restore from redo stack
-      const next = redoStack.value.pop()!
-      applySnapshot(next)
+      void historyRedo()
     },
     mounted() {
       if (!enabled)
@@ -570,6 +545,9 @@ export function useDragElement(directive: DirectiveBinding | null, posRaw?: stri
         cropBottom: () => cropBottom.value,
         cropLeft: () => cropLeft.value,
       })
+      // Register with the deck-global history, so undo/redo can target this element by
+      // (slideNo, dragId) even when it's mounted on a non-current slide.
+      registerHistoryState(historyState)
       // Elements without dragPos stay in natural document flow until first click
       // (auto-positioned in startDragging)
     },
@@ -577,6 +555,7 @@ export function useDragElement(directive: DirectiveBinding | null, posRaw?: stri
       if (!enabled)
         return
       unregisterDragElement(page.value, dragId)
+      unregisterHistoryState(historyState)
       state.stopDragging()
     },
     startDragging(): void {

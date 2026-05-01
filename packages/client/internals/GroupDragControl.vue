@@ -1,14 +1,33 @@
 <script setup lang="ts">
 import type { DragElementState } from '../composables/useDragElements'
-import { onKeyDown, useIntervalFn } from '@vueuse/core'
+import { useIntervalFn } from '@vueuse/core'
 import { computed, inject, ref, watchEffect } from 'vue'
 import { findSnap, getSnapTargets } from '../composables/useDragElements'
+import { pushGroupEdit } from '../composables/useDragHistory'
 import { computeElementOffsets, computeGroupBounds } from '../composables/useGroupBounds'
 import { clearSelection, getSelectedElements, selectionCount } from '../composables/useMultiSelect'
 import { useSlideBounds } from '../composables/useSlideBounds'
 import { injectionSlideScale } from '../constants'
 import { slideHeight, slideWidth } from '../env'
 import { magicKeys } from '../state'
+
+function captureGroupBefore(states: DragElementState[]) {
+  return states.map(el => ({
+    dragId: el.dragId,
+    before: {
+      x0: el.x0.value,
+      y0: el.y0.value,
+      width: el.width.value,
+      height: el.height.value,
+      rotate: el.rotate.value,
+      zIndex: el.zIndex.value,
+      cropTop: el.cropTop.value,
+      cropRight: el.cropRight.value,
+      cropBottom: el.cropBottom.value,
+      cropLeft: el.cropLeft.value,
+    },
+  }))
+}
 
 // Reactive props computed from selection
 const selectedElements = computed(() => Array.from(getSelectedElements()))
@@ -59,10 +78,10 @@ function onPointerdown(ev: PointerEvent) {
   ev.preventDefault()
   ev.stopPropagation()
 
-  // Save snapshots for all selected elements
-  for (const el of selectedElements.value) {
-    el.saveSnapshot()
-  }
+  // Save one atomic group snapshot so a single Cmd+Z reverts the whole move.
+  const slideNo = selectedElements.value[0]?.page.value
+  if (slideNo != null)
+    pushGroupEdit(slideNo, 'move', captureGroupBefore(selectedElements.value))
 
   const elementSnapshots = new Map<DragElementState, { x0: number, y0: number, width: number, height: number, rotate: number }>()
   for (const el of selectedElements.value) {
@@ -224,10 +243,10 @@ function getRotateProps() {
       ev.preventDefault()
       ev.stopPropagation()
 
-      // Save snapshots
-      for (const el of selectedElements.value) {
-        el.saveSnapshot()
-      }
+      // Save one atomic group snapshot so a single Cmd+Z reverts the whole rotate.
+      const slideNo = selectedElements.value[0]?.page.value
+      if (slideNo != null)
+        pushGroupEdit(slideNo, 'rotate', captureGroupBefore(selectedElements.value))
 
       const elementSnapshots = new Map<DragElementState, { x0: number, y0: number, width: number, height: number, rotate: number }>()
       for (const el of selectedElements.value) {
@@ -381,26 +400,8 @@ watchEffect(() => {
   shortcut('down', moveDown)
 })
 
-// Undo/redo
-function undo() {
-  for (const el of selectedElements.value)
-    el.undo()
-}
-
-function redo() {
-  for (const el of selectedElements.value)
-    el.redo()
-}
-
-onKeyDown('z', (e) => {
-  if (!e.metaKey && !e.ctrlKey)
-    return
-  e.preventDefault()
-  if (e.shiftKey)
-    redo()
-  else
-    undo()
-})
+// Undo/redo are wired globally in `logic/shortcuts.ts` and the toolbar in `NavControls.vue`,
+// against the deck-global stack that batches group edits as one atomic entry.
 
 // Escape to deselect
 watchEffect(() => {

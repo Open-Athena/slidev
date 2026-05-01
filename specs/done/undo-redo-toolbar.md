@@ -151,3 +151,49 @@ having to find the element they misclicked.*
 - Cross-tab live sync (deferred to `deck-state-storage.md` stage 3).
 - Snapshot-and-label workflow (also deferred to stage 3 — the durable
   log there subsumes labels for free).
+
+## Implementation notes (Stage 1 landed)
+
+- New module `packages/client/composables/useDragHistory.ts` owns the
+  deck-global stack + a `(slideNo, dragId) → state` registry that mounted
+  drag elements register into via `registerHistoryState`. Storage key is
+  `slidev-drag-history:${origin}${pathname-without-slide-num}` so two decks
+  on the same origin don't collide. Stacks GC stale entries (>30 days) on
+  load and cap at 200 with FIFO eviction.
+- `useDragElements.ts:saveSnapshot()` now takes an `EditKind` arg
+  (`'move' | 'resize' | 'rotate' | 'crop' | 'zorder'`) and pushes a
+  single-element entry. `state.undo()` / `state.redo()` are thin
+  fire-and-forget delegations to the global module. The old per-element
+  `useSessionStorage` history is gone.
+- Group commits (the directive's `commit()`, `GroupDragControl.vue`'s drag
+  + rotate handlers) call `pushGroupEdit(slideNo, kind, items[])` so a
+  multi-element group edit is one atomic stack entry. One Cmd+Z reverts
+  the whole group.
+- Pinch-abort / pointercancel paths use `discardTopMatching(slideNo,
+  dragIds[])` — pops the top entry only if it matches the same `(slideNo,
+  dragIds)` set. This generalizes the previous single-element
+  `discardSnapshot()` so it works for both single and group commits.
+- Cmd+Z / Cmd+Shift+Z are registered globally inside
+  `logic/shortcuts.ts:registerShortcuts()` (gated by the same `enabled`
+  signal as other shortcuts). The duplicate handlers inside
+  `DragControl.vue` and `GroupDragControl.vue` were removed.
+- Toolbar Undo/Redo buttons live in `NavControls.vue` next to the slide
+  overview button. Their `title` reactively reflects the top-of-stack
+  description (e.g. "Undo move of `demo-card-a` on slide 14 (⌘Z)" or
+  "Undo move of 2 elements on slide 14 (⌘Z)" for group edits) and they
+  pick up the existing `disabled` styling when their stack is empty.
+- Cross-slide undo: if the entry's `slideNo` ≠ current, the global
+  `undo()` calls `nav.go(slideNo)` first, waits a tick + 50 ms for
+  remount, then applies. Verified via Chrome MCP — drag on slide 14,
+  navigate to 13, click Undo from the bar → slidev navigates back to
+  14 and restores the position.
+- `Shortcuts.vue` modal: this fork doesn't ship one (only
+  `setup/shortcuts.ts` and a hover-discoverable bar). Adding a modal is
+  separate scope.
+
+## Stage 2 (deferred)
+
+Server-side `.slidev/state.db` storage with cross-machine sync, kicking
+in once `deck-state-storage.md` Stage 3 lands. Today's localStorage stack
+is per-origin / per-browser; it survives refresh + close-and-reopen but
+not cross-machine.

@@ -3,11 +3,29 @@ import type { DragElementState } from '../composables/useDragElements'
 import { watch } from 'vue'
 import { activeTouchCount } from '../composables/useActiveTouches'
 import { useDragElement } from '../composables/useDragElements'
+import { discardTopMatching, pushEdit, pushGroupEdit } from '../composables/useDragHistory'
 import { addToSelection, getSelectedElements, isSelected, removeFromSelection } from '../composables/useMultiSelect'
 import { isPinchOrPan } from '../composables/usePinchZoomPan'
 
 const MOUSE_MOVE_THRESHOLD_PX = 3
 const TOUCH_MOVE_THRESHOLD_PX = 12
+
+// Build an `ElementSnapshot`-shaped object using `(x0, y0)` from the gesture start and the
+// other fields from the current state (those fields don't change during a body drag).
+function snapshotFromStart(s: DragElementState, sp: { x0: number, y0: number }) {
+  return {
+    x0: sp.x0,
+    y0: sp.y0,
+    width: s.width.value,
+    height: s.height.value,
+    rotate: s.rotate.value,
+    zIndex: s.zIndex.value,
+    cropTop: s.cropTop.value,
+    cropRight: s.cropRight.value,
+    cropBottom: s.cropBottom.value,
+    cropLeft: s.cropLeft.value,
+  }
+}
 
 export function createVDragDirective() {
   return {
@@ -97,8 +115,16 @@ export function createVDragDirective() {
             function commit() {
               if (committed)
                 return
-              for (const s of selectedElements)
-                s.saveSnapshot()
+              const slideNo = state.page.value
+              if (selectedElements.length === 1) {
+                pushEdit(slideNo, 'move', state.dragId, snapshotFromStart(state, startPositions[0]))
+              }
+              else {
+                pushGroupEdit(slideNo, 'move', selectedElements.map((s) => {
+                  const sp = startPositions.find(p => p.state === s)!
+                  return { dragId: s.dragId, before: snapshotFromStart(s, sp) }
+                }))
+              }
               committed = true
             }
 
@@ -107,12 +133,13 @@ export function createVDragDirective() {
                 return
               aborted = true
               if (committed) {
-                // Restore each element to its pre-drag position and discard the snapshot
-                // we pushed on commit (so the aborted drag never appears in undo/redo).
+                // Pop the (possibly group) entry we pushed on commit, then restore each
+                // element to its pre-drag position. The pop has to happen via the global
+                // history API (not per-element) because group commits push one atomic entry.
+                discardTopMatching(state.page.value, selectedElements.map(s => s.dragId))
                 for (const { state: s, x0, y0 } of startPositions) {
                   s.x0.value = x0
                   s.y0.value = y0
-                  s.discardSnapshot()
                 }
               }
               state.clearSnapLines()
