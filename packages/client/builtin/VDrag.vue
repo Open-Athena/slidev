@@ -1,8 +1,10 @@
 <script setup lang="ts">
 import type { DragElementMarkdownSource } from '../composables/useDragElements'
 import { onMounted, onUnmounted, watchEffect } from 'vue'
+import { activeTouchCount } from '../composables/useActiveTouches'
 import { useDragElement } from '../composables/useDragElements'
 import { addToSelection, isSelected, removeFromSelection } from '../composables/useMultiSelect'
+import { isPinchOrPan } from '../composables/usePinchZoomPan'
 
 const props = defineProps<{
   pos?: string
@@ -20,12 +22,14 @@ watchEffect(() => {
 })
 
 // Body-drag-to-move state. Null when no drag is in progress.
-// `movedSlideDelta` tracks how far (in slide coords) we've moved total — we use this to
-// distinguish "this was a click" (no movement) from "this was a drag" (some movement);
-// a tiny jitter threshold keeps accidental 1-2px wiggles from spamming the history stack.
-const MOVE_THRESHOLD_PX = 3
+// We defer `saveSnapshot()` (and any position writes) until the pointer moves past a
+// jitter threshold, so a pure click (select-only) doesn't pollute undo history. The
+// threshold is bigger for touch because finger-down jitter is much larger than mouse.
+const MOUSE_MOVE_THRESHOLD_PX = 3
+const TOUCH_MOVE_THRESHOLD_PX = 12
 let drag: {
   pointerId: number
+  pointerType: string
   startClientX: number
   startClientY: number
   startX0: number
@@ -33,11 +37,27 @@ let drag: {
   snapshotSaved: boolean
 } | null = null
 
+function abortDrag(target: HTMLElement | null) {
+  if (!drag)
+    return
+  // Revert if we already committed (past the jitter threshold).
+  if (drag.snapshotSaved)
+    state.discardSnapshot()
+  target?.releasePointerCapture?.(drag.pointerId)
+  state.clearSnapLines()
+  drag = null
+}
+
 function handlePointerdown(ev: PointerEvent) {
   if (ev.button !== 0)
     return
   // In interact mode (double-click to enter), let iframe clicks through.
   if (isInteracting.value)
+    return
+  // Pinch-zoom in progress, or a second touch is already down: don't start a body drag.
+  if (isPinchOrPan.value)
+    return
+  if (ev.pointerType === 'touch' && activeTouchCount.value > 1)
     return
 
   ev.preventDefault()
@@ -54,10 +74,9 @@ function handlePointerdown(ev: PointerEvent) {
 
   startDragging()
 
-  // Begin a body-drag. We don't call saveSnapshot() yet — defer until we actually move
-  // past MOVE_THRESHOLD_PX so a pure click (select-only) doesn't pollute undo history.
   drag = {
     pointerId: ev.pointerId,
+    pointerType: ev.pointerType,
     startClientX: ev.clientX,
     startClientY: ev.clientY,
     startX0: x0.value,
@@ -73,12 +92,17 @@ function handlePointermove(ev: PointerEvent) {
   if (!drag || ev.pointerId !== drag.pointerId || ev.buttons !== 1)
     return
 
+  // A pinch started (two fingers down, or pinch composable raised the flag): abort.
+  if (isPinchOrPan.value || (drag.pointerType === 'touch' && activeTouchCount.value > 1)) {
+    abortDrag(ev.currentTarget as HTMLElement)
+    return
+  }
+
   const dxPx = ev.clientX - drag.startClientX
   const dyPx = ev.clientY - drag.startClientY
 
-  // Suppress until we cross the jitter threshold in VIEWPORT pixels (so the threshold
-  // feels consistent regardless of the slide scale).
-  if (!drag.snapshotSaved && Math.hypot(dxPx, dyPx) < MOVE_THRESHOLD_PX)
+  const threshold = drag.pointerType === 'touch' ? TOUCH_MOVE_THRESHOLD_PX : MOUSE_MOVE_THRESHOLD_PX
+  if (!drag.snapshotSaved && Math.hypot(dxPx, dyPx) < threshold)
     return
 
   ev.preventDefault()
@@ -89,7 +113,6 @@ function handlePointermove(ev: PointerEvent) {
     drag.snapshotSaved = true
   }
 
-  // Convert viewport-pixel delta to slide coords.
   const s = scale.value || 1
   const rawX = drag.startX0 + dxPx / s
   const rawY = drag.startY0 + dyPx / s
@@ -112,9 +135,9 @@ function handlePointerup(ev: PointerEvent) {
 function handlePointercancel(ev: PointerEvent) {
   if (!drag || ev.pointerId !== drag.pointerId)
     return
-  // Revert on cancel if we already saved a snapshot.
+  // Revert on cancel if we already committed.
   if (drag.snapshotSaved)
-    state.undo()
+    state.discardSnapshot()
   drag = null
   state.clearSnapLines()
 }

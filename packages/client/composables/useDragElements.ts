@@ -530,6 +530,15 @@ export function useDragElement(directive: DirectiveBinding | null, posRaw?: stri
       const prev = history.value.pop()!
       applySnapshot(prev)
     },
+    // Pop the last snapshot and restore it without polluting the redo stack.
+    // Used to revert drags that were aborted (e.g. by a pinch detected mid-drag),
+    // which the user never intended as edits and shouldn't see in undo/redo.
+    discardSnapshot(): void {
+      if (history.value.length === 0)
+        return
+      const prev = history.value.pop()!
+      applySnapshot(prev)
+    },
     redo(): void {
       if (redoStack.value.length === 0)
         return

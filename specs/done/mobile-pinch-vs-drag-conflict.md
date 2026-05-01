@@ -96,3 +96,29 @@ just mobile pinches.
   element still works as today.
 - Desktop mouse/pen drag behavior is unchanged.
 - Cypress / Playwright touch tests cover all four cases above.
+
+## Implementation notes
+
+Landed across `packages/client/{builtin/VDrag.vue, modules/v-drag.ts}`,
+backed by `packages/client/composables/useActiveTouches.ts` (new) and a
+small `discardSnapshot()` addition to `useDragElements.ts`.
+
+- Touch threshold = **12 px**; mouse threshold = **3 px** (unifying the
+  directive with `VDrag.vue`'s pre-existing 3 px threshold — 3 px of mouse
+  jitter is imperceptible and matches existing behavior).
+- `activeTouchCount` is a module-level `Ref<number>` updated by
+  document-level capture-phase `pointerdown` / `pointerup` / `pointercancel`
+  listeners installed at module load. This works in presenter mode and
+  embeds where `usePinchZoomPan` isn't mounted; in `play.vue`, the
+  pinch-composable's `isPinchOrPan` guard typically fires first
+  (touchstart runs before pointermove), but both paths converge on the
+  same `abort()`.
+- Aborts use `state.discardSnapshot()` (newly added) instead of
+  `state.undo()` so pinch-aborted drags don't pollute the redo stack —
+  Cmd+Shift+Z after a misfired pinch shouldn't replay the bad position.
+- Verified via Chrome MCP synthetic Pointer dispatches (tap,
+  sub-threshold touch, above-threshold touch, mid-drag second-finger
+  abort, 5 px mouse drag) on both directive and component drag wrappers.
+  Cypress / Playwright touch tests deferred — this fork doesn't have a
+  touch-event test harness yet, and the synthetic-event coverage
+  exercises the same code paths.

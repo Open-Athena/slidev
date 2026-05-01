@@ -1,8 +1,13 @@
 import type { App } from 'vue'
 import type { DragElementState } from '../composables/useDragElements'
 import { watch } from 'vue'
+import { activeTouchCount } from '../composables/useActiveTouches'
 import { useDragElement } from '../composables/useDragElements'
 import { addToSelection, getSelectedElements, isSelected, removeFromSelection } from '../composables/useMultiSelect'
+import { isPinchOrPan } from '../composables/usePinchZoomPan'
+
+const MOUSE_MOVE_THRESHOLD_PX = 3
+const TOUCH_MOVE_THRESHOLD_PX = 12
 
 export function createVDragDirective() {
   return {
@@ -39,6 +44,11 @@ export function createVDragDirective() {
           function handlePointerdown(ev: PointerEvent) {
             if (ev.button !== 0)
               return
+            // Pinch-zoom in progress, or a second touch is already down: don't start a drag.
+            if (isPinchOrPan.value)
+              return
+            if (ev.pointerType === 'touch' && activeTouchCount.value > 1)
+              return
             // Prevent link navigation and start dragging immediately
             ev.preventDefault()
             ev.stopPropagation()
@@ -66,6 +76,9 @@ export function createVDragDirective() {
             // Store initial pointer position for immediate drag
             const startX = ev.clientX
             const startY = ev.clientY
+            const pointerType = ev.pointerType
+            const pointerId = ev.pointerId
+            const threshold = pointerType === 'touch' ? TOUCH_MOVE_THRESHOLD_PX : MOUSE_MOVE_THRESHOLD_PX
 
             // For group drag, store start positions of all selected elements
             const selectedElements = Array.from(getSelectedElements())
@@ -75,20 +88,63 @@ export function createVDragDirective() {
               y0: s.y0.value,
             }))
 
-            // Save snapshots for all selected elements before dragging
-            for (const s of selectedElements) {
-              s.saveSnapshot()
+            // Defer saving snapshots and writing positions until the pointer crosses the
+            // jitter threshold; otherwise a tap (or a tap that turns into a pinch) would
+            // both pollute undo history and visibly nudge the element.
+            let committed = false
+            let aborted = false
+
+            function commit() {
+              if (committed)
+                return
+              for (const s of selectedElements)
+                s.saveSnapshot()
+              committed = true
+            }
+
+            function abort() {
+              if (aborted)
+                return
+              aborted = true
+              if (committed) {
+                // Restore each element to its pre-drag position and discard the snapshot
+                // we pushed on commit (so the aborted drag never appears in undo/redo).
+                for (const { state: s, x0, y0 } of startPositions) {
+                  s.x0.value = x0
+                  s.y0.value = y0
+                  s.discardSnapshot()
+                }
+              }
+              state.clearSnapLines()
+              document.removeEventListener('pointermove', handlePointermove)
+              document.removeEventListener('pointerup', handlePointerup)
             }
 
             function handlePointermove(moveEv: PointerEvent) {
+              if (aborted || moveEv.pointerId !== pointerId)
+                return
+              // Pinch detected mid-drag: revert and bail.
+              if (isPinchOrPan.value || (pointerType === 'touch' && activeTouchCount.value > 1)) {
+                abort()
+                return
+              }
+
+              const dxPx = moveEv.clientX - startX
+              const dyPx = moveEv.clientY - startY
+
+              if (!committed && Math.hypot(dxPx, dyPx) < threshold)
+                return
+
               moveEv.preventDefault()
+              commit()
+
               // Convert viewport-pixel delta to slide coords. `state.scale` is the
               // combined on-screen scale (container fit, see SlideContainer.vue);
               // dividing by `state.zoom` (per-slide frontmatter zoom, default 1)
               // makes the element move ~container_scale× faster than the cursor.
               const scale = state.scale.value || 1
-              const dx = (moveEv.clientX - startX) / scale
-              const dy = (moveEv.clientY - startY) / scale
+              const dx = dxPx / scale
+              const dy = dyPx / scale
 
               // Hold Shift or Cmd (metaKey) to disable snap alignment.
               const disableSnap = moveEv.shiftKey || moveEv.metaKey
@@ -116,7 +172,9 @@ export function createVDragDirective() {
               }
             }
 
-            function handlePointerup() {
+            function handlePointerup(upEv: PointerEvent) {
+              if (upEv.pointerId !== pointerId)
+                return
               state.clearSnapLines()
               document.removeEventListener('pointermove', handlePointermove)
               document.removeEventListener('pointerup', handlePointerup)
