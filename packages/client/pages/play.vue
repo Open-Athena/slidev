@@ -5,6 +5,7 @@ import { useDrawings } from '../composables/useDrawings'
 import { useFileDrop } from '../composables/useFileDrop'
 import { useHideCursorIdle } from '../composables/useHideCursorIdle'
 import { useNav } from '../composables/useNav'
+import { usePinchZoomPan } from '../composables/usePinchZoomPan'
 import { useSwipeControls } from '../composables/useSwipeControls'
 import { useWakeLock } from '../composables/useWakeLock'
 import Controls from '../internals/Controls.vue'
@@ -33,6 +34,7 @@ function onClick(e: MouseEvent) {
   }
 }
 
+usePinchZoomPan(root)
 useSwipeControls(root)
 registerShortcuts()
 const { dropActive: fileDropActive, inFlight: fileDropInFlight } = useFileDrop()

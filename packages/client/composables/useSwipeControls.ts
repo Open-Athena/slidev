@@ -3,6 +3,7 @@ import { timestamp, usePointerSwipe } from '@vueuse/core'
 import { ref } from 'vue'
 import { useNav } from '../composables/useNav'
 import { useDrawings } from './useDrawings'
+import { isPinchOrPan } from './usePinchZoomPan'
 
 export function useSwipeControls(root: Ref<HTMLElement | undefined>) {
   const { next, nextSlide, prev, prevSlide } = useNav()
@@ -14,6 +15,8 @@ export function useSwipeControls(root: Ref<HTMLElement | undefined>) {
     onSwipeStart() {
       if (isDrawing.value)
         return
+      if (isPinchOrPan.value)
+        return
       swipeBegin.value = timestamp()
     },
     onSwipeEnd() {
@@ -21,6 +24,11 @@ export function useSwipeControls(root: Ref<HTMLElement | undefined>) {
         return
       if (isDrawing.value)
         return
+      // Pinch / pan-while-zoomed should never count as a navigation swipe.
+      if (isPinchOrPan.value) {
+        swipeBegin.value = 0
+        return
+      }
 
       const x = Math.abs(distanceX.value)
       const y = Math.abs(distanceY.value)

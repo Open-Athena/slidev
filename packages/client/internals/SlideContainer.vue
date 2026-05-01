@@ -117,7 +117,8 @@ const snapshot = computed(() => {
 
 .slidev-slide-content {
   --slidev-slide-container-scale: var(--slidev-slide-scale);
-  transform: translate(-50%, -50%) scale(var(--slidev-slide-scale));
+  transform: translate(var(--slidev-pan-x, 0px), var(--slidev-pan-y, 0px)) translate(-50%, -50%)
+    scale(calc(var(--slidev-slide-scale) * var(--slidev-user-zoom, 1)));
   @apply absolute left-1/2 top-1/2 overflow-hidden bg-main;
 }
 </style>
