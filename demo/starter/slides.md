@@ -609,11 +609,6 @@ Click on the draggable elements to edit their positions.
 
 ---
 title: Drag, Resize, Crop, Stack
-dragPos:
-  demo-card-a: 60,260,180,90,0,1
-  demo-card-b: 180,290,180,90,0,2
-  demo-card-c: 300,320,180,90,0,3
-  img-logo-square: 580,230,260,200,0,1000
 ---
 
 # Drag · Resize · Crop · Stack
