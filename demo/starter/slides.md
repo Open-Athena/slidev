@@ -24,6 +24,12 @@ comark: true
 duration: 35min
 # make markdown images draggable by default (fork feature)
 draggableImages: true
+# per-slide OG metadata + share previews — see specs/done/per-slide-og.md
+publish:
+  baseUrl: https://example.com/slidev-demo
+  ogImage:
+    size: [1200, 630]
+    format: jpg
 ---
 
 # Welcome to Slidev

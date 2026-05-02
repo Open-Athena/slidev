@@ -125,9 +125,68 @@ Add to deck headmatter:
 
 ## Implementation phases
 
-1. **Per-slide OG (A + C + D + F-frontmatter).** Prerendered shells + image generation + frontmatter. Delivers the "paste a slide URL and get a preview" win without any social integration.
+1. **Per-slide OG (A + C + D + F-frontmatter).** Prerendered shells + image generation + frontmatter. Delivers the "paste a slide URL and get a preview" win without any social integration. **Shipped.**
 2. **Slug URLs (B).** Nice-to-have; can land alongside or after phase 1.
 3. **BlueSky publish (E).** CLI command assembling the thread.
 4. **Mastodon publish.** Reuse phase 3's post-assembly.
 
 Phase 1 alone is probably the highest-leverage piece — it's what makes the deck behave like a proper web citizen.
+
+## Phase 1 implementation notes (shipped)
+
+Lives in `packages/slidev/node/commands/og.ts`, called from `build.ts` after
+the existing Vite + deck-level OG generation. Activated by setting
+`publish.baseUrl` in deck headmatter; otherwise skipped silently (so existing
+decks are unaffected).
+
+- **Frontmatter additions** in `packages/types/src/frontmatter.ts`:
+  - Slide-level: `slug`, `description`, `ogImage` (path override), `caption`
+    (forward-compat for thread CLI), `skipOg`
+  - Headmatter: `publish.baseUrl` (required; OG `<meta>` URLs need to be
+    absolute) and `publish.ogImage: { size, format, quality }` (defaults
+    `[1200, 630]`, `'jpg'`, 85). Nested under `publish` to avoid clashing
+    with the existing slide-level `ogImage` path-override.
+- **Image generation**: re-uses `exportSlides()` infra. Spins up a `sirv`
+  server against the freshly-built `dist/`, drives Playwright per-slide
+  with `waitUntil: 'load'` + 15 s timeout (`'networkidle'` is too flaky
+  for whole-deck builds — Twitter widgets / web fonts / analytics block
+  it). Output goes through a `<userRoot>/.slidev/og-cache/<n>-<hash>.jpg`
+  cache so subsequent builds skip re-rendering unchanged slides — first
+  build of the demo's 17 slides takes ~50 s, second takes ~28 s.
+- **Image transcoding**: Playwright export emits PNG; we transcode to JPG
+  via `sharp` if available, else fall back to copying the PNG bytes with
+  the `.jpg` extension (OG scrapers parse magic bytes, not extensions).
+- **Cache key**: `sha1(slideSource + frontmatter + size + format)`. Each
+  cache entry is `<n>-<12-hex-chars>.<ext>`. Editing a slide invalidates
+  only that slide; resizing invalidates all of them. Old entries
+  accumulate (no GC); user can `rm -rf .slidev/og-cache` to reset.
+- **HTML shells** are cheap to regenerate, so they're always re-emitted —
+  changes to title/description/baseUrl take effect without touching the
+  image cache. Format: `<n>-<slug>.html` with `<meta og:*>`,
+  `<link rel="canonical">`, `<meta http-equiv="refresh">` + immediate JS
+  `location.replace`. Avoids HTTP redirects so OG `<meta>` actually reach
+  scrapers (most don't follow 30x).
+- **Slug source** (priority order): `frontmatter.slug` → `routeAlias` →
+  slugified `frontmatter.title` → slugified `slide.title` (parsed h1) →
+  `slide-<n>`. Slugify uses NFKD + Unicode property class `\p{M}` to
+  strip combining marks, then collapses non-word chars to dashes.
+- **Title / description defaults**: title from `frontmatter.title` or
+  parsed h1, else `${deckTitle} — Slide ${n}`. Description from
+  `frontmatter.description`, else first paragraph of slide content
+  (heuristic: strips fenced code, HTML, headings, list bullets,
+  blockquotes; truncates to 300 chars).
+- **Skip rules**: `frontmatter.skipOg`, `hide`, or `disabled` skip a
+  slide entirely (no shell, no image).
+- Demo deck has `publish.baseUrl` set in headmatter as a PoC; running
+  `slidev build` in `demo/starter` produces 17 shell+image pairs in
+  `dist/_og/`.
+
+### Caveats
+
+- Slug routing (Phase 2) isn't shipped, so the canonical URL embedded in
+  shells is the integer route `/<n>` rather than `/<n>-<slug>`. The slug
+  is used in shell + image filenames only.
+- The cache directory grows monotonically; a future tweak should sweep
+  entries not used in the current build.
+- 1200×630 with a 16:9 slide canvas produces sidebar letterboxing
+  (1.905 vs 1.778 AR); acceptable for OG previews.

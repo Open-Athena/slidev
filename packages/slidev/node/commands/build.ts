@@ -123,6 +123,11 @@ export async function build(
   if (!existsSync(redirectsPath))
     await fs.writeFile(redirectsPath, `${config.base}*    ${config.base}index.html   200\n`, 'utf-8')
 
+  // Per-slide OG shells + images. Skipped when `publish.baseUrl` isn't configured.
+  // See specs/bluesky-slide-threads.md (Phase 1).
+  const { generateOgShells } = await import('./og')
+  await generateOgShells(options, args, outDir, config)
+
   if ([true, 'true', 'auto'].includes(options.data.config.download)) {
     const { exportSlides, getExportOptions } = await import('./export')
 

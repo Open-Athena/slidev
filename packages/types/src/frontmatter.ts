@@ -280,6 +280,23 @@ export interface HeadmatterConfig extends TransitionOptions {
    */
   seoMeta?: SeoMeta
   /**
+   * Settings for sharing / publishing a deck. Required to emit per-slide OG shells
+   * (because OG `<meta>` URLs need to be absolute).
+   */
+  publish?: {
+    /** Absolute URL where the deck is hosted (e.g. `https://slides.example.com`). */
+    baseUrl?: string
+    /** Per-slide OG image generation knobs (used by `slidev build`). */
+    ogImage?: {
+      /** Image dimensions; default `[1200, 630]` (BlueSky / Twitter / OG standard). */
+      size?: [number, number]
+      /** `'jpg'` (default) for smaller payloads, `'png'` for transparency / lossless. */
+      format?: 'png' | 'jpg'
+      /** JPG quality 1-100; ignored for PNG. Default 85. */
+      quality?: number
+    }
+  }
+  /**
    * Auto replace words with `<ruby>` tags in notes
    *
    * @default {}
@@ -393,6 +410,31 @@ export interface Frontmatter extends TransitionOptions {
    * Create a route alias that can be used in the URL or with the `<Link>` component
    */
   routeAlias?: string
+  /**
+   * URL-safe slug used in per-slide OG / share URLs (e.g. `/<n>-<slug>.html`).
+   *
+   * Defaults to `routeAlias` if set, else a slugified `title` / first `h1`,
+   * else `slide-<n>`.
+   */
+  slug?: string
+  /**
+   * Per-slide OG description. If absent, the first paragraph of the slide is used.
+   */
+  description?: string
+  /**
+   * Per-slide OG image. If unset, an image is auto-rendered at `slidev build` time
+   * via the existing PNG export pipeline. Path is relative to the deck root.
+   */
+  ogImage?: string
+  /**
+   * Optional caption used by future thread-publishing tools (BlueSky, Mastodon).
+   * Harmless to set today; not used by the build itself.
+   */
+  caption?: string
+  /**
+   * Skip this slide from OG-shell + image generation (and from social threads).
+   */
+  skipOg?: boolean
   /**
    * Custom zoom level for the slide
    * @default 1
