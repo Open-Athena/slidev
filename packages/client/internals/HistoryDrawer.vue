@@ -248,7 +248,8 @@ function groupRestoreTarget(g: EventGroup): number {
   >
     <aside
       v-if="showHistoryDrawer"
-      class="fixed top-0 right-0 bottom-0 w-80 z-modal bg-main border-l border-main shadow-2xl flex flex-col"
+      class="fixed top-0 right-0 bottom-0 w-80 z-modal bg-main border-l border-main shadow-2xl flex flex-col font-sans"
+      style="font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif"
     >
       <header class="flex items-center gap-2 px-3 py-2 border-b border-main">
         <div class="i-carbon:time-plot text-xl" />

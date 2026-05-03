@@ -362,6 +362,22 @@ export function connectStateStream(): void {
   })
 }
 
+// HMR-safe cleanup: when Vite hot-reloads this module, the new instance starts with
+// `streamConnection = null` and would open a fresh EventSource — but the old EventSource
+// keeps its TCP/SSE connection open (JS GC won't tear down active network connections),
+// so without this, every HMR cycle adds a lingering subscriber that the server then
+// broadcasts to (with all writes silently failing into a dead pipe).
+if (import.meta.hot) {
+  import.meta.hot.dispose(() => {
+    streamConnection?.close()
+    streamConnection = null
+    if (syncTimer) {
+      clearTimeout(syncTimer)
+      syncTimer = null
+    }
+  })
+}
+
 async function ensureSlide(slideNo: number): Promise<void> {
   const { go, currentSlideNo } = useNav()
   if (currentSlideNo.value === slideNo)

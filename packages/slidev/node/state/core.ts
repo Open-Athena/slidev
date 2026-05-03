@@ -52,10 +52,15 @@ function topActiveEventId(db: Database.Database): number | null {
   return row?.id ?? null
 }
 
+// The "next event to redo" is the one most recently marked undone — *not* the highest id
+// among undone events. After `undo(5), undo(4), undo(3)`, the user expects redo to bring
+// back #3 first (LIFO of the undo stack), so we order by `undone_at DESC`. Ties (same-ms
+// undones, very rare) tie-break by id ASC, since a top-undo sequence undoes events in DESC
+// id order, so the lower id within a tied batch corresponds to the later undo.
 function topRedoableEventId(db: Database.Database): number | null {
   const row = db.prepare(
-    'SELECT MAX(id) AS id FROM events WHERE undone_at IS NOT NULL AND abandoned_at IS NULL',
-  ).get() as { id: number | null } | undefined
+    'SELECT id FROM events WHERE undone_at IS NOT NULL AND abandoned_at IS NULL ORDER BY undone_at DESC, id ASC LIMIT 1',
+  ).get() as { id: number } | undefined
   return row?.id ?? null
 }
 
