@@ -195,8 +195,8 @@ This is **deferred to Stage 3b**; Stage 3a is the DB + endpoints + commit button
 
 #### Sub-phases
 
-- **3a (this PR)** — schema, dev-middleware endpoints, client hydration, repoint history pipeline at the DB, "commit" button. localStorage history removed. Deck behavior is a strict superset of today (drag still works; undo now persists; YAML only written on commit).
-- **3b** — version-history drawer UI.
+- **3a (shipped)** — schema, dev-middleware endpoints, client hydration, repoint history pipeline at the DB, "commit" button. localStorage history removed. Deck behavior is a strict superset of today (drag still works; undo now persists; YAML only written on commit).
+- **3b (shipped)** — version-history drawer UI. Toolbar button toggles a right-side panel listing events DESC by id, grouped per-slide-filter; each event row shows kind icon, target dragId(s), slide #, relative time, and a `Restore` button. Click → `POST /__slidev/state/restore { eventId }` → server walks all non-abandoned events with `id <= eventId` for that slide in id order, replays their `after` snapshots, diffs against current `element_state`, and inserts a single `kind='restore'` event whose payload pairs `(before=current, after=historical)` per element. Restore is itself undoable. Active events highlighted; undone events are dimmed; abandoned events struck through. Last-YAML-commit watermark gets a bookmark icon.
 - **3c** — `slidev state snapshot --label "before redesign"` and `slidev state restore <label>` CLIs (uses `events.label`).
 
 #### Benefits

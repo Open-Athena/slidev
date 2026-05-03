@@ -86,13 +86,69 @@ export const isDirty = computed(() => {
   return committed === null || top > committed
 })
 
-async function fetchTopEvents(): Promise<void> {
-  // Use the events feed to derive the top active and topredoable events. limit=1 isn't
-  // enough since both states could exist; ask for a small page and partition client-side.
-  const resp = await fetch('/__slidev/state/events?limit=20')
+// Re-fetch the top-active + top-redoable events from the server. Also refreshes
+// `topActiveEventId` and the YAML commit watermark so the dirty indicator stays accurate.
+// Useful when something other than this client (e.g. raw curl, the drawer) may have
+// changed server state.
+export async function refreshHistoryState(): Promise<void> {
+  const [snap, eventsResp] = await Promise.all([
+    fetch('/__slidev/state').then(r => r.json()) as Promise<ServerSnapshot>,
+    fetch('/__slidev/state/events?limit=20').then(r => r.json()) as Promise<{ events: EditEvent[] }>,
+  ])
+  topActiveEventId.value = snap.topActiveEventId
+  lastYamlCommitEventId.value = snap.lastYamlCommitEventId
+  topActiveEvent.value = eventsResp.events.find(e => e.undoneAt === null && e.abandonedAt === null) ?? null
+  topRedoableEvent.value = eventsResp.events.find(e => e.undoneAt !== null && e.abandonedAt === null) ?? null
+}
+const fetchTopEvents = refreshHistoryState
+
+// Bumped after every edit/undo/redo/restore so the version-history drawer can refetch.
+export const eventStreamVersion = ref(0)
+function bumpEventStream(): void {
+  eventStreamVersion.value += 1
+}
+
+// Fetch a page of events for the drawer. `limit` defaults to 200 (covers most decks
+// without paging); callers can paginate with `sinceId` if they need more.
+export async function fetchEvents(opts: { limit?: number, sinceId?: number, slideNo?: number } = {}): Promise<EditEvent[]> {
+  const params = new URLSearchParams()
+  if (opts.limit !== undefined)
+    params.set('limit', String(opts.limit))
+  if (opts.sinceId !== undefined)
+    params.set('since', String(opts.sinceId))
+  if (opts.slideNo !== undefined)
+    params.set('slide', String(opts.slideNo))
+  const resp = await fetch(`/__slidev/state/events?${params}`)
   const { events } = await resp.json() as { events: EditEvent[] }
-  topActiveEvent.value = events.find(e => e.undoneAt === null && e.abandonedAt === null) ?? null
-  topRedoableEvent.value = events.find(e => e.undoneAt !== null && e.abandonedAt === null) ?? null
+  return events
+}
+
+// Restore the slide owning `eventId` to its state at that point. Inserts a `kind='restore'`
+// event server-side; the affected element_state is recomputed and the response includes the
+// new event so the client can update topActive + apply changes locally.
+export async function restoreToEvent(eventId: number): Promise<EditEvent | null> {
+  const resp = await fetch('/__slidev/state/restore', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ eventId }),
+  })
+  const data = await resp.json() as { event: EditEvent | null }
+  if (data.event) {
+    topActiveEventId.value = data.event.id
+    topActiveEvent.value = data.event
+    topRedoableEvent.value = null
+    // Apply the restore directly to live elements via the registry so the UI updates.
+    await ensureSlide(data.event.slideNo)
+    for (const item of data.event.items) {
+      if (item.after === null)
+        continue
+      const state = registry.get(regKey(data.event.slideNo, item.dragId))
+      if (state)
+        state.apply(item.after)
+    }
+    bumpEventStream()
+  }
+  return data.event
 }
 
 let hydratePromise: Promise<void> | null = null
@@ -143,6 +199,7 @@ async function postEdit(slideNo: number, kind: EditKind, items: EditItem[]): Pro
   topActiveEventId.value = data.event.id
   topActiveEvent.value = data.event
   topRedoableEvent.value = null
+  bumpEventStream()
 }
 
 // Mark the start of an edit on a single element. Captures `before` from `state.capture()`.
@@ -265,6 +322,7 @@ export async function undo(): Promise<void> {
   applyAffected(data.affected)
   topActiveEventId.value = data.topActiveEventId
   await fetchTopEvents()
+  bumpEventStream()
 }
 
 export async function redo(): Promise<void> {
@@ -283,6 +341,7 @@ export async function redo(): Promise<void> {
   applyAffected(data.affected)
   topActiveEventId.value = data.topActiveEventId
   await fetchTopEvents()
+  bumpEventStream()
 }
 
 export async function commitToYaml(): Promise<{ committedEventId: number | null }> {

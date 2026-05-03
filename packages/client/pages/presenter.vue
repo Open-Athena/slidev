@@ -239,8 +239,11 @@ function normalizeResizerState() {
 }
 
 const SideEditor = shallowRef<any>()
-if (__DEV__ && __SLIDEV_FEATURE_EDITOR__)
+const HistoryDrawer = shallowRef<any>()
+if (__DEV__ && __SLIDEV_FEATURE_EDITOR__) {
   import('../internals/SideEditor.vue').then(v => SideEditor.value = v.default)
+  import('../internals/HistoryDrawer.vue').then(v => HistoryDrawer.value = v.default)
+}
 
 // sync presenter cursor
 onMounted(() => {
@@ -430,6 +433,7 @@ onMounted(() => {
   <Goto />
   <QuickOverview />
   <ContextMenu />
+  <component :is="HistoryDrawer" v-if="HistoryDrawer" />
 </template>
 
 <style scoped>

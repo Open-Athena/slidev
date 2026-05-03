@@ -6,7 +6,7 @@ import { useDrawings } from '../composables/useDrawings'
 import { useNav } from '../composables/useNav'
 import { configs } from '../env'
 import { isColorSchemaConfigured, isDark, toggleDark } from '../logic/dark'
-import { activeElement, breakpoints, fullscreen, hasViewerCssFilter, presenterLayout, showEditor, showInfoDialog, showPresenterCursor, toggleOverview, togglePresenterLayout } from '../state'
+import { activeElement, breakpoints, fullscreen, hasViewerCssFilter, presenterLayout, showEditor, showHistoryDrawer, showInfoDialog, showPresenterCursor, toggleOverview, togglePresenterLayout } from '../state'
 import { downloadPDF } from '../utils'
 import IconButton from './IconButton.vue'
 import MenuButton from './MenuButton.vue'
@@ -117,6 +117,14 @@ if (__SLIDEV_FEATURE_RECORD__)
           v-if="historyIsDirty"
           class="absolute top-0.5 right-0.5 w-1.5 h-1.5 rounded-full bg-orange-500"
         />
+      </IconButton>
+      <IconButton
+        v-if="__DEV__ && __SLIDEV_FEATURE_EDITOR__"
+        :title="showHistoryDrawer ? 'Hide edit history' : 'Show edit history'"
+        :class="showHistoryDrawer ? 'text-primary' : ''"
+        @click="showHistoryDrawer = !showHistoryDrawer"
+      >
+        <div class="i-carbon:time-plot" />
       </IconButton>
       <IconButton
         v-if="!isColorSchemaConfigured"

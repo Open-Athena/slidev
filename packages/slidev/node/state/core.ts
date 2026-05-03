@@ -367,6 +367,68 @@ export function posStrToSnapshot(posStr: string): ElementSnapshot | null {
   }
 }
 
+function snapshotsEqual(a: ElementSnapshot | null, b: ElementSnapshot | null): boolean {
+  if (a === null && b === null)
+    return true
+  if (a === null || b === null)
+    return false
+  return a.x0 === b.x0 && a.y0 === b.y0 && a.width === b.width && a.height === b.height
+    && a.rotate === b.rotate && a.zIndex === b.zIndex
+    && a.cropTop === b.cropTop && a.cropRight === b.cropRight
+    && a.cropBottom === b.cropBottom && a.cropLeft === b.cropLeft
+}
+
+// Restore the slide that `targetEventId` lives on to the state it had right after that
+// event was applied. Walks all non-abandoned events on that slide up to and including the
+// target in id order, replaying their `after` snapshots; diffs against current state and
+// inserts a single `kind='restore'` event whose payload contains the per-element
+// `(before=current, after=historical)` pairs. Returns the new restore event, or null if
+// nothing differs (no-op).
+export function restoreToEvent(db: Database.Database, targetEventId: number): EditEvent | null {
+  const target = getEvent(db, targetEventId)
+  if (!target)
+    return null
+  const slideNo = target.slideNo
+  const replayRows = db.prepare(
+    'SELECT id, payload FROM events WHERE id <= ? AND slide_no = ? AND abandoned_at IS NULL ORDER BY id ASC',
+  ).all(targetEventId, slideNo) as Array<{ id: number, payload: string }>
+
+  // Build the historical snapshot map by replaying every non-abandoned event in id order
+  // (regardless of current undone status — undone is a *now* marker, not a *was* marker).
+  const historical = new Map<string, ElementSnapshot | null>()
+  for (const row of replayRows) {
+    const items = (JSON.parse(row.payload).items ?? []) as EditItem[]
+    for (const item of items)
+      historical.set(item.dragId, item.after)
+  }
+
+  const currentRows = db.prepare(
+    'SELECT drag_id, state FROM element_state WHERE slide_no = ?',
+  ).all(slideNo) as Array<{ drag_id: string, state: string }>
+  const current = new Map<string, ElementSnapshot>()
+  for (const row of currentRows)
+    current.set(row.drag_id, JSON.parse(row.state) as ElementSnapshot)
+
+  const allKeys = new Set<string>([...historical.keys(), ...current.keys()])
+  const items: EditItem[] = []
+  for (const dragId of allKeys) {
+    const before = current.get(dragId) ?? null
+    const after = historical.get(dragId) ?? null
+    if (snapshotsEqual(before, after))
+      continue
+    items.push({ dragId, before, after })
+  }
+  if (items.length === 0)
+    return null
+
+  return insertEdit(db, {
+    slideNo,
+    kind: 'restore',
+    items,
+    label: `restore-to-${targetEventId}`,
+  })
+}
+
 export function listEvents(
   db: Database.Database,
   opts: { slideNo?: number, sinceId?: number, limit?: number } = {},

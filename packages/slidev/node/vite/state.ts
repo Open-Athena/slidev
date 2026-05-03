@@ -9,6 +9,7 @@ import {
   insertEdit,
   listEvents,
   redo,
+  restoreToEvent,
   undo,
 } from '../state/core'
 import { openStateDb } from '../state/db'
@@ -130,6 +131,14 @@ export function createStatePlugin(options: ResolvedSlidevOptions): Plugin {
           if (req.method === 'POST' && path === '/__slidev/state/commit-yaml') {
             const result = await commitYaml(handle, options.userRoot)
             return sendJson(res, 200, result)
+          }
+
+          if (req.method === 'POST' && path === '/__slidev/state/restore') {
+            const body = await readJsonBody<{ eventId?: number }>(req).catch(() => ({} as { eventId?: number }))
+            if (typeof body.eventId !== 'number')
+              return sendJson(res, 400, { error: 'restore requires {eventId}' })
+            const event = restoreToEvent(handle, body.eventId)
+            return sendJson(res, 200, { event })
           }
 
           return next()

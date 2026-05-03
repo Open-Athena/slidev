@@ -63,8 +63,11 @@ if (import.meta.hot) {
 const persistNav = computed(() => isScreenVertical.value || showEditor.value)
 
 const SideEditor = shallowRef<any>()
-if (__DEV__ && __SLIDEV_FEATURE_EDITOR__)
+const HistoryDrawer = shallowRef<any>()
+if (__DEV__ && __SLIDEV_FEATURE_EDITOR__) {
   import('../internals/SideEditor.vue').then(v => SideEditor.value = v.default)
+  import('../internals/HistoryDrawer.vue').then(v => HistoryDrawer.value = v.default)
+}
 
 const contentStyle = computed(() => {
   let filter = ''
@@ -126,6 +129,7 @@ const contentStyle = computed(() => {
     </SlideContainer>
     <SideEditor v-if="SideEditor && showEditor" :resize="true" />
   </div>
+  <component :is="HistoryDrawer" v-if="HistoryDrawer" />
   <Controls v-if="!isPrintMode" />
   <div id="twoslash-container" />
 </template>
