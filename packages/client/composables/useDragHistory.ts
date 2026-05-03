@@ -288,6 +288,80 @@ export function discardTopMatching(slideNo: number, dragIds: string[]): boolean 
   return true
 }
 
+// Re-fetch full server state and re-apply to all registered elements (skipping any element
+// that this tab is mid-edit on, so we don't clobber an in-progress drag with stale snapshot).
+async function syncFromServer(): Promise<void> {
+  const snap = await fetch('/__slidev/state').then(r => r.json()) as ServerSnapshot
+  topActiveEventId.value = snap.topActiveEventId
+  lastYamlCommitEventId.value = snap.lastYamlCommitEventId
+  initialState.value = snap.state
+  await fetchTopEvents()
+  for (const [slideKey, byId] of Object.entries(snap.state)) {
+    const slideNo = Number(slideKey)
+    for (const [dragId, snapshot] of Object.entries(byId)) {
+      const k = regKey(slideNo, dragId)
+      // Skip elements with a pending local edit — applying remote state would either clobber
+      // the user's in-flight drag or briefly snap then re-drift.
+      if (pendingByKey.has(k))
+        continue
+      registry.get(k)?.apply(snapshot)
+    }
+  }
+  bumpEventStream()
+}
+
+interface StateChangeMessage {
+  type: 'state-change'
+  source: 'edit' | 'undo' | 'redo' | 'restore' | 'yaml-commit'
+  topActiveEventId: number | null
+  triggeringEventId?: number | null
+}
+
+let streamConnection: EventSource | null = null
+let syncTimer: ReturnType<typeof setTimeout> | null = null
+
+function scheduleSync(): void {
+  if (syncTimer)
+    clearTimeout(syncTimer)
+  // Tail-debounce: rapid bursts (e.g. another tab dragging a group of N elements emits N
+  // broadcasts in flight) collapse into a single re-fetch + re-apply.
+  syncTimer = setTimeout(() => {
+    syncTimer = null
+    void syncFromServer()
+  }, 50)
+}
+
+// Open the SSE channel so this tab learns about state changes made elsewhere (other tabs,
+// the CLI, raw curl). Idempotent — safe to call multiple times. Dev-only (the endpoint
+// only exists in the dev server).
+export function connectStateStream(): void {
+  if (streamConnection || typeof EventSource === 'undefined')
+    return
+  const es = new EventSource('/__slidev/state/stream')
+  streamConnection = es
+  es.addEventListener('message', (ev) => {
+    let msg: StateChangeMessage | null = null
+    try {
+      msg = JSON.parse((ev as MessageEvent).data) as StateChangeMessage
+    }
+    catch {
+      return
+    }
+    if (!msg || msg.type !== 'state-change')
+      return
+    // Self-origin dedup: when this tab POSTed the change, our local topActiveEventId
+    // already matches the broadcast id. yaml-commit doesn't move topActive, so handle it
+    // unconditionally — that path needs to refresh the bookmark/dirty indicators.
+    if (msg.source !== 'yaml-commit' && msg.topActiveEventId === topActiveEventId.value)
+      return
+    scheduleSync()
+  })
+  es.addEventListener('error', () => {
+    // The browser auto-reconnects per the `retry: 5000` directive sent by the server.
+    // Nothing to do here besides leaving the EventSource in place.
+  })
+}
+
 async function ensureSlide(slideNo: number): Promise<void> {
   const { go, currentSlideNo } = useNav()
   if (currentSlideNo.value === slideNo)

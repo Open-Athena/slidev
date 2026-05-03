@@ -1,6 +1,7 @@
 import type { ResolvedSlidevOptions } from '@slidev/types'
 import type Database from 'better-sqlite3'
 import type { Connect, Plugin } from 'vite'
+import type { EditEvent } from '../state/types'
 import { Buffer } from 'node:buffer'
 import {
   commitYaml,
@@ -15,6 +16,20 @@ import {
 import { openStateDb } from '../state/db'
 
 const MAX_BODY_BYTES = 10_000_000
+
+// Heartbeat keeps long-lived SSE connections from being killed by intermediate proxies
+// or browser timeouts. 25 s sits comfortably under the typical 30–60 s idle limit.
+const SSE_HEARTBEAT_MS = 25_000
+
+// All messages share this envelope. The source field lets clients optimize (e.g. yaml-commit
+// only refreshes the bookmark id, not the full event list) but for v1 every client just
+// re-fetches state + events — the source is informational.
+interface StateChangeMessage {
+  type: 'state-change'
+  source: 'edit' | 'undo' | 'redo' | 'restore' | 'yaml-commit'
+  topActiveEventId: number | null
+  triggeringEventId?: number | null
+}
 
 function readJsonBody<T = unknown>(req: Connect.IncomingMessage): Promise<T> {
   return new Promise((resolve, reject) => {
@@ -66,6 +81,32 @@ export function createStatePlugin(options: ResolvedSlidevOptions): Plugin {
     return db
   }
 
+  // Live SSE subscribers. Each entry is a still-open response we write into. The set is
+  // pruned on connection-close (req 'close' handler below).
+  const subscribers = new Set<Connect.ServerResponse>()
+
+  function broadcast(msg: StateChangeMessage): void {
+    if (subscribers.size === 0)
+      return
+    const data = `data: ${JSON.stringify(msg)}\n\n`
+    for (const res of subscribers) {
+      try {
+        res.write(data)
+      }
+      catch {
+        // Write errors leave the response in a bad state; the 'close' handler will drop it.
+      }
+    }
+  }
+
+  // Look up the current top active event id without allocating a snapshot. Cheap query.
+  function topActiveId(handle: Database.Database): number | null {
+    const row = handle.prepare(
+      'SELECT MAX(id) AS id FROM events WHERE undone_at IS NULL AND abandoned_at IS NULL',
+    ).get() as { id: number | null } | undefined
+    return row?.id ?? null
+  }
+
   return {
     name: 'slidev:state',
     apply: 'serve',
@@ -82,6 +123,45 @@ export function createStatePlugin(options: ResolvedSlidevOptions): Plugin {
           // GET /__slidev/state — full snapshot for cold-start hydration
           if (req.method === 'GET' && path === '/__slidev/state') {
             return sendJson(res, 200, getSnapshot(handle))
+          }
+
+          // GET /__slidev/state/stream — SSE feed of state-change notifications. The client
+          // reacts by re-fetching state + events; we intentionally don't push event payloads
+          // through the channel to keep the server-side serialization simple and avoid
+          // diverging from the canonical /state and /events endpoints.
+          if (req.method === 'GET' && path === '/__slidev/state/stream') {
+            res.statusCode = 200
+            res.setHeader('Content-Type', 'text/event-stream')
+            res.setHeader('Cache-Control', 'no-cache, no-transform')
+            res.setHeader('Connection', 'keep-alive')
+            // Disable proxy buffering (Nginx etc.) — without this, EventSource clients can
+            // sit waiting for the response body to be flushed.
+            res.setHeader('X-Accel-Buffering', 'no')
+            // Tell EventSource to reconnect after 5 s on disconnect (default is 3 s).
+            res.write('retry: 5000\n\n')
+            // Initial hello so the client knows the server's current top id and can decide
+            // whether it needs a full re-fetch (it has likely just fetched, but a reconnect
+            // after a missed broadcast would otherwise leave it stale).
+            const hello: StateChangeMessage = {
+              type: 'state-change',
+              source: 'edit',
+              topActiveEventId: topActiveId(handle),
+            }
+            res.write(`data: ${JSON.stringify(hello)}\n\n`)
+            subscribers.add(res)
+            const heartbeat = setInterval(() => {
+              try {
+                res.write(`: hb\n\n`)
+              }
+              catch {
+                // Connection broken; cleanup will fire from req 'close'.
+              }
+            }, SSE_HEARTBEAT_MS)
+            req.on('close', () => {
+              clearInterval(heartbeat)
+              subscribers.delete(res)
+            })
+            return // keep connection open
           }
 
           // GET /__slidev/state/events?slide=<n>&since=<id>&limit=<n> — paged event feed
@@ -113,23 +193,29 @@ export function createStatePlugin(options: ResolvedSlidevOptions): Plugin {
               items: body.items as never,
               label: body.label ?? null,
             })
+            broadcast({ type: 'state-change', source: 'edit', topActiveEventId: event.id, triggeringEventId: event.id })
             return sendJson(res, 200, { event })
           }
 
           if (req.method === 'POST' && path === '/__slidev/state/undo') {
             const body = await readJsonBody<{ eventId?: number }>(req).catch(() => ({} as { eventId?: number }))
             const result = undo(handle, body.eventId)
+            if (result)
+              broadcast({ type: 'state-change', source: 'undo', topActiveEventId: result.topActiveEventId, triggeringEventId: result.event.id })
             return sendJson(res, 200, result ?? { event: null, affected: [], topActiveEventId: null })
           }
 
           if (req.method === 'POST' && path === '/__slidev/state/redo') {
             const body = await readJsonBody<{ eventId?: number }>(req).catch(() => ({} as { eventId?: number }))
             const result = redo(handle, body.eventId)
+            if (result)
+              broadcast({ type: 'state-change', source: 'redo', topActiveEventId: result.topActiveEventId, triggeringEventId: result.event.id })
             return sendJson(res, 200, result ?? { event: null, affected: [], topActiveEventId: null })
           }
 
           if (req.method === 'POST' && path === '/__slidev/state/commit-yaml') {
             const result = await commitYaml(handle, options.userRoot)
+            broadcast({ type: 'state-change', source: 'yaml-commit', topActiveEventId: result.committedEventId })
             return sendJson(res, 200, result)
           }
 
@@ -137,7 +223,9 @@ export function createStatePlugin(options: ResolvedSlidevOptions): Plugin {
             const body = await readJsonBody<{ eventId?: number }>(req).catch(() => ({} as { eventId?: number }))
             if (typeof body.eventId !== 'number')
               return sendJson(res, 400, { error: 'restore requires {eventId}' })
-            const event = restoreToEvent(handle, body.eventId)
+            const event: EditEvent | null = restoreToEvent(handle, body.eventId)
+            if (event)
+              broadcast({ type: 'state-change', source: 'restore', topActiveEventId: event.id, triggeringEventId: event.id })
             return sendJson(res, 200, { event })
           }
 
@@ -150,6 +238,16 @@ export function createStatePlugin(options: ResolvedSlidevOptions): Plugin {
       })
 
       server.httpServer?.once('close', () => {
+        // Tear down any open SSE connections so they don't keep the process alive.
+        for (const res of subscribers) {
+          try {
+            res.end()
+          }
+          catch {
+            // ignore
+          }
+        }
+        subscribers.clear()
         db?.close()
         db = null
         initialized = false
