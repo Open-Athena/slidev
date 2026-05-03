@@ -78,6 +78,31 @@
           "description": "Create a route alias that can be used in the URL or with the `<Link>` component",
           "markdownDescription": "Create a route alias that can be used in the URL or with the `<Link>` component"
         },
+        "slug": {
+          "type": "string",
+          "description": "URL-safe slug used in per-slide OG / share URLs (e.g. `/<n>-<slug>.html`).\n\nDefaults to `routeAlias` if set, else a slugified `title` / first `h1`, else `slide-<n>`.",
+          "markdownDescription": "URL-safe slug used in per-slide OG / share URLs (e.g. `/<n>-<slug>.html`).\n\nDefaults to `routeAlias` if set, else a slugified `title` / first `h1`,\nelse `slide-<n>`."
+        },
+        "description": {
+          "type": "string",
+          "description": "Per-slide OG description. If absent, the first paragraph of the slide is used.",
+          "markdownDescription": "Per-slide OG description. If absent, the first paragraph of the slide is used."
+        },
+        "ogImage": {
+          "type": "string",
+          "description": "Per-slide OG image. If unset, an image is auto-rendered at `slidev build` time via the existing PNG export pipeline. Path is relative to the deck root.",
+          "markdownDescription": "Per-slide OG image. If unset, an image is auto-rendered at `slidev build` time\nvia the existing PNG export pipeline. Path is relative to the deck root."
+        },
+        "caption": {
+          "type": "string",
+          "description": "Optional caption used by future thread-publishing tools (BlueSky, Mastodon). Harmless to set today; not used by the build itself.",
+          "markdownDescription": "Optional caption used by future thread-publishing tools (BlueSky, Mastodon).\nHarmless to set today; not used by the build itself."
+        },
+        "skipOg": {
+          "type": "boolean",
+          "description": "Skip this slide from OG-shell + image generation (and from social threads).",
+          "markdownDescription": "Skip this slide from OG-shell + image generation (and from social threads)."
+        },
         "zoom": {
           "type": "number",
           "description": "Custom zoom level for the slide",
@@ -521,6 +546,49 @@
           "description": "Seo meta tags settings",
           "markdownDescription": "Seo meta tags settings",
           "default": {}
+        },
+        "publish": {
+          "type": "object",
+          "properties": {
+            "baseUrl": {
+              "type": "string",
+              "description": "Absolute URL where the deck is hosted (e.g. `https://slides.example.com`).",
+              "markdownDescription": "Absolute URL where the deck is hosted (e.g. `https://slides.example.com`)."
+            },
+            "ogImage": {
+              "type": "object",
+              "properties": {
+                "size": {
+                  "type": "array",
+                  "items": {
+                    "type": "number"
+                  },
+                  "minItems": 2,
+                  "maxItems": 2,
+                  "description": "Image dimensions; default `[1200, 630]` (BlueSky / Twitter / OG standard).",
+                  "markdownDescription": "Image dimensions; default `[1200, 630]` (BlueSky / Twitter / OG standard)."
+                },
+                "format": {
+                  "type": "string",
+                  "enum": [
+                    "png",
+                    "jpg"
+                  ],
+                  "description": "`'jpg'` (default) for smaller payloads, `'png'` for transparency / lossless.",
+                  "markdownDescription": "`'jpg'` (default) for smaller payloads, `'png'` for transparency / lossless."
+                },
+                "quality": {
+                  "type": "number",
+                  "description": "JPG quality 1-100; ignored for PNG. Default 85.",
+                  "markdownDescription": "JPG quality 1-100; ignored for PNG. Default 85."
+                }
+              },
+              "description": "Per-slide OG image generation knobs (used by `slidev build`).",
+              "markdownDescription": "Per-slide OG image generation knobs (used by `slidev build`)."
+            }
+          },
+          "description": "Settings for sharing / publishing a deck. Required to emit per-slide OG shells (because OG `<meta>` URLs need to be absolute).",
+          "markdownDescription": "Settings for sharing / publishing a deck. Required to emit per-slide OG shells\n(because OG `<meta>` URLs need to be absolute)."
         },
         "notesAutoRuby": {
           "type": "object",
@@ -1014,6 +1082,31 @@
           "type": "string",
           "description": "Create a route alias that can be used in the URL or with the `<Link>` component",
           "markdownDescription": "Create a route alias that can be used in the URL or with the `<Link>` component"
+        },
+        "slug": {
+          "type": "string",
+          "description": "URL-safe slug used in per-slide OG / share URLs (e.g. `/<n>-<slug>.html`).\n\nDefaults to `routeAlias` if set, else a slugified `title` / first `h1`, else `slide-<n>`.",
+          "markdownDescription": "URL-safe slug used in per-slide OG / share URLs (e.g. `/<n>-<slug>.html`).\n\nDefaults to `routeAlias` if set, else a slugified `title` / first `h1`,\nelse `slide-<n>`."
+        },
+        "description": {
+          "type": "string",
+          "description": "Per-slide OG description. If absent, the first paragraph of the slide is used.",
+          "markdownDescription": "Per-slide OG description. If absent, the first paragraph of the slide is used."
+        },
+        "ogImage": {
+          "type": "string",
+          "description": "Per-slide OG image. If unset, an image is auto-rendered at `slidev build` time via the existing PNG export pipeline. Path is relative to the deck root.",
+          "markdownDescription": "Per-slide OG image. If unset, an image is auto-rendered at `slidev build` time\nvia the existing PNG export pipeline. Path is relative to the deck root."
+        },
+        "caption": {
+          "type": "string",
+          "description": "Optional caption used by future thread-publishing tools (BlueSky, Mastodon). Harmless to set today; not used by the build itself.",
+          "markdownDescription": "Optional caption used by future thread-publishing tools (BlueSky, Mastodon).\nHarmless to set today; not used by the build itself."
+        },
+        "skipOg": {
+          "type": "boolean",
+          "description": "Skip this slide from OG-shell + image generation (and from social threads).",
+          "markdownDescription": "Skip this slide from OG-shell + image generation (and from social threads)."
         },
         "zoom": {
           "type": "number",
