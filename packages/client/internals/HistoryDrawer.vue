@@ -215,6 +215,15 @@ const grouped = computed<EventGroup[]>(() => {
 function isExpanded(g: EventGroup): boolean {
   return expandedGroups.value.has(g.key)
 }
+
+// True when the current top-active event is one of this group's members. Used to keep the
+// group header highlighted as the user undoes/redoes inside the streak.
+function groupContainsTop(g: EventGroup): boolean {
+  const top = topActiveEventId.value
+  if (top === null)
+    return false
+  return g.events.some(e => e.id === top)
+}
 function toggleGroup(g: EventGroup): void {
   if (expandedGroups.value.has(g.key))
     expandedGroups.value.delete(g.key)
@@ -337,7 +346,10 @@ function groupRestoreTarget(g: EventGroup): number {
               :class="{
                 'opacity-60': classify(g.events[0]) === 'undone',
                 'opacity-30': classify(g.events[0]) === 'abandoned',
-                'bg-primary bg-opacity-10': g.events[0].id === topActiveEventId,
+                // Keep the group header highlighted whenever the current top falls
+                // anywhere inside the streak — otherwise undoing from the head step into
+                // the middle of an expanded group makes the group itself look unfocused.
+                'bg-primary bg-opacity-10': groupContainsTop(g),
               }"
               @click="toggleGroup(g)"
             >
@@ -380,6 +392,9 @@ function groupRestoreTarget(g: EventGroup): number {
                 :class="{
                   'opacity-60': classify(e) === 'undone',
                   'opacity-30 line-through': classify(e) === 'abandoned',
+                  // Highlight the inner step that's currently the top-active event so the
+                  // user can see exactly where they are in the streak when undoing/redoing.
+                  'bg-primary bg-opacity-15 !border-primary border-opacity-60': e.id === topActiveEventId,
                 }"
               >
                 <span class="opacity-50">#{{ e.id }}</span>
