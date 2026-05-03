@@ -67,6 +67,7 @@
     "@vitejs/plugin-vue": "catalog:prod",
     "@vitejs/plugin-vue-jsx": "catalog:prod",
     "ansis": "catalog:prod",
+    "better-sqlite3": "catalog:prod",
     "chokidar": "catalog:prod",
     "cli-progress": "catalog:prod",
     "connect": "catalog:prod",
@@ -122,6 +123,7 @@
   },
   "devDependencies": {
     "@hedgedoc/markdown-it-plugins": "catalog:prod",
+    "@types/better-sqlite3": "catalog:types",
     "@types/picomatch": "catalog:types",
     "@types/plantuml-encoder": "catalog:types"
   }

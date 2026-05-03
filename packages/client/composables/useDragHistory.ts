@@ -1,5 +1,4 @@
-import { useLocalStorage } from '@vueuse/core'
-import { computed, nextTick, watch } from 'vue'
+import { computed, ref } from 'vue'
 import { useNav } from './useNav'
 
 export interface ElementSnapshot {
@@ -17,43 +16,35 @@ export interface ElementSnapshot {
 
 export type EditKind = 'move' | 'resize' | 'rotate' | 'crop' | 'zorder'
 
-export interface EditEntry {
+export interface EditItem {
+  dragId: string
+  before: ElementSnapshot | null
+  after: ElementSnapshot | null
+}
+
+export interface EditEvent {
+  id: number
   ts: number
   slideNo: number
-  kind: EditKind
-  items: Array<{ dragId: string, before: ElementSnapshot }>
+  kind: EditKind | 'restore' | 'hydrate'
+  items: EditItem[]
+  undoneAt: number | null
+  abandonedAt: number | null
+  label: string | null
 }
 
-const MAX_ENTRIES = 200
-const TTL_MS = 30 * 24 * 60 * 60 * 1000
-
-// Per-deck key. Strip the trailing slide number so the key is stable as the user navigates.
-function deckKey(): string {
-  if (typeof location === 'undefined')
-    return 'slidev-drag-history:'
-  const path = location.pathname.replace(/\/\d+\/?$/, '')
-  return `slidev-drag-history:${location.origin}${path}`
+interface AffectedItem {
+  slideNo: number
+  dragId: string
+  state: ElementSnapshot | null
 }
 
-const undoStack = useLocalStorage<EditEntry[]>(`${deckKey()}:undo`, [])
-const redoStack = useLocalStorage<EditEntry[]>(`${deckKey()}:redo`, [])
-
-// GC stale entries on first load: drop anything older than TTL, then cap at MAX_ENTRIES.
-{
-  const now = Date.now()
-  const fresh = (e: EditEntry) => now - e.ts < TTL_MS
-  if (undoStack.value.some(e => !fresh(e)) || undoStack.value.length > MAX_ENTRIES)
-    undoStack.value = undoStack.value.filter(fresh).slice(-MAX_ENTRIES)
-  if (redoStack.value.some(e => !fresh(e)) || redoStack.value.length > MAX_ENTRIES)
-    redoStack.value = redoStack.value.filter(fresh).slice(-MAX_ENTRIES)
+interface ServerSnapshot {
+  state: Record<string, Record<string, ElementSnapshot>>
+  topActiveEventId: number | null
+  lastYamlCommitEventId: number | null
 }
 
-export const canUndo = computed(() => undoStack.value.length > 0)
-export const canRedo = computed(() => redoStack.value.length > 0)
-export const topUndoEntry = computed<EditEntry | null>(() => undoStack.value[undoStack.value.length - 1] ?? null)
-export const topRedoEntry = computed<EditEntry | null>(() => redoStack.value[redoStack.value.length - 1] ?? null)
-
-// Registry of mounted drag elements, so global undo/redo can locate the target by `(slideNo, dragId)`.
 export interface RegisteredState {
   page: { value: number }
   dragId: string
@@ -74,43 +65,169 @@ export function unregisterHistoryState(state: RegisteredState): void {
     registry.delete(k)
 }
 
-function trim() {
-  if (undoStack.value.length > MAX_ENTRIES)
-    undoStack.value = undoStack.value.slice(-MAX_ENTRIES)
-  if (redoStack.value.length > MAX_ENTRIES)
-    redoStack.value = redoStack.value.slice(-MAX_ENTRIES)
+// Server-side derived state (cached on the client). Kept in sync via every API response.
+export const topActiveEventId = ref<number | null>(null)
+export const lastYamlCommitEventId = ref<number | null>(null)
+const topActiveEvent = ref<EditEvent | null>(null)
+const topRedoableEvent = ref<EditEvent | null>(null)
+// Server-derived element state, populated on cold-start hydration. Lets useDragElement
+// override frontmatter.dragPos when the DB has fresher values than the YAML snapshot.
+export const initialState = ref<Record<string, Record<string, ElementSnapshot>> | null>(null)
+
+export const canUndo = computed(() => topActiveEvent.value !== null)
+export const canRedo = computed(() => topRedoableEvent.value !== null)
+export const topUndoEntry = computed<EditEvent | null>(() => topActiveEvent.value)
+export const topRedoEntry = computed<EditEvent | null>(() => topRedoableEvent.value)
+export const isDirty = computed(() => {
+  const top = topActiveEventId.value
+  const committed = lastYamlCommitEventId.value
+  if (top === null)
+    return false
+  return committed === null || top > committed
+})
+
+async function fetchTopEvents(): Promise<void> {
+  // Use the events feed to derive the top active and topredoable events. limit=1 isn't
+  // enough since both states could exist; ask for a small page and partition client-side.
+  const resp = await fetch('/__slidev/state/events?limit=20')
+  const { events } = await resp.json() as { events: EditEvent[] }
+  topActiveEvent.value = events.find(e => e.undoneAt === null && e.abandonedAt === null) ?? null
+  topRedoableEvent.value = events.find(e => e.undoneAt !== null && e.abandonedAt === null) ?? null
 }
 
-// Push a single-element edit. The before-snapshot is captured at call time; the after-state is
-// implicit (whatever's on the element when undo eventually runs).
-export function pushEdit(slideNo: number, kind: EditKind, dragId: string, before: ElementSnapshot): void {
-  undoStack.value.push({ ts: Date.now(), slideNo, kind, items: [{ dragId, before }] })
-  redoStack.value = []
-  trim()
+let hydratePromise: Promise<void> | null = null
+export function hydrateFromServer(): Promise<void> {
+  if (hydratePromise)
+    return hydratePromise
+  hydratePromise = (async () => {
+    const resp = await fetch('/__slidev/state')
+    const snap = await resp.json() as ServerSnapshot
+    initialState.value = snap.state
+    topActiveEventId.value = snap.topActiveEventId
+    lastYamlCommitEventId.value = snap.lastYamlCommitEventId
+    await fetchTopEvents()
+  })()
+  return hydratePromise
 }
 
-// Push an atomic multi-element edit (e.g. group drag, group rotate).
-export function pushGroupEdit(slideNo: number, kind: EditKind, items: Array<{ dragId: string, before: ElementSnapshot }>): void {
+// A single-element pending edit. The element's `before` is captured at beginEdit time;
+// `after` is captured at commit time (live state).
+interface PendingEdit {
+  slideNo: number
+  kind: EditKind
+  before: ElementSnapshot
+  capture: () => ElementSnapshot
+}
+
+const pendingByKey = new Map<string, PendingEdit>()
+const debounceTimers = new Map<string, ReturnType<typeof setTimeout>>()
+const COMMIT_DEBOUNCE_MS = 150
+
+function clearPending(slideNo: number, dragId: string): void {
+  const k = regKey(slideNo, dragId)
+  pendingByKey.delete(k)
+  const t = debounceTimers.get(k)
+  if (t) {
+    clearTimeout(t)
+    debounceTimers.delete(k)
+  }
+}
+
+async function postEdit(slideNo: number, kind: EditKind, items: EditItem[]): Promise<void> {
+  const resp = await fetch('/__slidev/state/edit', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ slideNo, kind, items }),
+  })
+  const data = await resp.json() as { event: EditEvent }
+  topActiveEventId.value = data.event.id
+  topActiveEvent.value = data.event
+  topRedoableEvent.value = null
+}
+
+// Mark the start of an edit on a single element. Captures `before` from `state.capture()`.
+// Subsequent calls before commit replace the pending edit (the `before` is the snapshot at
+// the start of the *outermost* edit, not the latest threshold-cross).
+export function beginEdit(state: RegisteredState, kind: EditKind): void {
+  const k = regKey(state.page.value, state.dragId)
+  if (pendingByKey.has(k))
+    return // keep the original `before`; just merge into ongoing edit
+  pendingByKey.set(k, {
+    slideNo: state.page.value,
+    kind,
+    before: state.capture(),
+    capture: state.capture,
+  })
+}
+
+// Schedule an idle-commit for a pending edit. Called from the position watcher in
+// useDragElement on every change. After COMMIT_DEBOUNCE_MS of quiescence, capture `after`
+// and POST.
+export function bumpEditCommit(state: RegisteredState): void {
+  const k = regKey(state.page.value, state.dragId)
+  if (!pendingByKey.has(k))
+    return
+  const t = debounceTimers.get(k)
+  if (t)
+    clearTimeout(t)
+  debounceTimers.set(k, setTimeout(() => commitEdit(state), COMMIT_DEBOUNCE_MS))
+}
+
+// Force-commit a pending edit immediately (e.g. before navigating, before undo).
+export async function commitEdit(state: RegisteredState): Promise<void> {
+  const k = regKey(state.page.value, state.dragId)
+  const pending = pendingByKey.get(k)
+  if (!pending)
+    return
+  clearPending(pending.slideNo, state.dragId)
+  const after = pending.capture()
+  await postEdit(pending.slideNo, pending.kind, [{ dragId: state.dragId, before: pending.before, after }])
+}
+
+// Drop a pending edit without POSTing (abort path).
+export function discardEdit(state: RegisteredState): void {
+  clearPending(state.page.value, state.dragId)
+}
+
+// One-shot atomic edits where both `before` and `after` are known up front (e.g. z-order
+// reordering). No debounce, no pending state.
+export async function pushEdit(slideNo: number, kind: EditKind, dragId: string, before: ElementSnapshot, after: ElementSnapshot): Promise<void> {
+  await postEdit(slideNo, kind, [{ dragId, before, after }])
+}
+
+// Multi-element atomic edit. `items` carries before+after for each element.
+export async function pushGroupEdit(slideNo: number, kind: EditKind, items: Array<{ dragId: string, before: ElementSnapshot, after: ElementSnapshot }>): Promise<void> {
   if (items.length === 0)
     return
-  undoStack.value.push({ ts: Date.now(), slideNo, kind, items })
-  redoStack.value = []
-  trim()
+  await postEdit(slideNo, kind, items.map(i => ({ dragId: i.dragId, before: i.before, after: i.after })))
 }
 
-// Pop the top undo entry without applying or pushing to redo, but only if it matches the
-// given (slideNo, dragIds) — `dragIds` is one element for a single-edit, or N for a group.
-// Used by abort paths so a pinch- or cancel-aborted drag never shows up in undo/redo.
+// Like pushEdit but for callers that have only `before` and rely on the registry's live
+// state to capture `after` immediately. Used by callers that change values then call this
+// (e.g. zorder buttons in DragControl).
+export async function pushEditNow(slideNo: number, kind: EditKind, dragId: string, before: ElementSnapshot): Promise<void> {
+  const state = registry.get(regKey(slideNo, dragId))
+  if (!state)
+    return
+  await pushEdit(slideNo, kind, dragId, before, state.capture())
+}
+
+export async function pushGroupEditNow(slideNo: number, kind: EditKind, items: Array<{ dragId: string, before: ElementSnapshot }>): Promise<void> {
+  const filled: Array<{ dragId: string, before: ElementSnapshot, after: ElementSnapshot }> = []
+  for (const it of items) {
+    const state = registry.get(regKey(slideNo, it.dragId))
+    if (!state)
+      continue
+    filled.push({ ...it, after: state.capture() })
+  }
+  await pushGroupEdit(slideNo, kind, filled)
+}
+
+// Discard the topmost pending edits matching this set of drag ids (abort path for
+// in-flight drags that may have already crossed the threshold).
 export function discardTopMatching(slideNo: number, dragIds: string[]): boolean {
-  const top = undoStack.value[undoStack.value.length - 1]
-  if (!top)
-    return false
-  if (top.slideNo !== slideNo || top.items.length !== dragIds.length)
-    return false
-  const topIds = new Set(top.items.map(it => it.dragId))
-  if (!dragIds.every(id => topIds.has(id)))
-    return false
-  undoStack.value.pop()
+  for (const id of dragIds)
+    clearPending(slideNo, id)
   return true
 }
 
@@ -119,61 +236,73 @@ async function ensureSlide(slideNo: number): Promise<void> {
   if (currentSlideNo.value === slideNo)
     return
   go(slideNo)
-  // Wait for the route change to propagate and for new elements to mount + register.
-  await nextTick()
-  await new Promise(r => setTimeout(r, 50))
+  await new Promise(r => setTimeout(r, 80))
 }
 
-async function applyEntry(entry: EditEntry): Promise<EditEntry | null> {
-  await ensureSlide(entry.slideNo)
-  const inverseItems: EditEntry['items'] = []
-  for (const item of entry.items) {
-    const state = registry.get(regKey(entry.slideNo, item.dragId))
-    if (!state)
+function applyAffected(items: AffectedItem[]): void {
+  for (const it of items) {
+    if (it.state === null)
       continue
-    inverseItems.push({ dragId: item.dragId, before: state.capture() })
-    state.apply(item.before)
+    const state = registry.get(regKey(it.slideNo, it.dragId))
+    if (state)
+      state.apply(it.state)
   }
-  if (inverseItems.length === 0)
-    return null
-  return { ts: Date.now(), slideNo: entry.slideNo, kind: entry.kind, items: inverseItems }
 }
 
 export async function undo(): Promise<void> {
-  const entry = undoStack.value[undoStack.value.length - 1]
-  if (!entry)
+  const target = topActiveEvent.value
+  if (!target)
     return
-  undoStack.value.pop()
-  const inverse = await applyEntry(entry)
-  if (inverse) {
-    redoStack.value.push(inverse)
-    trim()
-  }
+  await ensureSlide(target.slideNo)
+  const resp = await fetch('/__slidev/state/undo', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: '{}',
+  })
+  const data = await resp.json() as { event: EditEvent | null, affected: AffectedItem[], topActiveEventId: number | null }
+  if (!data.event)
+    return
+  applyAffected(data.affected)
+  topActiveEventId.value = data.topActiveEventId
+  await fetchTopEvents()
 }
 
 export async function redo(): Promise<void> {
-  const entry = redoStack.value[redoStack.value.length - 1]
-  if (!entry)
+  const target = topRedoableEvent.value
+  if (!target)
     return
-  redoStack.value.pop()
-  const inverse = await applyEntry(entry)
-  if (inverse) {
-    undoStack.value.push(inverse)
-    trim()
-  }
+  await ensureSlide(target.slideNo)
+  const resp = await fetch('/__slidev/state/redo', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: '{}',
+  })
+  const data = await resp.json() as { event: EditEvent | null, affected: AffectedItem[], topActiveEventId: number | null }
+  if (!data.event)
+    return
+  applyAffected(data.affected)
+  topActiveEventId.value = data.topActiveEventId
+  await fetchTopEvents()
 }
 
-const KIND_LABEL: Record<EditKind, string> = {
+export async function commitToYaml(): Promise<{ committedEventId: number | null }> {
+  const resp = await fetch('/__slidev/state/commit-yaml', { method: 'POST' })
+  const data = await resp.json() as { committedEventId: number | null, dirty: boolean }
+  lastYamlCommitEventId.value = data.committedEventId
+  return data
+}
+
+const KIND_LABEL: Record<string, string> = {
   move: 'move',
   resize: 'resize',
   rotate: 'rotation',
   crop: 'crop',
   zorder: 'z-order change',
+  hydrate: 'hydrate',
+  restore: 'restore',
 }
 
-// Human-readable description of a stack-top entry, for tooltips like
-// "Undo move of demo-card-a on slide 3".
-export function describeEntry(entry: EditEntry | null): string {
+export function describeEntry(entry: EditEvent | null): string {
   if (!entry)
     return ''
   const what = KIND_LABEL[entry.kind] ?? entry.kind
@@ -182,8 +311,3 @@ export function describeEntry(entry: EditEntry | null): string {
     : `${entry.items.length} elements`
   return `${what} of ${target} on slide ${entry.slideNo}`
 }
-
-// Cross-tab sync: useLocalStorage already syncs on `storage` events, but it doesn't fire
-// reactivity for changes the same tab made elsewhere (e.g. via direct localStorage.setItem).
-// We don't need that here — same-tab writes go through this module's refs.
-void watch

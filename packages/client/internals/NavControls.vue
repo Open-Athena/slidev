@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import CustomNavControls from '#slidev/custom-nav-controls'
 import { computed, ref, shallowRef } from 'vue'
-import { describeEntry, canRedo as historyCanRedo, canUndo as historyCanUndo, redo as historyRedo, undo as historyUndo, topRedoEntry, topUndoEntry } from '../composables/useDragHistory'
+import { commitToYaml, describeEntry, canRedo as historyCanRedo, canUndo as historyCanUndo, isDirty as historyIsDirty, redo as historyRedo, undo as historyUndo, lastYamlCommitEventId, topActiveEventId, topRedoEntry, topUndoEntry } from '../composables/useDragHistory'
 import { useDrawings } from '../composables/useDrawings'
 import { useNav } from '../composables/useNav'
 import { configs } from '../env'
@@ -59,6 +59,21 @@ const redoTitle = computed(() => historyCanRedo.value
   ? `Redo ${describeEntry(topRedoEntry.value)} (⇧⌘Z)`
   : 'Nothing to redo')
 
+const commitTitle = computed(() => {
+  if (!historyIsDirty.value)
+    return `slides.coords.yaml is up to date${lastYamlCommitEventId.value ? ` (event ${lastYamlCommitEventId.value})` : ''}`
+  const top = topActiveEventId.value ?? 0
+  const last = lastYamlCommitEventId.value ?? 0
+  const n = Math.max(0, top - last)
+  return `Commit ${n} pending edit${n === 1 ? '' : 's'} to slides.coords.yaml`
+})
+
+async function onCommitClick() {
+  if (!historyIsDirty.value)
+    return
+  await commitToYaml()
+}
+
 const RecordingControls = shallowRef<any>()
 if (__SLIDEV_FEATURE_RECORD__)
   import('./RecordingControls.vue').then(v => RecordingControls.value = v.default)
@@ -89,6 +104,19 @@ if (__SLIDEV_FEATURE_RECORD__)
       </IconButton>
       <IconButton :class="{ disabled: !historyCanRedo }" :title="redoTitle" @click="historyRedo()">
         <div class="i-carbon:redo" />
+      </IconButton>
+      <IconButton
+        v-if="__DEV__ && __SLIDEV_FEATURE_EDITOR__"
+        :class="{ disabled: !historyIsDirty }"
+        :title="commitTitle"
+        class="relative"
+        @click="onCommitClick"
+      >
+        <div class="i-carbon:save" />
+        <div
+          v-if="historyIsDirty"
+          class="absolute top-0.5 right-0.5 w-1.5 h-1.5 rounded-full bg-orange-500"
+        />
       </IconButton>
       <IconButton
         v-if="!isColorSchemaConfigured"

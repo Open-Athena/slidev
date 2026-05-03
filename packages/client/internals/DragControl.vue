@@ -308,6 +308,9 @@ function onPointerup(ev: PointerEvent) {
   ev.stopPropagation()
 
   props.data.clearSnapLines()
+  // Force the pending edit's commit to fire now (rather than on the watcher's debounce),
+  // so the recorded `after` reflects the final size/position.
+  void props.data.commitSnapshot()
   currentDrag = null
 }
 
@@ -622,6 +625,7 @@ function getRotateProps() {
       ev.preventDefault()
       ev.stopPropagation()
       isRotating.value = false
+      void props.data.commitSnapshot()
       currentDrag = null
     },
     style: {
@@ -693,28 +697,32 @@ function openLink() {
 
 function resetAspectRatio() {
   props.data.saveSnapshot('resize')
-  // Reset to initial aspect ratio, keeping width constant
   height.value = width.value / initialAspectRatio
+  void props.data.commitSnapshot()
 }
 
 function bringForward() {
   props.data.saveSnapshot('zorder')
   zIndex.value += 1
+  void props.data.commitSnapshot()
 }
 
 function sendBackward() {
   props.data.saveSnapshot('zorder')
   zIndex.value = Math.max(1, zIndex.value - 1)
+  void props.data.commitSnapshot()
 }
 
 function bringToFront() {
   props.data.saveSnapshot('zorder')
   zIndex.value = 1000
+  void props.data.commitSnapshot()
 }
 
 function sendToBack() {
   props.data.saveSnapshot('zorder')
   zIndex.value = 1
+  void props.data.commitSnapshot()
 }
 
 // Undo/redo for this fork is handled by a deck-global stack with shortcuts and toolbar
@@ -1015,6 +1023,7 @@ function getCropHandleProps(handle: 'top' | 'right' | 'bottom' | 'left' | 'topLe
       ev.preventDefault()
       ev.stopPropagation()
       props.data.clearSnapLines()
+      void props.data.commitSnapshot()
       currentCropDrag = null
     },
     style: isCorner

@@ -3,6 +3,7 @@ import { useHead } from '@unhead/vue'
 import { computed, getCurrentInstance, reactive, ref, shallowRef, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { createFixedClicks } from '../composables/useClicks'
+import { hydrateFromServer } from '../composables/useDragHistory'
 import { useEmbeddedControl } from '../composables/useEmbeddedCtrl'
 import { useNav } from '../composables/useNav'
 import { usePrintStyles } from '../composables/usePrintStyles'
@@ -56,6 +57,12 @@ export default function setupRoot() {
 
   initSharedState(`${slidesTitle} - shared`)
   initDrawingState(`${slidesTitle} - drawings`)
+
+  // Cold-start fetch of drag-element state from the dev server's `state.db`. Resolves the
+  // singleton `historyInitialState`, which `useDragElement` watches to apply DB overrides
+  // onto live elements. Dev-only (the route 404s in the built deck).
+  if (__DEV__)
+    void hydrateFromServer()
 
   const id = `${location.origin}_${makeId()}`
   const syncType = computed(() => isPresenter.value ? 'presenter' : 'viewer')

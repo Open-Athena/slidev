@@ -11,22 +11,39 @@ import { injectionSlideScale } from '../constants'
 import { slideHeight, slideWidth } from '../env'
 import { magicKeys } from '../state'
 
+function captureSnap(el: DragElementState) {
+  return {
+    x0: el.x0.value,
+    y0: el.y0.value,
+    width: el.width.value,
+    height: el.height.value,
+    rotate: el.rotate.value,
+    zIndex: el.zIndex.value,
+    cropTop: el.cropTop.value,
+    cropRight: el.cropRight.value,
+    cropBottom: el.cropBottom.value,
+    cropLeft: el.cropLeft.value,
+  }
+}
+
 function captureGroupBefore(states: DragElementState[]) {
-  return states.map(el => ({
-    dragId: el.dragId,
-    before: {
-      x0: el.x0.value,
-      y0: el.y0.value,
-      width: el.width.value,
-      height: el.height.value,
-      rotate: el.rotate.value,
-      zIndex: el.zIndex.value,
-      cropTop: el.cropTop.value,
-      cropRight: el.cropRight.value,
-      cropBottom: el.cropBottom.value,
-      cropLeft: el.cropLeft.value,
-    },
-  }))
+  return states.map(el => ({ dragId: el.dragId, before: captureSnap(el) }))
+}
+
+// Capture both before+after at pointerup time, then push as one atomic group event so a
+// single Cmd+Z reverts the whole gesture.
+function flushGroupEdit(
+  kind: 'move' | 'rotate' | 'resize',
+  slideNo: number,
+  before: ReturnType<typeof captureGroupBefore>,
+  states: DragElementState[],
+) {
+  const items = before.map((it) => {
+    const el = states.find(s => s.dragId === it.dragId)
+    return el ? { dragId: it.dragId, before: it.before, after: captureSnap(el) } : null
+  }).filter(Boolean) as Array<{ dragId: string, before: ReturnType<typeof captureSnap>, after: ReturnType<typeof captureSnap> }>
+  if (items.length > 0)
+    void pushGroupEdit(slideNo, kind, items)
 }
 
 // Reactive props computed from selection
@@ -69,6 +86,10 @@ let currentDrag: {
     height: number
     rotate: number
   }>
+  // Captured at gesture start; used to build the (before, after) atomic event at pointerup.
+  pendingGroupBefore: ReturnType<typeof captureGroupBefore>
+  pendingGroupKind: 'move' | 'rotate' | 'resize'
+  pendingSlideNo: number
 } | null = null
 
 function onPointerdown(ev: PointerEvent) {
@@ -78,10 +99,12 @@ function onPointerdown(ev: PointerEvent) {
   ev.preventDefault()
   ev.stopPropagation()
 
-  // Save one atomic group snapshot so a single Cmd+Z reverts the whole move.
   const slideNo = selectedElements.value[0]?.page.value
-  if (slideNo != null)
-    pushGroupEdit(slideNo, 'move', captureGroupBefore(selectedElements.value))
+  if (slideNo == null)
+    return
+  // Capture before-snapshots now; the actual atomic group event is pushed at pointerup
+  // with both before+after so the server-side event log is self-contained.
+  const pendingGroupBefore = captureGroupBefore(selectedElements.value)
 
   const elementSnapshots = new Map<DragElementState, { x0: number, y0: number, width: number, height: number, rotate: number }>()
   for (const el of selectedElements.value) {
@@ -112,6 +135,9 @@ function onPointerdown(ev: PointerEvent) {
       y: bounds.value.centerY,
     }),
     elementSnapshots,
+    pendingGroupBefore,
+    pendingGroupKind: 'move',
+    pendingSlideNo: slideNo,
   }
 
   ;(ev.currentTarget as HTMLElement).setPointerCapture(ev.pointerId)
@@ -200,6 +226,12 @@ function onPointerup(ev: PointerEvent) {
   ev.preventDefault()
   ev.stopPropagation()
 
+  flushGroupEdit(
+    currentDrag.pendingGroupKind,
+    currentDrag.pendingSlideNo,
+    currentDrag.pendingGroupBefore,
+    selectedElements.value,
+  )
   activeSnapLines.value = { x: [], y: [] }
   currentDrag = null
 }
@@ -243,10 +275,11 @@ function getRotateProps() {
       ev.preventDefault()
       ev.stopPropagation()
 
-      // Save one atomic group snapshot so a single Cmd+Z reverts the whole rotate.
       const slideNo = selectedElements.value[0]?.page.value
-      if (slideNo != null)
-        pushGroupEdit(slideNo, 'rotate', captureGroupBefore(selectedElements.value))
+      if (slideNo == null)
+        return
+      // Capture before; flush as a single (before, after) atomic event at pointerup.
+      const pendingGroupBefore = captureGroupBefore(selectedElements.value)
 
       const elementSnapshots = new Map<DragElementState, { x0: number, y0: number, width: number, height: number, rotate: number }>()
       for (const el of selectedElements.value) {
@@ -284,6 +317,9 @@ function getRotateProps() {
           y: bounds.value.centerY,
         }),
         elementSnapshots,
+        pendingGroupBefore,
+        pendingGroupKind: 'rotate',
+        pendingSlideNo: slideNo,
       }
 
       ;(ev.currentTarget as HTMLElement).setPointerCapture(ev.pointerId)
@@ -331,6 +367,12 @@ function getRotateProps() {
       ev.preventDefault()
       ev.stopPropagation()
       isRotating.value = false
+      flushGroupEdit(
+        currentDrag.pendingGroupKind,
+        currentDrag.pendingSlideNo,
+        currentDrag.pendingGroupBefore,
+        selectedElements.value,
+      )
       currentDrag = null
     },
     style: {

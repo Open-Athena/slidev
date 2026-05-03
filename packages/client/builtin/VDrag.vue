@@ -128,6 +128,11 @@ function handlePointerup(ev: PointerEvent) {
     return
   const target = ev.currentTarget as HTMLElement
   target.releasePointerCapture?.(ev.pointerId)
+  // Force-commit any pending edit so the recorded `after` reflects the final pointer
+  // position rather than waiting on the watcher's debounce (which would race with the
+  // next interaction).
+  if (drag.snapshotSaved)
+    void state.commitSnapshot()
   state.clearSnapLines()
   drag = null
 }

@@ -3,7 +3,7 @@ import type { DragElementState } from '../composables/useDragElements'
 import { watch } from 'vue'
 import { activeTouchCount } from '../composables/useActiveTouches'
 import { useDragElement } from '../composables/useDragElements'
-import { discardTopMatching, pushEdit, pushGroupEdit } from '../composables/useDragHistory'
+import { pushEdit, pushGroupEdit } from '../composables/useDragHistory'
 import { addToSelection, getSelectedElements, isSelected, removeFromSelection } from '../composables/useMultiSelect'
 import { isPinchOrPan } from '../composables/usePinchZoomPan'
 
@@ -16,6 +16,21 @@ function snapshotFromStart(s: DragElementState, sp: { x0: number, y0: number }) 
   return {
     x0: sp.x0,
     y0: sp.y0,
+    width: s.width.value,
+    height: s.height.value,
+    rotate: s.rotate.value,
+    zIndex: s.zIndex.value,
+    cropTop: s.cropTop.value,
+    cropRight: s.cropRight.value,
+    cropBottom: s.cropBottom.value,
+    cropLeft: s.cropLeft.value,
+  }
+}
+
+function captureCurrent(s: DragElementState) {
+  return {
+    x0: s.x0.value,
+    y0: s.y0.value,
     width: s.width.value,
     height: s.height.value,
     rotate: s.rotate.value,
@@ -106,25 +121,14 @@ export function createVDragDirective() {
               y0: s.y0.value,
             }))
 
-            // Defer saving snapshots and writing positions until the pointer crosses the
-            // jitter threshold; otherwise a tap (or a tap that turns into a pinch) would
-            // both pollute undo history and visibly nudge the element.
+            // Defer writing positions until the pointer crosses the jitter threshold;
+            // otherwise a tap (or a tap that turns into a pinch) would visibly nudge the
+            // element. The actual server POST happens at pointerup with both `before` and
+            // `after`, so abort just rewinds positions — nothing's been recorded yet.
             let committed = false
             let aborted = false
 
             function commit() {
-              if (committed)
-                return
-              const slideNo = state.page.value
-              if (selectedElements.length === 1) {
-                pushEdit(slideNo, 'move', state.dragId, snapshotFromStart(state, startPositions[0]))
-              }
-              else {
-                pushGroupEdit(slideNo, 'move', selectedElements.map((s) => {
-                  const sp = startPositions.find(p => p.state === s)!
-                  return { dragId: s.dragId, before: snapshotFromStart(s, sp) }
-                }))
-              }
               committed = true
             }
 
@@ -133,10 +137,6 @@ export function createVDragDirective() {
                 return
               aborted = true
               if (committed) {
-                // Pop the (possibly group) entry we pushed on commit, then restore each
-                // element to its pre-drag position. The pop has to happen via the global
-                // history API (not per-element) because group commits push one atomic entry.
-                discardTopMatching(state.page.value, selectedElements.map(s => s.dragId))
                 for (const { state: s, x0, y0 } of startPositions) {
                   s.x0.value = x0
                   s.y0.value = y0
@@ -145,6 +145,35 @@ export function createVDragDirective() {
               state.clearSnapLines()
               document.removeEventListener('pointermove', handlePointermove)
               document.removeEventListener('pointerup', handlePointerup)
+            }
+
+            function flushEdit() {
+              if (!committed || aborted)
+                return
+              const slideNo = state.page.value
+              if (selectedElements.length === 1) {
+                void pushEdit(
+                  slideNo,
+                  'move',
+                  state.dragId,
+                  snapshotFromStart(state, startPositions[0]),
+                  captureCurrent(state),
+                )
+              }
+              else {
+                void pushGroupEdit(
+                  slideNo,
+                  'move',
+                  selectedElements.map((s) => {
+                    const sp = startPositions.find(p => p.state === s)!
+                    return {
+                      dragId: s.dragId,
+                      before: snapshotFromStart(s, sp),
+                      after: captureCurrent(s),
+                    }
+                  }),
+                )
+              }
             }
 
             function handlePointermove(moveEv: PointerEvent) {
@@ -202,6 +231,7 @@ export function createVDragDirective() {
             function handlePointerup(upEv: PointerEvent) {
               if (upEv.pointerId !== pointerId)
                 return
+              flushEdit()
               state.clearSnapLines()
               document.removeEventListener('pointermove', handlePointermove)
               document.removeEventListener('pointerup', handlePointerup)

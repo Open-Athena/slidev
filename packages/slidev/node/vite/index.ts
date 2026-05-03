@@ -16,6 +16,7 @@ import { createMonacoWriterPlugin } from './monacoWrite'
 import { createPatchMonacoSourceMapPlugin } from './patchMonacoSourceMap'
 import { createRemoteAssetsPlugin } from './remoteAssets'
 import { createServerRefPlugin } from './serverRef'
+import { createStatePlugin } from './state'
 import { createStaticCopyPlugin } from './staticCopy'
 import { createUnocssPlugin } from './unocss'
 import { createUploadPlugin } from './upload'
@@ -29,6 +30,7 @@ export function ViteSlidevPlugin(
   return Promise.all([
     createSlidesLoader(options, serverOptions),
     createUploadPlugin(options),
+    createStatePlugin(options),
     createMarkdownPlugin(options, pluginOptions),
     createLayoutWrapperPlugin(options),
     createContextInjectionPlugin(),

@@ -2,7 +2,13 @@
 
 The single `slides.md` file is mixing two very different kinds of data — markdown an author hand-edits and machine-managed state (drag positions, crop, z-order, future history). That mixing is the root of three pain points: IDE-autosave-vs-server-edit races, opaque diffs full of `dragPos: 459,35,260,400,0,1000` lines, and a fragile "edit history lives in `sessionStorage`" undo experience that disappears with the tab. This spec scopes a staged migration toward more durable, less brittle state storage.
 
-## Status: stage 1 shipped
+## Status
+
+- **Stage 1 (coords sidecar file)** — shipped (notes below).
+- **Stage 2 (per-slide source files)** — deferred indefinitely. Stage 1 alone resolved the IDE-autosave-vs-server-write race for `dragPos`, which was the most felt pain. The diff-noise + per-author conflict cases are real but not yet biting; revisit if they do.
+- **Stage 3 (SQLite event-sourced state)** — actively in progress; redesigned around an event log (see below). Skipping Stage 2 because the DB is what unlocks the next set of UX wins (cross-session undo, commit semantics, version-history drawer) and per-slide files don't compose with the DB the way they compose with the YAML sidecar.
+
+### Stage 1 notes (shipped)
 
 Stage 1 (coords in a separate file) is implemented as `<userRoot>/slides.coords.yaml`. Notes on what shipped:
 
@@ -114,68 +120,112 @@ Slug-only with an explicit manifest is more git-friendly (a reorder is a 1-line 
 - New decks scaffolded by `slidev create` use the split format.
 - `slidev split-slides` CLI splits a monolithic `slides.md` into per-slide files.
 
-### 3. SQLite-backed deck state (big, ships when 1+2 prove valuable)
+### 3. SQLite-backed event-sourced state (next)
 
-Introduce a Git-untracked `.slidev/state.db` (SQLite via `better-sqlite3` or similar) that the dev server owns and the browser talks to via a thin API. Holds:
+Introduce `<userRoot>/.slidev/state.db` (SQLite via `better-sqlite3`) — gitignored, sibling to the existing `og-cache/`. The dev server owns it; browser clients talk to it via a thin REST API on the existing dev-middleware.
 
-- **Per-element drag state** (current values; "live" version of what `slides.coords.yaml` stores at rest).
-- **Per-element history**: every change appended with `{ ts, user, snapshot }`. Undo/redo crosses tab/session/refresh boundaries. Old snapshots GC'd by age + count.
-- **Pending vs committed state**: drag immediately writes to "pending"; an explicit "commit" (button or shortcut) flushes pending → `slides.coords.yaml` and clears the pending queue. `slides.coords.yaml` becomes the durable, Git-tracked snapshot; `.db` is the working scratchpad.
-- **Snapshot/restore**: `slidev state snapshot --label "before redesign"` saves a labeled point; `slidev state restore <label>` rolls back. Cheap because the `.db` already has every change.
-- **Cross-deck shared state** (future): a global `~/.slidev/state.db` for things like recent decks, last-opened slide per deck, picker recents.
+**Model: event sourcing.** Two layers:
 
-Schema sketch:
+- **`events` is the source of truth** — append-only log of every drag/resize/crop/z-order/restore edit, each with `before` and `after` JSON payloads. Conceptually identical to the in-memory `EditEntry` shape we already have in `packages/client/composables/useDragHistory.ts` — replaces the localStorage stack entirely. Undo "undoes" by setting `undone_at`, not by deleting.
+- **`element_state` is a materialized view** — current values per element, derivable from `events` but kept in a table for O(1) slide-load reads. Updated atomically (same transaction) as each event INSERT.
+
+This is standard event sourcing — the right pattern for our case because edits are already discrete, named operations (the `EditKind` union: `'move' | 'resize' | 'rotate' | 'crop' | 'zorder'`), and a Google-Docs-style version-history picker falls out for free. SQLite's WAL mode handles single-writer/multi-reader cleanly; no need for `cr-sqlite` (CRDTs, multi-user) or `sqlite_session` (generic table-diffing) at this stage. Both remain forward-compatible upgrades if collaborative editing ever becomes a goal.
+
+#### Schema
 
 ```sql
+CREATE TABLE events (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  ts          INTEGER NOT NULL,                 -- ms since epoch
+  slide_no    INTEGER NOT NULL,
+  kind        TEXT NOT NULL,                    -- 'move' | 'resize' | 'rotate' | 'crop' | 'zorder' | 'restore' | 'hydrate'
+  payload     TEXT NOT NULL,                    -- JSON: {items:[{drag_id, before, after}]}
+  undone_at   INTEGER,                          -- nullable; non-null = logically reverted
+  label       TEXT                              -- nullable; named snapshot
+);
+CREATE INDEX events_by_slide_ts ON events(slide_no, ts);
+CREATE INDEX events_active      ON events(undone_at, ts);
+
 CREATE TABLE element_state (
-  slide_no INTEGER,
-  drag_id TEXT,
-  field TEXT,        -- 'x', 'y', 'w', 'h', 'rotate', 'z', 'cropTop', ...
-  value TEXT,
-  updated_at INTEGER,
-  PRIMARY KEY (slide_no, drag_id, field)
+  slide_no        INTEGER NOT NULL,
+  drag_id         TEXT NOT NULL,
+  state           TEXT NOT NULL,                -- JSON: {x0, y0, width, height, rotate, zIndex, lockAR?, crop?}
+  updated_at      INTEGER NOT NULL,
+  source_event_id INTEGER REFERENCES events(id),
+  PRIMARY KEY (slide_no, drag_id)
 );
 
-CREATE TABLE element_history (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  slide_no INTEGER,
-  drag_id TEXT,
-  snapshot TEXT,     -- JSON of full element state at that point
-  ts INTEGER,
-  source TEXT        -- 'drag', 'resize', 'crop', 'undo', 'restore', ...
+CREATE TABLE meta (
+  key   TEXT PRIMARY KEY,
+  value TEXT
 );
-
-CREATE TABLE labels (
-  name TEXT PRIMARY KEY,
-  ts INTEGER,
-  description TEXT
-);
+-- e.g. ('schema_version', '1'), ('last_yaml_commit_event_id', '<id>')
 ```
 
+#### Endpoints (extend existing `/__slidev/...` middleware)
+
+- `GET /__slidev/state` — full `element_state`, for cold-start client hydration. Returns `{ [slideNo]: { [dragId]: state } }`.
+- `POST /__slidev/state/edit` — body `{slideNo, kind, items:[{dragId, before, after}]}`. Inserts an event row + upserts `element_state` rows in one transaction; returns the new `eventId`. Replaces today's `dragPos`-frontmatter POST path.
+- `POST /__slidev/state/undo` and `/redo` — body `{eventId?}` (default = topmost active event for undo / topmost undone for redo). Toggles `undone_at`, recomputes affected `element_state` rows by replaying the active event chain for the involved `(slide_no, drag_id)` keys, returns the affected rows so the client can apply them in place.
+- `POST /__slidev/state/commit-yaml` — flushes the entire `element_state` to `slides.coords.yaml` (atomic rewrite, same path as today), updates `meta.last_yaml_commit_event_id`. Returns `{committed_event_id, dirty: false}`.
+- `GET /__slidev/state/events?slide=<n>&since=<id>&limit=<n>` — paged feed for the version-history drawer.
+
+#### Lifecycle
+
+**Cold-start hydration.** On dev-server boot, if `state.db` is empty (fresh clone or after `rm`), seed `element_state` from `slides.coords.yaml` (the existing loader already merges that file). Insert one synthetic `kind='hydrate'` event with `label='hydrate-from-yaml'` so the timeline shows a clear origin.
+
+**Drag → DB.** The client's existing edit pipeline (`useDragHistory.pushEdit` / `pushGroupEdit`) is repointed: instead of writing to localStorage, it `POST`s to `/__slidev/state/edit` and updates the in-memory store from the response. The localStorage stack goes away entirely (no more 200-entry cap, no TTL, no deck-scoped key).
+
+**Undo/redo.** The Cmd+Z / toolbar buttons issue `/__slidev/state/undo` and `/redo`. Cross-slide undo still works (the client's "navigate to slide first" wrapper stays).
+
+**Commit → YAML.** Drags **no longer** auto-write `slides.coords.yaml`. The YAML becomes a snapshot artifact, written only when the user (or an auto-flush rule) hits commit. `slides.coords.yaml` remains the portable, Git-trackable form.
+
+#### "Commit" UI
+
+- Add a new IconButton in `NavControls.vue` next to the existing Undo/Redo controls — hollow when DB matches YAML, filled with a dot when there are uncommitted edits. Tooltip: "Commit N edits to `slides.coords.yaml` (since last commit)".
+- Slash command alias for power users.
+- Optional auto-flush settings (off by default): "auto-commit on slide change", "auto-commit on idle (Ns)". Both implemented client-side as POSTs.
+- Initial implementation: manual only. Auto-flush options are a follow-up.
+
+#### Version-history drawer (the "Google Docs picker" analogue)
+
+A side panel listing events in reverse-chronological order, grouped by `kind` and a short summary derived from `payload` (e.g. "Moved 3 elements on slide 14 · 2 min ago"). Click an event → preview state-at-that-event in the slide canvas (read-only ghost overlay). "Restore to here" inserts a synthetic `kind='restore'` event whose `payload` snapshots the current `element_state` and `after`-snapshots the historical state — so the restore itself is undoable.
+
+This is **deferred to Stage 3b**; Stage 3a is the DB + endpoints + commit button, which is enough to get the persistence wins and the cross-session undo.
+
+#### Sub-phases
+
+- **3a (this PR)** — schema, dev-middleware endpoints, client hydration, repoint history pipeline at the DB, "commit" button. localStorage history removed. Deck behavior is a strict superset of today (drag still works; undo now persists; YAML only written on commit).
+- **3b** — version-history drawer UI.
+- **3c** — `slidev state snapshot --label "before redesign"` and `slidev state restore <label>` CLIs (uses `events.label`).
+
 #### Benefits
-- Undo/redo persists across tabs, sessions, restarts.
-- "Commit" semantics decouple in-progress experimentation from the source-controlled state.
-- Easy snapshot/restore — a real safety net for big layout changes.
-- Server is the single source of truth for live state; eliminates IDE vs. server races on `slides.coords.yaml` (the file is only written on commit).
-- Future telemetry/analytics (e.g., "which slides did I rewrite most often") cheap to add.
+- Undo/redo persists across tabs, sessions, restarts, machine reboots.
+- "Commit" semantics decouple in-progress experimentation from the source-controlled state — no more accidental "I dragged five things, committed the file, then realized that was a worse layout" regret.
+- Easy snapshot/restore via labeled events — a real safety net for big layout changes.
+- Server is the sole writer of `slides.coords.yaml`, only at commit time → IDE-vs-server races on the YAML disappear.
+- Drawer falls out of the schema for free; no extra tables.
 
 #### Costs
-- Real persistence layer to design, migrate, and version.
-- A real API surface (REST or RPC over the existing dev-middleware) — needs care around concurrent clients.
-- More moving parts when something goes wrong: now the source of truth depends on a `.db` that the user can't directly read/edit.
+- Real persistence layer to design, migrate, and version (a `meta.schema_version` row + a small migration runner).
+- New API surface, with multi-tab considerations (see open questions).
+- One more file in `.slidev/` to be aware of when something looks weird; failure mode is "delete `state.db`, redrag the affected slide, recommit".
+- Net code: removes the localStorage history module, adds a server-side state module + endpoints + a small client store.
 
 #### Open questions
-- Do we ever need the `.db` to be portable across machines (e.g., share-by-SSH'ing the deck)? Probably no — state.db is a working scratchpad; commit it to the YAML if you want it portable.
-- How does this interact with multiple browser tabs open on the same deck? Server-side state means they stay in sync; need to think about pending/commit semantics in that case.
-- Do we expose the history through a UI (e.g., a sidebar timeline)? Out of initial scope, but the data model supports it.
+- **Multiple tabs on the same deck.** The DB is server-owned, so reads stay in sync, but a write from tab A doesn't push to tab B. v1: poll-on-focus, or skip and accept "last writer wins per element" until WS lands. Probably fine because users rarely have two tabs on the same deck open.
+- **Event-log growth.** Append-only; KB-scale per deck even after months of editing. Add periodic compaction events that supersede prior history if it ever feels heavy. Not a v1 concern.
+- **Restore semantics.** Restore inserts a new event rather than truncating history → linear timeline, cleaner mental model. Tradeoff: restoring repeatedly produces clutter. Acceptable for v1.
+- **Cross-deck shared state.** A global `~/.slidev/state.db` for "recent decks", picker history, etc. — out of Stage 3 scope.
+- **Portability.** The `.db` is gitignored scratch; `slides.coords.yaml` remains the portable form. If the user wants to share their working state, they commit. No need to ever version `state.db`.
 
 ## Suggested staging
 
-1. **Now** — Land #1 (coords in `slides.coords.yaml`). Smallest user-visible change, eliminates the most-felt pain point (autosave races + diff noise).
-2. **Next** — Land #2 (per-slide files), with the migration CLI and the manifest format. Most of the parser work for splitting falls out of having #1 already in place (coords already external).
-3. **After 1+2 settle** — Evaluate #3 against the lived experience. By then we'll know whether the file-based approach is enough or whether the lack of "commit" + cross-session undo is biting hard enough to justify a real DB.
+1. **Shipped** — #1 (coords in `slides.coords.yaml`). Eliminated the most-felt pain (autosave races + diff noise).
+2. **Skipping for now** — #2 (per-slide files). Reconsider only if diff size or multi-author conflicts start hurting.
+3. **In progress** — #3 (event-sourced DB). Sub-phases 3a → 3b → 3c above.
 
-Each step is reversible: #1 can be undone by re-merging the YAML back into frontmatter; #2 by concatenating per-slide files. #3 is the only one with real lock-in, which is part of why it's last.
+Each step is reversible: #1 by re-merging the YAML back into frontmatter; #2 (if ever shipped) by concatenating per-slide files; #3 by exporting `state.db` to YAML, deleting the DB, and reverting the client to the localStorage path. #3 has the most lock-in, which is part of why it lands incrementally and ships behind a feature flag during 3a.
 
 ## Adjacent ideas / non-goals
 

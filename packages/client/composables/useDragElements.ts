@@ -1,14 +1,26 @@
-import type { SlidePatch } from '@slidev/types'
 import type { CSSProperties, DirectiveBinding, InjectionKey, WatchStopHandle } from 'vue'
 import type { EditKind, ElementSnapshot, RegisteredState } from './useDragHistory'
-import { debounce, ensureSuffix } from '@antfu/utils'
 import { injectLocal, useWindowFocus } from '@vueuse/core'
 import { computed, ref, watch } from 'vue'
 import { injectionCurrentPage, injectionFrontmatter, injectionRenderContext, injectionSlideElement, injectionSlideScale, injectionSlideZoom } from '../constants'
 import { slideHeight, slideWidth } from '../env'
 import { makeId } from '../logic/utils'
 import { directiveInject } from '../utils'
-import { discardTopMatching, canRedo as historyCanRedo, canUndo as historyCanUndo, redo as historyRedo, undo as historyUndo, pushEdit, registerHistoryState, unregisterHistoryState } from './useDragHistory'
+import {
+  discardTopMatching,
+  beginEdit as historyBeginEdit,
+  bumpEditCommit as historyBumpEdit,
+  canRedo as historyCanRedo,
+  canUndo as historyCanUndo,
+  commitEdit as historyCommitEdit,
+  discardEdit as historyDiscardEdit,
+  initialState as historyInitialState,
+  pushEditNow as historyPushEditNow,
+  redo as historyRedo,
+  undo as historyUndo,
+  registerHistoryState,
+  unregisterHistoryState,
+} from './useDragHistory'
 import { clearSelection, isSelected, removeFromSelection, selectElement } from './useMultiSelect'
 import { useNav } from './useNav'
 import { useSlideBounds } from './useSlideBounds'
@@ -137,89 +149,23 @@ export function useDragElementsUpdater(no: number) {
   if (map[no])
     return map[no]
 
-  const { info, update } = useDynamicSlideInfo(no)
+  const { info } = useDynamicSlideInfo(no)
 
-  let newPatch: SlidePatch | null = null
-  async function save() {
-    if (newPatch) {
-      await update({
-        ...newPatch,
-        skipHmr: true,
-      })
-      newPatch = null
-    }
-  }
-  const debouncedSave = debounce(500, save)
-
-  return map[no] = (id, posStr, type, markdownSource) => {
+  return map[no] = (id, posStr, type) => {
     if (!info.value)
       return
 
+    // Persistence routes through `useDragHistory` → `/__slidev/state/edit` regardless of the
+    // element's data source. We keep the local reactive copy in sync for `frontmatter` so
+    // any code reading `frontmatter.dragPos[id]` (e.g. element re-mount) sees the latest.
+    // For inline `<v-drag pos="...">` declarations, the markdown stays as-authored; DB
+    // overrides at runtime, and `commit-yaml` flushes overrides into `slides.coords.yaml`.
     if (type === 'frontmatter') {
       const frontmatter = info.value.frontmatter
       frontmatter.dragPos ||= {}
-      if (frontmatter.dragPos[id] === posStr)
-        return
-      frontmatter.dragPos[id] = posStr
-      newPatch = {
-        frontmatter: {
-          dragPos: frontmatter.dragPos,
-        },
-      }
+      if (frontmatter.dragPos[id] !== posStr)
+        frontmatter.dragPos[id] = posStr
     }
-    else {
-      if (!markdownSource)
-        throw new Error(`[Slidev] VDrag Element ${id} is missing markdown source`)
-
-      const [startLine, endLine, idx] = markdownSource
-      const lines = info.value.content.split(/\r?\n/g)
-
-      let section = lines.slice(startLine, endLine).join('\n')
-      let replaced = false
-
-      section = type === 'prop'
-      // eslint-disable-next-line regexp/no-super-linear-backtracking
-        ? section.replace(/<(v-?drag-?\w*)(.*?)(\/)?>/gi, (full, tag, attrs, selfClose = '', index) => {
-            if (index === idx) {
-              replaced = true
-              const posMatch = attrs.match(/pos=".*?"/)
-              if (!posMatch)
-                return `<${tag}${ensureSuffix(' ', attrs)}pos="${posStr}"${selfClose}>`
-              const start = posMatch.index
-              const end = start + posMatch[0].length
-              return `<${tag}${attrs.slice(0, start)}pos="${posStr}"${attrs.slice(end)}${selfClose}>`
-            }
-            return full
-          })
-        : section.replace(/(?<![</\w])v-drag(?:=".*?")?/gi, (full, index) => {
-            if (index === idx) {
-              replaced = true
-              return `v-drag="${posStr}"`
-            }
-            return full
-          })
-
-      if (!replaced)
-        throw new Error(`[Slidev] VDrag Element ${id} is not found in the markdown source`)
-
-      lines.splice(
-        startLine,
-        endLine - startLine,
-        section,
-      )
-
-      const newContent = lines.join('\n')
-      if (info.value.content === newContent)
-        return
-      newPatch = {
-        content: newContent,
-      }
-      info.value = {
-        ...info.value,
-        content: newContent,
-      }
-    }
-    debouncedSave()
   }
 }
 
@@ -370,38 +316,6 @@ export function useDragElement(directive: DirectiveBinding | null, posRaw?: stri
     ),
   )
 
-  watchStopHandles.push(
-    watch(
-      [x0, y0, width, height, rotate, zIndex, cropTop, cropRight, cropBottom, cropLeft],
-      ([x0, y0, w, h, r, z, cTop, cRight, cBottom, cLeft]) => {
-        let posStr = [x0 - w / 2, y0 - h / 2, w].map(Math.round).join()
-        if (autoHeight)
-          posStr += dataSource === 'directive' ? ',NaN' : ',_'
-        else
-          posStr += `,${Math.round(h)}`
-
-        // Add rotate if non-zero, or if we need subsequent values
-        const hasCrop = cTop !== 0 || cRight !== 0 || cBottom !== 0 || cLeft !== 0
-        const hasZIndex = z !== 100
-        if (Math.round(r) !== 0 || hasZIndex || hasCrop)
-          posStr += `,${Math.round(r)}`
-
-        // Add zIndex if non-default, or if we need crop values
-        if (hasZIndex || hasCrop)
-          posStr += `,${Math.round(z)}`
-
-        // Add crop values if any are non-zero
-        if (hasCrop)
-          posStr += `,${Math.round(cTop)},${Math.round(cRight)},${Math.round(cBottom)},${Math.round(cLeft)}`
-
-        if (dataSource === 'directive')
-          posStr = `[${posStr}]`
-
-        updater.value(dragId, posStr, dataSource, markdownSource)
-      },
-    ),
-  )
-
   // Undo/redo history is managed globally per-deck (`useDragHistory`); each element exposes
   // its current state through the registered capture/apply hooks below.
   function getCurrentSnapshot(): ElementSnapshot {
@@ -438,6 +352,42 @@ export function useDragElement(directive: DirectiveBinding | null, posRaw?: stri
     capture: getCurrentSnapshot,
     apply: applySnapshot,
   }
+
+  watchStopHandles.push(
+    watch(
+      [x0, y0, width, height, rotate, zIndex, cropTop, cropRight, cropBottom, cropLeft],
+      ([x0, y0, w, h, r, z, cTop, cRight, cBottom, cLeft]) => {
+        let posStr = [x0 - w / 2, y0 - h / 2, w].map(Math.round).join()
+        if (autoHeight)
+          posStr += dataSource === 'directive' ? ',NaN' : ',_'
+        else
+          posStr += `,${Math.round(h)}`
+
+        // Add rotate if non-zero, or if we need subsequent values
+        const hasCrop = cTop !== 0 || cRight !== 0 || cBottom !== 0 || cLeft !== 0
+        const hasZIndex = z !== 100
+        if (Math.round(r) !== 0 || hasZIndex || hasCrop)
+          posStr += `,${Math.round(r)}`
+
+        // Add zIndex if non-default, or if we need crop values
+        if (hasZIndex || hasCrop)
+          posStr += `,${Math.round(z)}`
+
+        // Add crop values if any are non-zero
+        if (hasCrop)
+          posStr += `,${Math.round(cTop)},${Math.round(cRight)},${Math.round(cBottom)},${Math.round(cLeft)}`
+
+        if (dataSource === 'directive')
+          posStr = `[${posStr}]`
+
+        updater.value(dragId, posStr, dataSource, markdownSource)
+        // Bump any pending edit's commit debounce — `historyState.bumpEditCommit` is a no-op
+        // unless `beginEdit` was called for this element. The debounce coalesces continuous
+        // drags into a single event and captures the final `after` state at quiescence.
+        historyBumpEdit(historyState)
+      },
+    ),
+  )
 
   const activeSnapLines = ref<{ x: number[], y: number[] }>({ x: [], y: [] })
 
@@ -506,16 +456,29 @@ export function useDragElement(directive: DirectiveBinding | null, posRaw?: stri
     // Undo/redo: delegates to the deck-global stack in `useDragHistory`.
     canUndo: historyCanUndo,
     canRedo: historyCanRedo,
-    // Save current state as the "before" snapshot for the next edit. Pass `kind` to label the
-    // entry — used in tooltips and (later) per-kind filtering. Defaults to 'move' for body drags.
+    // Mark the start of an edit on this element. Captures the current value as `before` and
+    // marks a pending edit; the position watcher's `bumpEditCommit` debounces the commit.
+    // Pass `kind` to label the entry. Defaults to 'move' for body drags.
     saveSnapshot(kind: EditKind = 'move'): void {
-      pushEdit(page.value, kind, dragId, getCurrentSnapshot())
+      historyBeginEdit(historyState, kind)
     },
-    // Pop the last snapshot pushed by THIS state, without applying or polluting redo. Used by
-    // abort paths (pinch detected mid-drag, pointercancel) so a never-committed drag never
-    // appears in the global stack.
+    // Force-commit a pending edit immediately (e.g. on pointerup, before navigating). Captures
+    // the current state as `after` and POSTs to the server.
+    async commitSnapshot(): Promise<void> {
+      await historyCommitEdit(historyState)
+    },
+    // Drop a pending edit without POSTing. Used by abort paths (pinch detected mid-drag,
+    // pointercancel) so a never-committed drag never reaches the server.
     discardSnapshot(): void {
+      historyDiscardEdit(historyState)
+      // Belt-and-suspenders for any stale pending entries left over from earlier code paths.
       discardTopMatching(page.value, [dragId])
+    },
+    // One-shot atomic edit: capture `before` from `getCurrentSnapshot()`, then call this
+    // *after* mutating to record the new value as `after` in a single POST. Used by zorder
+    // and other instantaneous operations that don't have a "drag" lifecycle.
+    async pushAtomicEdit(kind: EditKind, before: ElementSnapshot): Promise<void> {
+      await historyPushEditNow(page.value, kind, dragId, before)
     },
     undo(): void {
       void historyUndo()
@@ -548,6 +511,20 @@ export function useDragElement(directive: DirectiveBinding | null, posRaw?: stri
       // Register with the deck-global history, so undo/redo can target this element by
       // (slideNo, dragId) even when it's mounted on a non-current slide.
       registerHistoryState(historyState)
+      // Apply DB hydration onto live state once the cold-start fetch lands. Initial mount
+      // uses the YAML-merged frontmatter.dragPos; this watcher snaps to DB state if it has
+      // diverged (e.g. user made edits since last YAML commit and reloaded the page).
+      watchStopHandles.push(
+        watch(
+          historyInitialState,
+          (snap) => {
+            const elState = snap?.[String(page.value)]?.[dragId]
+            if (elState)
+              applySnapshot(elState)
+          },
+          { immediate: true },
+        ),
+      )
       // Elements without dragPos stay in natural document flow until first click
       // (auto-positioned in startDragging)
     },
