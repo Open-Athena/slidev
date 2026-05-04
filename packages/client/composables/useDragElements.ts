@@ -487,6 +487,22 @@ export function useDragElement(directive: DirectiveBinding | null, posRaw?: stri
       void historyRedo()
     },
     mounted() {
+      // Apply DB hydration onto local position refs. This runs in *any* render context
+      // (slide / presenter / overview / print) — pure read-from-server, write-to-local with
+      // no interaction side-effects. Without this in overview context, the QuickOverview
+      // thumbnails render at the YAML-committed positions, which lag the live deck whenever
+      // the user has uncommitted edits in `state.db`.
+      watchStopHandles.push(
+        watch(
+          historyInitialState,
+          (snap) => {
+            const elState = snap?.[String(page.value)]?.[dragId]
+            if (elState)
+              applySnapshot(elState)
+          },
+          { immediate: true },
+        ),
+      )
       if (!enabled)
         return
       // Set data-drag-positioned so [data-drag-positioned] iframe CSS (width/height: 100%) applies.
@@ -511,20 +527,6 @@ export function useDragElement(directive: DirectiveBinding | null, posRaw?: stri
       // Register with the deck-global history, so undo/redo can target this element by
       // (slideNo, dragId) even when it's mounted on a non-current slide.
       registerHistoryState(historyState)
-      // Apply DB hydration onto live state once the cold-start fetch lands. Initial mount
-      // uses the YAML-merged frontmatter.dragPos; this watcher snaps to DB state if it has
-      // diverged (e.g. user made edits since last YAML commit and reloaded the page).
-      watchStopHandles.push(
-        watch(
-          historyInitialState,
-          (snap) => {
-            const elState = snap?.[String(page.value)]?.[dragId]
-            if (elState)
-              applySnapshot(elState)
-          },
-          { immediate: true },
-        ),
-      )
       // Elements without dragPos stay in natural document flow until first click
       // (auto-positioned in startDragging)
     },
