@@ -630,8 +630,6 @@ These are real `v-drag` wrappers — try them:
 <div v-drag="'demo-card-b'" class="rounded-lg shadow-lg flex items-center justify-center text-white text-2xl font-bold bg-purple-500">B</div>
 <div v-drag="'demo-card-c'" class="rounded-lg shadow-lg flex items-center justify-center text-white text-2xl font-bold bg-emerald-500">C</div>
 
-![drag-demo](https://sli.dev/logo-square.png)
-
 ---
 src: ./pages/imported-slides.md
 hide: false
