@@ -6,7 +6,7 @@ The single `slides.md` file is mixing two very different kinds of data — markd
 
 - **Stage 1 (coords sidecar file)** — shipped (notes below).
 - **Stage 2 (per-slide source files)** — deferred indefinitely. Stage 1 alone resolved the IDE-autosave-vs-server-write race for `dragPos`, which was the most felt pain. The diff-noise + per-author conflict cases are real but not yet biting; revisit if they do.
-- **Stage 3 (SQLite event-sourced state)** — actively in progress; redesigned around an event log (see below). Skipping Stage 2 because the DB is what unlocks the next set of UX wins (cross-session undo, commit semantics, version-history drawer) and per-slide files don't compose with the DB the way they compose with the YAML sidecar.
+- **Stage 3 (SQLite event-sourced state)** — Stages 3a, 3b, and live-sync (SSE) all shipped. 3c (label-based snapshot/restore CLI) deferred. See sub-phase notes below.
 
 ### Stage 1 notes (shipped)
 
@@ -197,7 +197,14 @@ This is **deferred to Stage 3b**; Stage 3a is the DB + endpoints + commit button
 
 - **3a (shipped)** — schema, dev-middleware endpoints, client hydration, repoint history pipeline at the DB, "commit" button. localStorage history removed. Deck behavior is a strict superset of today (drag still works; undo now persists; YAML only written on commit).
 - **3b (shipped)** — version-history drawer UI. Toolbar button toggles a right-side panel listing events DESC by id, grouped per-slide-filter; each event row shows kind icon, target dragId(s), slide #, relative time, and a `Restore` button. Click → `POST /__slidev/state/restore { eventId }` → server walks all non-abandoned events with `id <= eventId` for that slide in id order, replays their `after` snapshots, diffs against current `element_state`, and inserts a single `kind='restore'` event whose payload pairs `(before=current, after=historical)` per element. Restore is itself undoable. Active events highlighted; undone events are dimmed; abandoned events struck through. Last-YAML-commit watermark gets a bookmark icon.
-- **3c** — `slidev state snapshot --label "before redesign"` and `slidev state restore <label>` CLIs (uses `events.label`).
+- **3b polish (shipped)** — UX layer on top of the basic drawer:
+  - **Accordion grouping**: contiguous events sharing `(slideNo, kind, sorted dragIds)` collapse into one card with a `× N` count badge. Single-event "groups" still render flat. Group `Restore all` rolls back to the event immediately preceding the streak; per-event `Restore` is preserved inside the expanded view.
+  - **Per-event delta glyphs** (new `EventDelta.vue`): direction+magnitude arrow for moves, ↗/↙ + Δw×Δh for resize, ↻/↺ + ° for rotate, ↑/↓ + Δ for zorder, T/R/B/L initials for crop. Group headers show cumulative delta from `oldest.before` to `newest.after`. Multi-item events render `N items`.
+  - **Active-step highlight** carries through expanded groups: inner items get a `bg-primary` highlight + left-border accent on the topActive event; the group header stays highlighted whenever topActive is anywhere inside the streak.
+  - **Sans-serif drawer font** (overrides the seriph theme cascade), bigger arrow canvas (26 px box, full-diameter line through center).
+  - **Redo LIFO fix**: `topRedoableEventId` was using `MAX(id)` so after `undo(5), undo(4), undo(3)` redo would bring back #5 first instead of #3. Switched to `ORDER BY undone_at DESC, id ASC LIMIT 1`.
+- **3-live (shipped)** — multi-tab live sync via SSE. Server adds `GET /__slidev/state/stream` that broadcasts a `state-change` envelope (`{type, source, topActiveEventId, triggeringEventId}`) after every successful edit/undo/redo/restore/yaml-commit; subscribers tracked in a `Set`, heartbeat every 25 s, `retry: 5000` for client auto-reconnect. Client opens a singleton `EventSource` once at app boot (dev only). Self-origin dedup via `topActiveEventId` equality (yaml-commit bypasses, since it doesn't move topActive). Other messages tail-debounce 50 ms then call `syncFromServer()`: refetches `/state` + `/events`, reapplies each element's snapshot via the registry, **skips elements with a pending local edit** so it doesn't clobber an in-flight drag. Cross-tab pointerup-granular: an interactive drag in tab A propagates to tab B's element style + the drawer in tab B without reload. HMR-safe via `import.meta.hot.dispose(() => streamConnection?.close())`.
+- **3c (deferred)** — `slidev state snapshot --label "before redesign"` and `slidev state restore <label>` CLIs (uses `events.label`).
 
 #### Benefits
 - Undo/redo persists across tabs, sessions, restarts, machine reboots.
@@ -213,7 +220,7 @@ This is **deferred to Stage 3b**; Stage 3a is the DB + endpoints + commit button
 - Net code: removes the localStorage history module, adds a server-side state module + endpoints + a small client store.
 
 #### Open questions
-- **Multiple tabs on the same deck.** The DB is server-owned, so reads stay in sync, but a write from tab A doesn't push to tab B. v1: poll-on-focus, or skip and accept "last writer wins per element" until WS lands. Probably fine because users rarely have two tabs on the same deck open.
+- ~~**Multiple tabs on the same deck.**~~ Resolved by the SSE channel above. Tab A's pointerup-granular edits propagate to tab B without reload; self-origin dedup keeps the originating tab from re-fetching its own broadcast. Only remaining gap is in-flight drag (no per-pointermove broadcast); pointerup-granular is acceptable for v1.
 - **Event-log growth.** Append-only; KB-scale per deck even after months of editing. Add periodic compaction events that supersede prior history if it ever feels heavy. Not a v1 concern.
 - **Restore semantics.** Restore inserts a new event rather than truncating history → linear timeline, cleaner mental model. Tradeoff: restoring repeatedly produces clutter. Acceptable for v1.
 - **Cross-deck shared state.** A global `~/.slidev/state.db` for "recent decks", picker history, etc. — out of Stage 3 scope.
