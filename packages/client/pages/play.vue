@@ -65,10 +65,13 @@ const persistNav = computed(() => isScreenVertical.value || showEditor.value)
 
 const SideEditor = shallowRef<any>()
 const HistoryDrawer = shallowRef<any>()
-if (__DEV__ && __SLIDEV_FEATURE_EDITOR__) {
+// SideEditor writes back to slides.md source — only useful in dev mode.
+if (__DEV__ && __SLIDEV_FEATURE_EDITOR__)
   import('../internals/SideEditor.vue').then(v => SideEditor.value = v.default)
-  import('../internals/HistoryDrawer.vue').then(v => HistoryDrawer.value = v.default)
-}
+// HistoryDrawer reads/writes through the IStateClient abstraction (RemoteStateClient in
+// dev, LocalStateClient in static deploys), so it's useful in either mode — load it
+// always.
+import('../internals/HistoryDrawer.vue').then(v => HistoryDrawer.value = v.default)
 
 const contentStyle = computed(() => {
   let filter = ''

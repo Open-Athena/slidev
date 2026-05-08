@@ -119,7 +119,6 @@ if (__SLIDEV_FEATURE_RECORD__)
         />
       </IconButton>
       <IconButton
-        v-if="__DEV__ && __SLIDEV_FEATURE_EDITOR__"
         :title="showHistoryDrawer ? 'Hide edit history' : 'Show edit history'"
         :class="showHistoryDrawer ? 'text-primary' : ''"
         @click="showHistoryDrawer = !showHistoryDrawer"
