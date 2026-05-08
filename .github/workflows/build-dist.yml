@@ -20,6 +20,9 @@ jobs:
       - uses: runsascoded/npm-dist@v1
         with:
           source_ref: ${{ inputs.source_ref || 'main' }}
+          # Match the other workflows (autofix/test/smoke/release) which use Node 22 LTS.
+          # Slidev's `packages/vscode` prepare hook calls `fs.globSync` (Node 22+ only).
+          node_version: '22'
           build_command: pnpm run build
           pkgs: |
             packages/client
