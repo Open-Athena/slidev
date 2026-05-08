@@ -8,8 +8,8 @@ import MarkdownExit from 'markdown-exit'
 import YAML from 'yaml'
 import { saveCoordsForSlide } from '../coords'
 import { createDataUtils } from '../options'
-import MarkdownItKatex from '../syntax/markdown-it/markdown-it-katex'
-import markdownItLink from '../syntax/markdown-it/markdown-it-link'
+import MarkdownItKatex from '../syntax/katex'
+import markdownItLink from '../syntax/link'
 import { getBodyJson, updateFrontmatterPatch } from '../utils'
 import { templates } from '../virtual'
 import { templateConfigs } from '../virtual/configs'
@@ -18,6 +18,8 @@ import { templateMonacoTypes } from '../virtual/monaco-types'
 import { templateSlides, VIRTUAL_SLIDE_PREFIX } from '../virtual/slides'
 import { templateTitleRendererMd } from '../virtual/titles'
 import { regexSlideFacadeId, regexSlideReqPath, regexSlideSourceId } from './common'
+
+const RE_WORD_CHARS_ONLY = /^[\w-]+$/
 
 export function createSlidesLoader(
   options: ResolvedSlidevOptions,
@@ -416,7 +418,7 @@ export function createSlidesLoader(
     const keys = Object.keys(notesAutoRuby)
       .sort((b, a) => b.length - a.length)
       // Add word boundaries to the keys when they are simple alphabets or numbers
-      .map(i => /^[\w-]+$/.test(i) ? `\\b${i}\\b` : i)
+      .map(i => RE_WORD_CHARS_ONLY.test(i) ? `\\b${i}\\b` : i)
 
     if (keys.length) {
       const regex = new RegExp(`(${keys.join('|')})`, 'g')

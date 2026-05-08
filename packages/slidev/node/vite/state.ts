@@ -1,5 +1,6 @@
 import type { ResolvedSlidevOptions } from '@slidev/types'
 import type Database from 'better-sqlite3'
+import type { ServerResponse } from 'node:http'
 import type { Connect, Plugin } from 'vite'
 import type { EditEvent } from '../state/types'
 import { Buffer } from 'node:buffer'
@@ -61,7 +62,7 @@ function readJsonBody<T = unknown>(req: Connect.IncomingMessage): Promise<T> {
   })
 }
 
-function sendJson(res: Connect.ServerResponse, status: number, body: unknown) {
+function sendJson(res: ServerResponse, status: number, body: unknown) {
   res.statusCode = status
   res.setHeader('Content-Type', 'application/json')
   res.end(JSON.stringify(body))
@@ -83,7 +84,7 @@ export function createStatePlugin(options: ResolvedSlidevOptions): Plugin {
 
   // Live SSE subscribers. Each entry is a still-open response we write into. The set is
   // pruned on connection-close (req 'close' handler below).
-  const subscribers = new Set<Connect.ServerResponse>()
+  const subscribers = new Set<ServerResponse>()
 
   function broadcast(msg: StateChangeMessage): void {
     if (subscribers.size === 0)

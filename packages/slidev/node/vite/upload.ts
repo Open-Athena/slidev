@@ -1,4 +1,5 @@
 import type { ResolvedSlidevOptions } from '@slidev/types'
+import type { ServerResponse } from 'node:http'
 import type { Connect, Plugin } from 'vite'
 import { Buffer } from 'node:buffer'
 import { createHash } from 'node:crypto'
@@ -71,7 +72,7 @@ function mimeMatchesAccepted(mime: string, accepted: string[]): boolean {
   })
 }
 
-function sendJson(res: Connect.ServerResponse, status: number, body: unknown) {
+function sendJson(res: ServerResponse, status: number, body: unknown) {
   res.statusCode = status
   res.setHeader('Content-Type', 'application/json')
   res.end(JSON.stringify(body))

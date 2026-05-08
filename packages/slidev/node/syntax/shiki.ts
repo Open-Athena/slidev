@@ -2,11 +2,10 @@ import type { ResolvedSlidevOptions } from '@slidev/types'
 import type { ShikiTransformer } from 'shiki'
 import { isTruthy } from '@antfu/utils'
 import { fromAsyncCodeToHtml } from '@shikijs/markdown-it/async'
-import { escapeVueInCode } from '../transform/utils'
 
 export default async function MarkdownItShiki({ data: { config }, mode, utils: { shiki, shikiOptions } }: ResolvedSlidevOptions) {
   async function getTwoslashTransformer() {
-    const [,,{ transformerTwoslash }] = await Promise.all([
+    const [, , { transformerTwoslash }] = await Promise.all([
       // trigger shiki to load the langs
       shiki.codeToHast('', { lang: 'js', ...shikiOptions }),
       shiki.codeToHast('', { lang: 'ts', ...shikiOptions }),
@@ -26,13 +25,11 @@ export default async function MarkdownItShiki({ data: { config }, mode, utils: {
   const transformers = [
     ...shikiOptions.transformers || [],
     (config.twoslash === true || config.twoslash === mode) && await getTwoslashTransformer(),
+    (config.twoslash === true || config.twoslash === mode) && transformerTwoslashConditional(),
     {
       pre(pre) {
         this.addClassToHast(pre, 'slidev-code')
         delete pre.properties.tabindex
-      },
-      postprocess(code) {
-        return escapeVueInCode(code)
       },
     } satisfies ShikiTransformer,
   ].filter(isTruthy) as ShikiTransformer[]
@@ -41,4 +38,23 @@ export default async function MarkdownItShiki({ data: { config }, mode, utils: {
     ...shikiOptions,
     transformers,
   })
+}
+
+// Fix #2202
+function transformerTwoslashConditional(): ShikiTransformer {
+  return {
+    name: 'slidev:twoslash-conditional',
+    code: function applyConditionalFlag(this: any, node) {
+      if (node.tagName === 'v-menu') {
+        if (node.properties[':shown'] === 'true')
+          node.properties[':shown'] = '$nav.currentPage === $page'
+      }
+      else {
+        for (const child of node.children) {
+          if (child.type === 'element')
+            applyConditionalFlag(child)
+        }
+      }
+    },
+  }
 }

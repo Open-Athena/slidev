@@ -109,6 +109,11 @@
           "markdownDescription": "Custom zoom level for the slide",
           "default": 1
         },
+        "clickAnimation": {
+          "type": "string",
+          "description": "Default click animation for the slides",
+          "markdownDescription": "Default click animation for the slides"
+        },
         "dragPos": {
           "type": "object",
           "additionalProperties": {
@@ -653,10 +658,7 @@
           "description": "Default frontmatter options applied to all slides",
           "markdownDescription": "Default frontmatter options applied to all slides"
         }
-      },
-      "required": [
-        "transition"
-      ]
+      }
     },
     "BuiltinLayouts": {
       "type": "string",
@@ -1113,6 +1115,11 @@
           "description": "Custom zoom level for the slide",
           "markdownDescription": "Custom zoom level for the slide",
           "default": 1
+        },
+        "clickAnimation": {
+          "type": "string",
+          "description": "Default click animation for the slide",
+          "markdownDescription": "Default click animation for the slide"
         },
         "dragPos": {
           "type": "object",

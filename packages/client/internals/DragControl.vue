@@ -432,7 +432,7 @@ function getCornerProps(isLeft: boolean, isTop: boolean) {
       bottom: isTop !== arrowRevY.value ? undefined : '0',
       cursor: isArrow.value ? 'move' : +isLeft + +isTop === 1 ? 'nesw-resize' : 'nwse-resize',
       borderRadius: isArrow.value ? '50%' : undefined,
-      pointerEvents: 'auto',
+      pointerEvents: 'auto' as const,
     },
     class: ctrlClasses,
   }
@@ -523,7 +523,7 @@ function getBorderProps(dir: 'l' | 'r' | 't' | 'b') {
       top: dir === 't' ? '0' : dir === 'b' ? `100%` : `50%`,
       cursor: 'lr'.includes(dir) ? 'ew-resize' : 'ns-resize',
       borderRadius: '50%',
-      pointerEvents: 'auto',
+      pointerEvents: 'auto' as const,
     },
     class: ctrlClasses,
   }
@@ -637,7 +637,7 @@ function getRotateProps() {
       top: `-${rotateHandleOffset}px`,
       cursor: 'grab',
       borderRadius: '50%',
-      pointerEvents: 'auto',
+      pointerEvents: 'auto' as const,
       // Google Draw style: white fill with blue border
       background: '#fff',
       border: '2px solid #4285f4',
@@ -1082,7 +1082,7 @@ function getCropHandleProps(handle: 'top' | 'right' | 'bottom' | 'left' | 'topLe
       width: '1px',
       height: '100%',
       background: '#f43f5e',
-      pointerEvents: 'none',
+      pointerEvents: 'none' as const,
       zIndex: 9999,
     }"
   />
@@ -1097,7 +1097,7 @@ function getCropHandleProps(handle: 'top' | 'right' | 'bottom' | 'left' | 'topLe
       width: '100%',
       height: '1px',
       background: '#f43f5e',
-      pointerEvents: 'none',
+      pointerEvents: 'none' as const,
       zIndex: 9999,
     }"
   />
@@ -1114,7 +1114,7 @@ function getCropHandleProps(handle: 'top' | 'right' | 'bottom' | 'left' | 'topLe
       height: `${zoom * displayHeight}px`,
       transformOrigin: 'center center',
       transform: `rotate(${rotationStartAngle}deg)`,
-      pointerEvents: 'none',
+      pointerEvents: 'none' as const,
       border: '1px solid rgba(66, 133, 244, 0.4)',
       background: 'rgba(66, 133, 244, 0.05)',
     }"
@@ -1133,7 +1133,7 @@ function getCropHandleProps(handle: 'top' | 'right' | 'bottom' | 'left' | 'topLe
       height: `${zoom * displayHeight}px`,
       transformOrigin: 'center center',
       transform: `rotate(${rotate}deg)`,
-      pointerEvents: 'none',
+      pointerEvents: 'none' as const,
     }"
   >
     <!-- Normal selection mode -->
@@ -1192,7 +1192,7 @@ function getCropHandleProps(handle: 'top' | 'right' | 'bottom' | 'left' | 'topLe
             top: `-${rotateHandleOffset + rotateHandleSize + 4}px`,
             transform: `translateX(-50%) rotate(-${rotate}deg)`,
             color: '#4285f4',
-            pointerEvents: 'none',
+            pointerEvents: 'none' as const,
           }"
         >
           {{ Math.round(currentRotationAngle) }}°
@@ -1272,7 +1272,7 @@ function getCropHandleProps(handle: 'top' | 'right' | 'bottom' | 'left' | 'topLe
           left: '50%',
           transform: 'translateX(-50%)',
           zIndex: 101,
-          pointerEvents: 'auto',
+          pointerEvents: 'auto' as const,
           whiteSpace: 'nowrap',
         }"
       >
@@ -1298,7 +1298,7 @@ function getCropHandleProps(handle: 'top' | 'right' | 'bottom' | 'left' | 'topLe
         left: '50%',
         transform: 'translateX(-50%)',
         zIndex: 101,
-        pointerEvents: 'auto',
+        pointerEvents: 'auto' as const,
       }"
     >
       <!-- Link info -->
