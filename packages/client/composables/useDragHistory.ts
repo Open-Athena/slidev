@@ -1,49 +1,30 @@
+import type {
+  EditKind as ClientEditKind,
+  EditItem,
+  ElementSnapshot,
+  EditEvent as Event,
+  IStateClient,
+  ListEventsOptions,
+} from './state-client'
 import { computed, ref } from 'vue'
+import { getStateClient } from './state-client'
 import { useNav } from './useNav'
 
-export interface ElementSnapshot {
-  x0: number
-  y0: number
-  width: number
-  height: number
-  rotate: number
-  zIndex: number
-  cropTop: number
-  cropRight: number
-  cropBottom: number
-  cropLeft: number
-}
+// Re-export the canonical types so existing consumers (HistoryDrawer.vue, etc.) keep
+// importing them from `useDragHistory` and don't need to change.
+export type {
+  AffectedItem,
+  EditEvent,
+  EditItem,
+  ElementSnapshot,
+  EditKind as InternalEditKind,
+} from './state-client'
 
+// External callers (VDrag, DragControl, GroupDragControl) use the narrow set of edit
+// kinds — restore/hydrate are internal-only and produced by the client backends, never
+// pushed by UI code. Keeps our public API expressive while letting the IStateClient layer
+// handle every kind uniformly.
 export type EditKind = 'move' | 'resize' | 'rotate' | 'crop' | 'zorder'
-
-export interface EditItem {
-  dragId: string
-  before: ElementSnapshot | null
-  after: ElementSnapshot | null
-}
-
-export interface EditEvent {
-  id: number
-  ts: number
-  slideNo: number
-  kind: EditKind | 'restore' | 'hydrate'
-  items: EditItem[]
-  undoneAt: number | null
-  abandonedAt: number | null
-  label: string | null
-}
-
-interface AffectedItem {
-  slideNo: number
-  dragId: string
-  state: ElementSnapshot | null
-}
-
-interface ServerSnapshot {
-  state: Record<string, Record<string, ElementSnapshot>>
-  topActiveEventId: number | null
-  lastYamlCommitEventId: number | null
-}
 
 export interface RegisteredState {
   page: { value: number }
@@ -65,19 +46,20 @@ export function unregisterHistoryState(state: RegisteredState): void {
     registry.delete(k)
 }
 
-// Server-side derived state (cached on the client). Kept in sync via every API response.
+// Cached client-side mirror of the IStateClient's bookkeeping. Kept fresh by every
+// mutation response and by the SSE-or-storage subscriber.
 export const topActiveEventId = ref<number | null>(null)
 export const lastYamlCommitEventId = ref<number | null>(null)
-const topActiveEvent = ref<EditEvent | null>(null)
-const topRedoableEvent = ref<EditEvent | null>(null)
+const topActiveEvent = ref<Event | null>(null)
+const topRedoableEvent = ref<Event | null>(null)
 // Server-derived element state, populated on cold-start hydration. Lets useDragElement
 // override frontmatter.dragPos when the DB has fresher values than the YAML snapshot.
 export const initialState = ref<Record<string, Record<string, ElementSnapshot>> | null>(null)
 
 export const canUndo = computed(() => topActiveEvent.value !== null)
 export const canRedo = computed(() => topRedoableEvent.value !== null)
-export const topUndoEntry = computed<EditEvent | null>(() => topActiveEvent.value)
-export const topRedoEntry = computed<EditEvent | null>(() => topRedoableEvent.value)
+export const topUndoEntry = computed<Event | null>(() => topActiveEvent.value)
+export const topRedoEntry = computed<Event | null>(() => topRedoableEvent.value)
 export const isDirty = computed(() => {
   const top = topActiveEventId.value
   const committed = lastYamlCommitEventId.value
@@ -86,19 +68,19 @@ export const isDirty = computed(() => {
   return committed === null || top > committed
 })
 
-// Re-fetch the top-active + top-redoable events from the server. Also refreshes
-// `topActiveEventId` and the YAML commit watermark so the dirty indicator stays accurate.
-// Useful when something other than this client (e.g. raw curl, the drawer) may have
-// changed server state.
+// Re-fetch the top-active + top-redoable events. Useful when something other than this
+// client (another tab via storage event / SSE, raw curl, the drawer's manual refresh)
+// may have changed state under us.
 export async function refreshHistoryState(): Promise<void> {
-  const [snap, eventsResp] = await Promise.all([
-    fetch('/__slidev/state').then(r => r.json()) as Promise<ServerSnapshot>,
-    fetch('/__slidev/state/events?limit=20').then(r => r.json()) as Promise<{ events: EditEvent[] }>,
+  const client = await getStateClient()
+  const [snap, events] = await Promise.all([
+    client.getSnapshot(),
+    client.listEvents({ limit: 20 }),
   ])
   topActiveEventId.value = snap.topActiveEventId
   lastYamlCommitEventId.value = snap.lastYamlCommitEventId
-  topActiveEvent.value = eventsResp.events.find(e => e.undoneAt === null && e.abandonedAt === null) ?? null
-  topRedoableEvent.value = eventsResp.events.find(e => e.undoneAt !== null && e.abandonedAt === null) ?? null
+  topActiveEvent.value = events.find(e => e.undoneAt === null && e.abandonedAt === null) ?? null
+  topRedoableEvent.value = events.find(e => e.undoneAt !== null && e.abandonedAt === null) ?? null
 }
 const fetchTopEvents = refreshHistoryState
 
@@ -108,47 +90,33 @@ function bumpEventStream(): void {
   eventStreamVersion.value += 1
 }
 
-// Fetch a page of events for the drawer. `limit` defaults to 200 (covers most decks
-// without paging); callers can paginate with `sinceId` if they need more.
-export async function fetchEvents(opts: { limit?: number, sinceId?: number, slideNo?: number } = {}): Promise<EditEvent[]> {
-  const params = new URLSearchParams()
-  if (opts.limit !== undefined)
-    params.set('limit', String(opts.limit))
-  if (opts.sinceId !== undefined)
-    params.set('since', String(opts.sinceId))
-  if (opts.slideNo !== undefined)
-    params.set('slide', String(opts.slideNo))
-  const resp = await fetch(`/__slidev/state/events?${params}`)
-  const { events } = await resp.json() as { events: EditEvent[] }
-  return events
+export async function fetchEvents(opts: ListEventsOptions = {}): Promise<Event[]> {
+  const client = await getStateClient()
+  return client.listEvents(opts)
 }
 
-// Restore the slide owning `eventId` to its state at that point. Inserts a `kind='restore'`
-// event server-side; the affected element_state is recomputed and the response includes the
-// new event so the client can update topActive + apply changes locally.
-export async function restoreToEvent(eventId: number): Promise<EditEvent | null> {
-  const resp = await fetch('/__slidev/state/restore', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ eventId }),
-  })
-  const data = await resp.json() as { event: EditEvent | null }
-  if (data.event) {
-    topActiveEventId.value = data.event.id
-    topActiveEvent.value = data.event
+// Restore the slide owning `eventId` to its state at that point. The IStateClient inserts
+// a `kind='restore'` event whose payload pairs `(before=current, after=historical)` per
+// element; we then apply those `after` snapshots to live elements via the registry so the
+// UI updates instantly.
+export async function restoreToEvent(eventId: number): Promise<Event | null> {
+  const client = await getStateClient()
+  const event = await client.restore(eventId)
+  if (event) {
+    topActiveEventId.value = event.id
+    topActiveEvent.value = event
     topRedoableEvent.value = null
-    // Apply the restore directly to live elements via the registry so the UI updates.
-    await ensureSlide(data.event.slideNo)
-    for (const item of data.event.items) {
+    await ensureSlide(event.slideNo)
+    for (const item of event.items) {
       if (item.after === null)
         continue
-      const state = registry.get(regKey(data.event.slideNo, item.dragId))
+      const state = registry.get(regKey(event.slideNo, item.dragId))
       if (state)
         state.apply(item.after)
     }
     bumpEventStream()
   }
-  return data.event
+  return event
 }
 
 let hydratePromise: Promise<void> | null = null
@@ -156,8 +124,8 @@ export function hydrateFromServer(): Promise<void> {
   if (hydratePromise)
     return hydratePromise
   hydratePromise = (async () => {
-    const resp = await fetch('/__slidev/state')
-    const snap = await resp.json() as ServerSnapshot
+    const client = await getStateClient()
+    const snap = await client.getSnapshot()
     initialState.value = snap.state
     topActiveEventId.value = snap.topActiveEventId
     lastYamlCommitEventId.value = snap.lastYamlCommitEventId
@@ -170,7 +138,7 @@ export function hydrateFromServer(): Promise<void> {
 // `after` is captured at commit time (live state).
 interface PendingEdit {
   slideNo: number
-  kind: EditKind
+  kind: ClientEditKind
   before: ElementSnapshot
   capture: () => ElementSnapshot
 }
@@ -189,15 +157,39 @@ function clearPending(slideNo: number, dragId: string): void {
   }
 }
 
-async function postEdit(slideNo: number, kind: EditKind, items: EditItem[]): Promise<void> {
-  const resp = await fetch('/__slidev/state/edit', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ slideNo, kind, items }),
+// On first edit when there's no event log yet (static-deploy / fresh-DB), synthesize a
+// `kind='hydrate'` event capturing the current slide's registered elements. Without this,
+// `restoreToEvent(<first event>)` would diff current ↔ current and return null, leaving
+// the user with no rollback target. Mirrors the dev-server's `hydrateIfEmpty` cold-start
+// behavior, scoped to the current slide since we only know about mounted elements.
+async function synthesizeHydrateIfEmpty(client: IStateClient, slideNo: number): Promise<void> {
+  if (topActiveEventId.value !== null)
+    return
+  const items: EditItem[] = []
+  for (const [k, state] of registry) {
+    const [slideStr, dragId] = k.split(':')
+    if (Number(slideStr) !== slideNo)
+      continue
+    items.push({ dragId, before: null, after: state.capture() })
+  }
+  if (items.length === 0)
+    return
+  const event = await client.edit({
+    slideNo,
+    kind: 'hydrate' as ClientEditKind,
+    items,
+    label: 'hydrate-from-frontmatter',
   })
-  const data = await resp.json() as { event: EditEvent }
-  topActiveEventId.value = data.event.id
-  topActiveEvent.value = data.event
+  topActiveEventId.value = event.id
+  topActiveEvent.value = event
+}
+
+async function postEdit(slideNo: number, kind: ClientEditKind, items: EditItem[]): Promise<void> {
+  const client = await getStateClient()
+  await synthesizeHydrateIfEmpty(client, slideNo)
+  const event = await client.edit({ slideNo, kind, items })
+  topActiveEventId.value = event.id
+  topActiveEvent.value = event
   topRedoableEvent.value = null
   bumpEventStream()
 }
@@ -217,9 +209,6 @@ export function beginEdit(state: RegisteredState, kind: EditKind): void {
   })
 }
 
-// Schedule an idle-commit for a pending edit. Called from the position watcher in
-// useDragElement on every change. After COMMIT_DEBOUNCE_MS of quiescence, capture `after`
-// and POST.
 export function bumpEditCommit(state: RegisteredState): void {
   const k = regKey(state.page.value, state.dragId)
   if (!pendingByKey.has(k))
@@ -227,10 +216,9 @@ export function bumpEditCommit(state: RegisteredState): void {
   const t = debounceTimers.get(k)
   if (t)
     clearTimeout(t)
-  debounceTimers.set(k, setTimeout(() => commitEdit(state), COMMIT_DEBOUNCE_MS))
+  debounceTimers.set(k, setTimeout(commitEdit, COMMIT_DEBOUNCE_MS, state))
 }
 
-// Force-commit a pending edit immediately (e.g. before navigating, before undo).
 export async function commitEdit(state: RegisteredState): Promise<void> {
   const k = regKey(state.page.value, state.dragId)
   const pending = pendingByKey.get(k)
@@ -241,27 +229,20 @@ export async function commitEdit(state: RegisteredState): Promise<void> {
   await postEdit(pending.slideNo, pending.kind, [{ dragId: state.dragId, before: pending.before, after }])
 }
 
-// Drop a pending edit without POSTing (abort path).
 export function discardEdit(state: RegisteredState): void {
   clearPending(state.page.value, state.dragId)
 }
 
-// One-shot atomic edits where both `before` and `after` are known up front (e.g. z-order
-// reordering). No debounce, no pending state.
 export async function pushEdit(slideNo: number, kind: EditKind, dragId: string, before: ElementSnapshot, after: ElementSnapshot): Promise<void> {
   await postEdit(slideNo, kind, [{ dragId, before, after }])
 }
 
-// Multi-element atomic edit. `items` carries before+after for each element.
 export async function pushGroupEdit(slideNo: number, kind: EditKind, items: Array<{ dragId: string, before: ElementSnapshot, after: ElementSnapshot }>): Promise<void> {
   if (items.length === 0)
     return
   await postEdit(slideNo, kind, items.map(i => ({ dragId: i.dragId, before: i.before, after: i.after })))
 }
 
-// Like pushEdit but for callers that have only `before` and rely on the registry's live
-// state to capture `after` immediately. Used by callers that change values then call this
-// (e.g. zorder buttons in DragControl).
 export async function pushEditNow(slideNo: number, kind: EditKind, dragId: string, before: ElementSnapshot): Promise<void> {
   const state = registry.get(regKey(slideNo, dragId))
   if (!state)
@@ -280,18 +261,18 @@ export async function pushGroupEditNow(slideNo: number, kind: EditKind, items: A
   await pushGroupEdit(slideNo, kind, filled)
 }
 
-// Discard the topmost pending edits matching this set of drag ids (abort path for
-// in-flight drags that may have already crossed the threshold).
 export function discardTopMatching(slideNo: number, dragIds: string[]): boolean {
   for (const id of dragIds)
     clearPending(slideNo, id)
   return true
 }
 
-// Re-fetch full server state and re-apply to all registered elements (skipping any element
-// that this tab is mid-edit on, so we don't clobber an in-progress drag with stale snapshot).
-async function syncFromServer(): Promise<void> {
-  const snap = await fetch('/__slidev/state').then(r => r.json()) as ServerSnapshot
+// Re-fetch full state from the client and re-apply to all registered elements (skipping
+// any element this tab is mid-edit on, so we don't clobber an in-progress drag with a
+// stale snapshot).
+async function syncFromClient(): Promise<void> {
+  const client = await getStateClient()
+  const snap = await client.getSnapshot()
   topActiveEventId.value = snap.topActiveEventId
   lastYamlCommitEventId.value = snap.lastYamlCommitEventId
   initialState.value = snap.state
@@ -300,8 +281,6 @@ async function syncFromServer(): Promise<void> {
     const slideNo = Number(slideKey)
     for (const [dragId, snapshot] of Object.entries(byId)) {
       const k = regKey(slideNo, dragId)
-      // Skip elements with a pending local edit — applying remote state would either clobber
-      // the user's in-flight drag or briefly snap then re-drift.
       if (pendingByKey.has(k))
         continue
       registry.get(k)?.apply(snapshot)
@@ -310,67 +289,44 @@ async function syncFromServer(): Promise<void> {
   bumpEventStream()
 }
 
-interface StateChangeMessage {
-  type: 'state-change'
-  source: 'edit' | 'undo' | 'redo' | 'restore' | 'yaml-commit'
-  topActiveEventId: number | null
-  triggeringEventId?: number | null
-}
-
-let streamConnection: EventSource | null = null
+let unsubscribeStream: (() => void) | null = null
 let syncTimer: ReturnType<typeof setTimeout> | null = null
 
 function scheduleSync(): void {
   if (syncTimer)
     clearTimeout(syncTimer)
-  // Tail-debounce: rapid bursts (e.g. another tab dragging a group of N elements emits N
+  // Tail-debounce: rapid bursts (another tab dragging a group of N elements emits N
   // broadcasts in flight) collapse into a single re-fetch + re-apply.
   syncTimer = setTimeout(() => {
     syncTimer = null
-    void syncFromServer()
+    void syncFromClient()
   }, 50)
 }
 
-// Open the SSE channel so this tab learns about state changes made elsewhere (other tabs,
-// the CLI, raw curl). Idempotent — safe to call multiple times. Dev-only (the endpoint
-// only exists in the dev server).
-export function connectStateStream(): void {
-  if (streamConnection || typeof EventSource === 'undefined')
+// Subscribe to state-change broadcasts (SSE in dev, `storage` events in static mode).
+// Idempotent — the subscription is keyed off this module's `unsubscribeStream`.
+export async function connectStateStream(): Promise<void> {
+  if (unsubscribeStream)
     return
-  const es = new EventSource('/__slidev/state/stream')
-  streamConnection = es
-  es.addEventListener('message', (ev) => {
-    let msg: StateChangeMessage | null = null
-    try {
-      msg = JSON.parse((ev as MessageEvent).data) as StateChangeMessage
-    }
-    catch {
-      return
-    }
-    if (!msg || msg.type !== 'state-change')
-      return
-    // Self-origin dedup: when this tab POSTed the change, our local topActiveEventId
+  const client = await getStateClient()
+  unsubscribeStream = client.subscribe((msg) => {
+    // Self-origin dedup: when this tab triggered the change, our local topActiveEventId
     // already matches the broadcast id. yaml-commit doesn't move topActive, so handle it
-    // unconditionally — that path needs to refresh the bookmark/dirty indicators.
+    // unconditionally (the bookmark/dirty indicators need refresh).
     if (msg.source !== 'yaml-commit' && msg.topActiveEventId === topActiveEventId.value)
       return
     scheduleSync()
   })
-  es.addEventListener('error', () => {
-    // The browser auto-reconnects per the `retry: 5000` directive sent by the server.
-    // Nothing to do here besides leaving the EventSource in place.
-  })
 }
 
-// HMR-safe cleanup: when Vite hot-reloads this module, the new instance starts with
-// `streamConnection = null` and would open a fresh EventSource — but the old EventSource
-// keeps its TCP/SSE connection open (JS GC won't tear down active network connections),
-// so without this, every HMR cycle adds a lingering subscriber that the server then
-// broadcasts to (with all writes silently failing into a dead pipe).
+// HMR-safe cleanup: when Vite hot-reloads this module, the new instance starts fresh and
+// would open a new EventSource — but the old EventSource keeps its TCP/SSE connection open
+// (JS GC won't tear down active network connections), so without this every HMR cycle adds
+// a lingering subscriber.
 if (import.meta.hot) {
   import.meta.hot.dispose(() => {
-    streamConnection?.close()
-    streamConnection = null
+    unsubscribeStream?.()
+    unsubscribeStream = null
     if (syncTimer) {
       clearTimeout(syncTimer)
       syncTimer = null
@@ -386,7 +342,7 @@ async function ensureSlide(slideNo: number): Promise<void> {
   await new Promise(r => setTimeout(r, 80))
 }
 
-function applyAffected(items: AffectedItem[]): void {
+function applyAffected(items: Array<{ slideNo: number, dragId: string, state: ElementSnapshot | null }>): void {
   for (const it of items) {
     if (it.state === null)
       continue
@@ -401,16 +357,12 @@ export async function undo(): Promise<void> {
   if (!target)
     return
   await ensureSlide(target.slideNo)
-  const resp = await fetch('/__slidev/state/undo', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: '{}',
-  })
-  const data = await resp.json() as { event: EditEvent | null, affected: AffectedItem[], topActiveEventId: number | null }
-  if (!data.event)
+  const client = await getStateClient()
+  const result = await client.undo()
+  if (!result)
     return
-  applyAffected(data.affected)
-  topActiveEventId.value = data.topActiveEventId
+  applyAffected(result.affected)
+  topActiveEventId.value = result.topActiveEventId
   await fetchTopEvents()
   bumpEventStream()
 }
@@ -420,25 +372,21 @@ export async function redo(): Promise<void> {
   if (!target)
     return
   await ensureSlide(target.slideNo)
-  const resp = await fetch('/__slidev/state/redo', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: '{}',
-  })
-  const data = await resp.json() as { event: EditEvent | null, affected: AffectedItem[], topActiveEventId: number | null }
-  if (!data.event)
+  const client = await getStateClient()
+  const result = await client.redo()
+  if (!result)
     return
-  applyAffected(data.affected)
-  topActiveEventId.value = data.topActiveEventId
+  applyAffected(result.affected)
+  topActiveEventId.value = result.topActiveEventId
   await fetchTopEvents()
   bumpEventStream()
 }
 
 export async function commitToYaml(): Promise<{ committedEventId: number | null }> {
-  const resp = await fetch('/__slidev/state/commit-yaml', { method: 'POST' })
-  const data = await resp.json() as { committedEventId: number | null, dirty: boolean }
-  lastYamlCommitEventId.value = data.committedEventId
-  return data
+  const client = await getStateClient()
+  const result = await client.commitYaml()
+  lastYamlCommitEventId.value = result.committedEventId
+  return result
 }
 
 const KIND_LABEL: Record<string, string> = {
@@ -451,7 +399,7 @@ const KIND_LABEL: Record<string, string> = {
   restore: 'restore',
 }
 
-export function describeEntry(entry: EditEvent | null): string {
+export function describeEntry(entry: Event | null): string {
   if (!entry)
     return ''
   const what = KIND_LABEL[entry.kind] ?? entry.kind

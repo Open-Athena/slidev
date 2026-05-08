@@ -58,15 +58,15 @@ export default function setupRoot() {
   initSharedState(`${slidesTitle} - shared`)
   initDrawingState(`${slidesTitle} - drawings`)
 
-  // Cold-start fetch of drag-element state from the dev server's `state.db`. Resolves the
-  // singleton `historyInitialState`, which `useDragElement` watches to apply DB overrides
-  // onto live elements. Dev-only (the route 404s in the built deck).
-  if (__DEV__) {
-    void hydrateFromServer()
-    // Subscribe to the state-change SSE stream so this tab learns about edits made
-    // elsewhere (other tabs, raw curl, the future CLI) and applies them live.
-    connectStateStream()
-  }
+  // Cold-start fetch of drag-element state. The IStateClient probes `/__slidev/state` on
+  // first call: in dev mode it returns the dev-server snapshot, in a static deploy it 404s
+  // and we fall back to a localStorage-backed event log (LocalStateClient) so the visitor
+  // can still drag, undo, restore, etc. Both backends populate `historyInitialState`,
+  // which `useDragElement` watches to apply overrides onto live elements.
+  void hydrateFromServer()
+  // Subscribe to state-change broadcasts (SSE in dev, `storage` events in static mode)
+  // so this tab learns about edits made elsewhere and applies them live.
+  void connectStateStream()
 
   const id = `${location.origin}_${makeId()}`
   const syncType = computed(() => isPresenter.value ? 'presenter' : 'viewer')
