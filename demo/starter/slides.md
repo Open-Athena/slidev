@@ -31,18 +31,20 @@ publish:
     format: jpg
 ---
 
-# Slidev <span class="opacity-50">@</span> Open-Athena
+# <span class="font-mono">Open&#8209;Athena<span class="opacity-50">/</span>slidev</span>
 
-A fork that adds <span class="text-primary">direct manipulation</span> — click + drag, snap, crop, undo, multi-tab live edits.
+A fork that adds <span class="text-white font-semibold">direct manipulation</span> — click + drag, snap, crop, undo, multi-tab live edits.
 
-<v-drag pos="410,400,160,72">
-  <div class="bg-primary text-white rounded-lg shadow-xl px-4 py-3 cursor-move font-medium select-none">
+<v-drag pos="410,400,160,56">
+  <div class="bg-primary text-white rounded-lg shadow-xl cursor-move font-medium select-none w-full h-full flex items-center justify-center">
     👈 drag me
   </div>
 </v-drag>
 
-<div class="abs-bl m-6 text-sm opacity-60">
-  <a href="https://github.com/Open-Athena/slidev" target="_blank">github.com/Open-Athena/slidev</a>
+<div class="abs-bl m-6 text-sm">
+  <a href="https://github.com/Open-Athena/slidev" target="_blank" class="text-white !text-opacity-90 hover:!text-opacity-100 underline underline-offset-4 decoration-white/40 hover:decoration-white">
+    github.com/Open-Athena/slidev
+  </a>
 </div>
 
 <!--
