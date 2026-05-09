@@ -5,12 +5,11 @@ theme: seriph
 # like them? see https://unsplash.com/collections/94734566/slidev
 background: https://cover.sli.dev
 # some information about your slides (markdown enabled)
-title: Welcome to Slidev
+title: Slidev — Open-Athena fork
 info: |
-  ## Slidev Starter Template
-  Presentation slides for developers.
-
-  Learn more at [Sli.dev](https://sli.dev)
+  ## Slidev — Open-Athena fork
+  Adds direct manipulation: click + drag, snap, crop, undo, multi-tab live edits.
+  Source: https://github.com/Open-Athena/slidev
 # apply UnoCSS classes to the current slide
 class: text-center
 # https://sli.dev/features/drawing
@@ -26,10 +25,81 @@ duration: 35min
 draggableImages: true
 # per-slide OG metadata + share previews — see specs/done/per-slide-og.md
 publish:
-  baseUrl: https://example.com/slidev-demo
+  baseUrl: https://slidev.oa.dev
   ogImage:
     size: [1200, 630]
     format: jpg
+---
+
+# Slidev <span class="opacity-50">@</span> Open-Athena
+
+A fork that adds <span class="text-primary">direct manipulation</span> — click + drag, snap, crop, undo, multi-tab live edits.
+
+<v-drag pos="410,400,160,72">
+  <div class="bg-primary text-white rounded-lg shadow-xl px-4 py-3 cursor-move font-medium select-none">
+    👈 drag me
+  </div>
+</v-drag>
+
+<div class="abs-bl m-6 text-sm opacity-60">
+  <a href="https://github.com/Open-Athena/slidev" target="_blank">github.com/Open-Athena/slidev</a>
+</div>
+
+<!--
+This deck is upstream slidev's starter, with the OA fork's runtime additions layered in.
+Press space / → to advance.
+-->
+
+---
+layout: default
+---
+
+# What's added
+
+The slides that follow are the unmodified upstream `slidev` starter deck — these capabilities are active throughout:
+
+<div class="grid grid-cols-2 gap-x-8 gap-y-3 mt-6 text-base">
+
+<div>
+
+**Click + drag** to move any `<v-drag>` element body.
+
+</div><div>
+
+**Snap-align** to edges/centers of other elements; **Shift** / **⌘** disables.
+
+</div><div>
+
+**Resize · rotate · crop** — handles on selected elements; double-click an image to crop, **Alt** locks AR.
+
+</div><div>
+
+**Z-order**: ⌘↑ / ⌘↓ forward/back; **Shift** for to-front/to-back.
+
+</div><div>
+
+**Undo / redo** with Cmd+Z / Cmd+Shift+Z, persisted across reloads.<br/>**History drawer** shows every edit; click to restore.
+
+</div><div>
+
+**Insert image**: press `i` to pick, or drop image / video files on the slide.
+
+</div><div>
+
+**Mobile**: pinch-zoom + pan slides; pinch-vs-drag guards on touch elements.
+
+</div><div>
+
+**Live multi-tab editing** — drag in one tab, see it in all others (dev server: SSE; static deploys: localStorage events).
+
+</div>
+
+</div>
+
+<div class="mt-8 text-sm opacity-60">
+Try the draggable Tweet on the "Components" slide, or the example boxes on the "Draggable Elements" slide.
+</div>
+
 ---
 
 # Welcome to Slidev
@@ -53,9 +123,9 @@ Presentation slides for developers
 The last comment block of each slide will be treated as slide notes. It will be visible and editable in Presenter Mode along with the slide. [Read more in the docs](https://sli.dev/guide/syntax.html#notes)
 -->
 
+
 ---
-transition: fade-out
----
+
 
 # What is Slidev?
 
@@ -268,11 +338,6 @@ const author = {
 ````
 
 ---
-dragPos:
-  tweet-1390115482657726468: 674,165,262,286,0,1000
-  yt-dQw4w9WgXcQ: 321,266,278,156,0,1
-  img-logo-square: 487,130,140,140,0,1000,20,17,17,20
----
 
 # Components
 
@@ -292,10 +357,6 @@ We have provided a few built-in components like `<Tweet/>`, `<BlueSky/>`, and `<
 
 Check out [the guides](https://sli.dev/builtin/components.html) for more.
 
-Drag comparison — the image below is auto-draggable via `draggableImages: true`; try dragging it vs. the Tweet/YouTube embeds:
-
-![logo-square](https://sli.dev/logo-square.png)
-
 </div>
 <div>
 
@@ -303,9 +364,7 @@ Drag comparison — the image below is auto-draggable via `draggableImages: true
 <Tweet id="1390115482657726468" />
 ```
 
-<Tweet id="1390115482657726468" />
-
-<Youtube id="dQw4w9WgXcQ" />
+<Tweet id="1390115482657726468" scale="0.65" />
 
 </div>
 </div>
@@ -596,12 +655,12 @@ Learn more: [Mermaid Diagrams](https://sli.dev/features/mermaid) and [PlantUML D
 ---
 foo: bar
 dragPos:
-  square: 625,52,167,_,344
+  square: 691,32,167,_,-16
 ---
 
 # Draggable Elements
 
-Click on the draggable elements to edit their positions.
+Double-click on the draggable elements to edit their positions.
 
 <br>
 
@@ -624,7 +683,7 @@ Click on the draggable elements to edit their positions.
 
 <v-drag pos="663,206,261,_,-15">
   <div text-center text-3xl border border-main rounded>
-    Click me!
+    Double-click me!
   </div>
 </v-drag>
 
@@ -637,23 +696,6 @@ Click on the draggable elements to edit their positions.
 ```
 
 <v-drag-arrow pos="67,452,253,46" two-way op70 />
-
----
-title: Drag, Resize, Crop, Stack
----
-
-# Drag · Resize · Crop · Stack
-
-These are real `v-drag` wrappers — try them:
-
-- **Drag** body to move (**Shift**/**⌘** = no snap)
-- **Resize** corner handles (**Shift** = lock AR)
-- **Crop** double-click to enter (**Alt** = lock wrapper AR), double-click to exit
-- **Stack** **⌘↑/⌘↓** = forward/back; add **Shift** = to-front/to-back
-
-<div v-drag="'demo-card-a'" class="rounded-lg shadow-lg flex items-center justify-center text-white text-2xl font-bold bg-blue-500">A</div>
-<div v-drag="'demo-card-b'" class="rounded-lg shadow-lg flex items-center justify-center text-white text-2xl font-bold bg-purple-500">B</div>
-<div v-drag="'demo-card-c'" class="rounded-lg shadow-lg flex items-center justify-center text-white text-2xl font-bold bg-emerald-500">C</div>
 
 ---
 src: ./pages/imported-slides.md

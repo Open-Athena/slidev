@@ -1,7 +1,4 @@
 # Slidev drag coords — auto-managed by the dev server.
 # Tracked in git by default; add to .gitignore if you'd rather keep positions personal.
 # Top-level keys are slide numbers (1-based); values are dragId → posStr.
-"14":
-  demo-card-a: 60,260,180,90,0,1
-  demo-card-b: 180,290,180,90,0,2
-  demo-card-c: 300,320,180,90,0,3
+{}
