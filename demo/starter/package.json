@@ -4,6 +4,8 @@
   "scripts": {
     "build": "slidev build",
     "dev": "nodemon -w '../../packages/slidev/dist/*.mjs' --exec \"slidev ./slides.md --open=false --log=info --inspect --port=3282\"",
+    "static": "pnpm build && cd dist && npx -y serve -s -l 3283 .",
+    "static:serve": "cd dist && npx -y serve -s -l 3283 .",
     "export": "slidev export",
     "export-notes": "slidev export-notes"
   },
