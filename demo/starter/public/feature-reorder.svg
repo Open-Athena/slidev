@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 140" preserveAspectRatio="none">
+  <rect x="1.5" y="1.5" width="237" height="137" rx="19" fill="#8b5cf6" stroke="rgba(255,255,255,0.45)" stroke-width="2"/>
+  <text x="120" y="68" text-anchor="middle" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="32" font-weight="700" fill="white">reorder me</text>
+  <text x="120" y="100" text-anchor="middle" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="15" font-weight="500" fill="white" opacity="0.85">⌘↑  ⌘↓  ⇧⌘↑  ⇧⌘↓</text>
+</svg>
