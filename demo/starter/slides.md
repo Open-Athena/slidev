@@ -75,13 +75,31 @@ Press space / → to advance.
 -->
 
 ---
+layout: default
+---
+
+# Embeds
+
+Tweets, YouTube videos, and Bluesky posts — all draggable, resizable, and rotatable.
+
+<Tweet id="1390115482657726468" />
+
+<Youtube id="luoMHjh-XcQ" />
+
+<BlueSky uri="https://bsky.app/profile/sli.dev/post/3lgwg2vy44s2q" />
+
+<div class="abs-b mb-3 w-full text-center text-xs opacity-70 font-sans">
+Each embed is draggable &mdash; same direct-manipulation gestures as the SVG cards on slide 1.
+</div>
+
+---
 layout: center
 class: text-center
 ---
 
-# Upstream `slidev` deck follows
+# &lt;/fork&gt; &lt;upstream&gt; →
 
-The fork's direct-manipulation features are active throughout — try grabbing the Tweet on the Components slide, or the logo on the Draggable Elements slide.
+The fork's direct-manipulation features stay active on every slide that follows — try grabbing the logo on the Draggable Elements slide.
 
 ---
 

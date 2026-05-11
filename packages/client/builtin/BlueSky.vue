@@ -8,17 +8,76 @@ Usage:
 -->
 
 <script setup lang="ts">
-import { nextTick, onMounted, ref } from 'vue'
+import { useElementSize } from '@vueuse/core'
+import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue'
 import { isDark } from '../logic/dark'
+import VDrag from './VDrag.vue'
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   uri: string
   scale?: string | number
-}>()
+  draggable?: boolean
+}>(), {
+  draggable: true,
+})
+
+// BlueSky's embed widget injects an iframe with `width: 100%; height: <dynamic>`
+// based on post content. We mirror the Tweet pattern: render the blockquote at a
+// fixed natural width and visually fit-to-wrapper via CSS transform, so a
+// v-drag wrapper at arbitrary dims renders the post cleanly.
+const BSKY_NATURAL_W = 550
+
+// Stable dragId derived from the post id (last URL/at-URI segment). Falls back
+// to a slugified uri if no recognizable post segment is present.
+const bskyDragId = computed(() => {
+  const m = props.uri.match(/(?:post|app\.bsky\.feed\.post)\/([^/?#]+)/)
+  const slug = m?.[1] ?? props.uri.replace(/\W+/g, '-').replace(/^-+|-+$/g, '').slice(-32)
+  return `bsky-${slug}`
+})
 
 const RE_BLUESKY_POST_URL = /^\/profile\/([^/]+)\/post\/([^/?#]+)$/
 
 const container = ref<HTMLElement | null>(null)
+const wrapper = ref<HTMLElement | null>(null)
+const { width: wrapperWidth } = useElementSize(wrapper)
+const fitScale = computed(() => wrapperWidth.value > 0 ? wrapperWidth.value / BSKY_NATURAL_W : 1)
+const innerStyle = computed(() => ({
+  width: `${BSKY_NATURAL_W}px`,
+  transform: `scale(${fitScale.value})`,
+  transformOrigin: 'top left',
+}))
+
+// Track the embedded iframe's natural AR so the v-drag wrapper can lock to it
+// (otherwise free-resizing skews the content). Skip until the iframe has grown
+// past a sensible minimum — BlueSky's widget walks through a series of
+// intermediate heights (60–200 px) while it lays the post out, and locking on
+// those transient AR values would clamp the wrapper to a thin sliver.
+const bskyAR = ref<number | null>(null)
+const MIN_AR_HEIGHT = 200
+let iframeResizeObserver: ResizeObserver | null = null
+let observer: MutationObserver | null = null
+function watchIframeAR(iframe: HTMLIFrameElement) {
+  iframeResizeObserver?.disconnect()
+  iframeResizeObserver = new ResizeObserver(() => {
+    const h = iframe.offsetHeight
+    if (h >= MIN_AR_HEIGHT)
+      bskyAR.value = BSKY_NATURAL_W / h
+  })
+  iframeResizeObserver.observe(iframe)
+}
+function watchForIframe(root: HTMLElement) {
+  observer?.disconnect()
+  observer = new MutationObserver(() => {
+    const iframe = root.querySelector('iframe')
+    if (iframe) {
+      watchIframeAR(iframe)
+      observer?.disconnect()
+      observer = null
+    }
+  })
+  observer.observe(root, { childList: true, subtree: true })
+}
+
 const loaded = ref(false)
 const postNotFound = ref(false)
 const resolvedUri = ref('')
@@ -136,12 +195,39 @@ async function create(retries = 10) {
 }
 
 onMounted(async () => {
+  if (container.value)
+    watchForIframe(container.value)
   await create()
+})
+
+onUnmounted(() => {
+  observer?.disconnect()
+  observer = null
+  iframeResizeObserver?.disconnect()
+  iframeResizeObserver = null
 })
 </script>
 
 <template>
-  <Transform :scale="scale || 1">
+  <VDrag v-if="props.draggable !== false" :pos="bskyDragId" :lock-aspect-ratio="bskyAR ?? undefined">
+    <div ref="wrapper" class="bluesky-fit">
+      <div ref="container" class="slidev-bluesky" :style="innerStyle">
+        <blockquote
+          v-if="resolvedUri"
+          class="bluesky-embed"
+          :data-bluesky-uri="resolvedUri"
+          :data-bluesky-embed-color-mode="isDark ? 'dark' : 'light'"
+        />
+        <div v-if="!loaded || postNotFound" class="h-30 w-30 my-10px bg-gray-400 bg-opacity-10 rounded-lg flex opacity-50">
+          <div class="m-auto animate-pulse text-4xl">
+            <div class="i-simple-icons:bluesky" />
+            <span v-if="postNotFound">Could not load Bluesky post</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </VDrag>
+  <Transform v-else :scale="scale || 1">
     <div ref="container" class="slidev-bluesky">
       <blockquote
         v-if="resolvedUri"
@@ -158,6 +244,14 @@ onMounted(async () => {
     </div>
   </Transform>
 </template>
+
+<style scoped>
+.bluesky-fit {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+</style>
 
 <style>
 .slidev-bluesky .bluesky-embed iframe {
