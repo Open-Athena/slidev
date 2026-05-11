@@ -13,6 +13,11 @@
 "2":
   tweet-1390115482657726468: 54,133,280,305
   yt-luoMHjh-XcQ: 364,133,300,170
-  bsky-3lgwg2vy44s2q: 695,133,260,400
+  # Height tuned to the natural-loaded card height of this specific post (≈71 px
+  # at fitScale=260/550). Other posts will need their own height — bluesky-embed
+  # heights vary widely per content (media attachments, link cards, threads),
+  # and we don't auto-lock AR because the bluesky widget's iframe height
+  # transients during load would oscillate the bb (see fix(v-drag) 4e2a4079).
+  bsky-3lgwg2vy44s2q: 695,133,260,80
 "10":
   tweet-1390115482657726468: 620,110,280,305
