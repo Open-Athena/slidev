@@ -327,10 +327,18 @@ export async function connectStateStream(): Promise<void> {
     return
   const client = await getStateClient()
   unsubscribeStream = client.subscribe((msg) => {
-    // Self-origin dedup: when this tab triggered the change, our local topActiveEventId
-    // already matches the broadcast id. yaml-commit doesn't move topActive, so handle it
-    // unconditionally (the bookmark/dirty indicators need refresh).
-    if (msg.source !== 'yaml-commit' && msg.topActiveEventId === topActiveEventId.value)
+    // yaml-commit doesn't change element state — it just persists the current snapshot to
+    // disk and bumps `lastYamlCommitEventId`. Re-applying server state to live elements
+    // would visibly jolt anything whose client-side reactive state has drifted from the
+    // server (e.g. a lock-AR watcher that auto-resizes without saving). So refresh just
+    // the bookmark, skip the element-state sync.
+    if (msg.source === 'yaml-commit') {
+      void refreshHistoryState()
+      return
+    }
+    // Self-origin dedup for everything else: when this tab triggered the change, our
+    // local `topActiveEventId` already matches the broadcast id.
+    if (msg.topActiveEventId === topActiveEventId.value)
       return
     scheduleSync()
   })

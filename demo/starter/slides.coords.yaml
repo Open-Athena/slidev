@@ -10,13 +10,9 @@
   feat-reorder-1: 483,178,180,105,0,101
   feat-resize-locked: 696,174,235,137
   feat-resize: 696,327,264,93
-# Slide 2 ("Embeds"): tile the Tweet, Youtube, and BlueSky demos across the slide
-# at scaled sizes that fit within the 980×552 slide canvas.
 "2":
-  tweet-1390115482657726468: 30,90,280,305
-  yt-luoMHjh-XcQ: 360,90,300,170
-  bsky-3lgwg2vy44s2q: 700,90,260,400
-# Slide 10 ("Components"): pin the Tweet at scaled dims so it fits the right
-# column. The `scale` prop is a no-op on the v-drag path.
+  tweet-1390115482657726468: 54,133,280,305
+  yt-luoMHjh-XcQ: 364,133,300,170
+  bsky-3lgwg2vy44s2q: 695,133,260,400
 "10":
   tweet-1390115482657726468: 620,110,280,305

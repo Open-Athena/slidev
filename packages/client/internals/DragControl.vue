@@ -68,8 +68,16 @@ const cropLeft = computed({
 // Note: For images, ideally this would use natural dimensions, but we use initial dimensions
 const initialAspectRatio = width.value / height.value
 
-// Check if aspect ratio has changed from initial (with small tolerance for floating point)
+// Check if aspect ratio has changed from initial (with small tolerance for floating point).
+// Suppressed when the element has an explicit lockAspectRatio (YT / Tweet / BlueSky etc.):
+// the v-drag wrapper auto-corrects width:height to the locked ratio on mount, which can
+// nudge AR away from the dragPos's initial value (e.g. dragPos 300×170 → 300×168.5 once
+// YT's 16:9 locks in). That nudge isn't a user-induced AR break — it's intended
+// snap-to-natural — so "Reset AR" would be both spurious and dangerous (it'd revert
+// to the off-by-a-pixel dragPos and break the embed's layout).
 const hasAspectRatioChanged = computed(() => {
+  if (lockAspectRatio.value != null)
+    return false
   const currentAR = width.value / height.value
   return Math.abs(currentAR - initialAspectRatio) > 0.01
 })

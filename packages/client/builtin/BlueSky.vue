@@ -9,7 +9,7 @@ Usage:
 
 <script setup lang="ts">
 import { useElementSize } from '@vueuse/core'
-import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue'
+import { computed, nextTick, onMounted, ref } from 'vue'
 import { isDark } from '../logic/dark'
 import VDrag from './VDrag.vue'
 
@@ -47,36 +47,14 @@ const innerStyle = computed(() => ({
   transformOrigin: 'top left',
 }))
 
-// Track the embedded iframe's natural AR so the v-drag wrapper can lock to it
-// (otherwise free-resizing skews the content). Skip until the iframe has grown
-// past a sensible minimum — BlueSky's widget walks through a series of
-// intermediate heights (60–200 px) while it lays the post out, and locking on
-// those transient AR values would clamp the wrapper to a thin sliver.
-const bskyAR = ref<number | null>(null)
-const MIN_AR_HEIGHT = 200
-let iframeResizeObserver: ResizeObserver | null = null
-let observer: MutationObserver | null = null
-function watchIframeAR(iframe: HTMLIFrameElement) {
-  iframeResizeObserver?.disconnect()
-  iframeResizeObserver = new ResizeObserver(() => {
-    const h = iframe.offsetHeight
-    if (h >= MIN_AR_HEIGHT)
-      bskyAR.value = BSKY_NATURAL_W / h
-  })
-  iframeResizeObserver.observe(iframe)
-}
-function watchForIframe(root: HTMLElement) {
-  observer?.disconnect()
-  observer = new MutationObserver(() => {
-    const iframe = root.querySelector('iframe')
-    if (iframe) {
-      watchIframeAR(iframe)
-      observer?.disconnect()
-      observer = null
-    }
-  })
-  observer.observe(root, { childList: true, subtree: true })
-}
+// BlueSky's iframe height is widget-driven and varies per post. Previously we
+// tracked it with a ResizeObserver and pushed the AR into the v-drag
+// lock-aspect-ratio, but that caused the wrapper to oscillate: the watcher
+// auto-resized the wrapper to match content, but the saved `dragPos` stayed
+// at the user-set dimensions, so every commit/sync round-trip (e.g. clicking
+// Save → SSE broadcast → re-apply server state) would fight the watcher and
+// the bb would visibly jump. No AR lock = the wrapper stays exactly where the
+// user put it. Corner-resize free-scales (hold Shift to lock the current AR).
 
 const loaded = ref(false)
 const postNotFound = ref(false)
@@ -195,21 +173,12 @@ async function create(retries = 10) {
 }
 
 onMounted(async () => {
-  if (container.value)
-    watchForIframe(container.value)
   await create()
-})
-
-onUnmounted(() => {
-  observer?.disconnect()
-  observer = null
-  iframeResizeObserver?.disconnect()
-  iframeResizeObserver = null
 })
 </script>
 
 <template>
-  <VDrag v-if="props.draggable !== false" :pos="bskyDragId" :lock-aspect-ratio="bskyAR ?? undefined">
+  <VDrag v-if="props.draggable !== false" :pos="bskyDragId">
     <div ref="wrapper" class="bluesky-fit">
       <div ref="container" class="slidev-bluesky" :style="innerStyle">
         <blockquote
