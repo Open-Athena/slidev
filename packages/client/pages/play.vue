@@ -133,8 +133,8 @@ const contentStyle = computed(() => {
       </template>
     </SlideContainer>
     <SideEditor v-if="SideEditor && showEditor" :resize="true" />
+    <component :is="HistoryDrawer" v-if="HistoryDrawer" />
   </div>
-  <component :is="HistoryDrawer" v-if="HistoryDrawer" />
   <Controls v-if="!isPrintMode" />
   <div id="twoslash-container" />
 </template>
