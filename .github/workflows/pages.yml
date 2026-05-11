@@ -1,0 +1,66 @@
+name: Deploy demo to GitHub Pages
+
+# Publishes `demo/starter/dist` to GitHub Pages, served at `slidev.oa.dev` (CNAME).
+# Trigger: push to `main`, or manual run.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Allow only one concurrent deploy. New runs cancel a pending one (so a flurry of pushes
+# only deploys the latest), but don't interrupt an in-progress deploy.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Use Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      # Mirrors the other workflows in this repo; @antfu/ni picks up the right package
+      # manager from `pnpm-lock.yaml`.
+      - name: Setup
+        run: npm i -g @antfu/ni
+
+      - name: Install
+        run: nci
+        env:
+          CYPRESS_INSTALL_BINARY: 0
+
+      - name: Build packages
+        run: nr build
+
+      - name: Build demo
+        run: pnpm -C demo/starter build
+
+      - name: Add CNAME
+        # GH Pages reads CNAME from the artifact root to bind the custom domain.
+        run: echo 'slidev.oa.dev' > demo/starter/dist/CNAME
+
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: demo/starter/dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
