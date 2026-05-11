@@ -82,7 +82,7 @@ Mastodon/Fediverse support: same shape, different auth (`MASTODON_TOKEN`, `MASTO
 
 Add to slide frontmatter (optional on every slide):
 
-```ts
+```text
 {
   slug?: string        // URL slug; else auto from title
   title?: string       // OG title; else h1/h2
@@ -95,7 +95,7 @@ Add to slide frontmatter (optional on every slide):
 
 Add to deck headmatter:
 
-```ts
+```text
 {
   ogImage?: {
     size?: [number, number]  // default [1200, 630]

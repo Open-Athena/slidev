@@ -1,6 +1,7 @@
 ---
 theme: seriph
 title: Open-Athena/slidev
+description: A fork of sli.dev that adds direct manipulation — click any image to drag, resize, rotate, reorder, or crop, with snap-to-alignment, undo/redo, and multi-tab live edits.
 info: |
   ## Open-Athena/slidev
   A fork of sli.dev that adds direct manipulation: click + drag, snap, crop, undo, multi-tab live edits.
@@ -13,15 +14,36 @@ comark: true
 duration: 35min
 # make markdown images draggable by default (fork feature)
 draggableImages: true
+# Allow text selection. v-drag pointerdown handlers call ev.preventDefault, so
+# selection won't start on drag-handle gestures.
+selectable: true
 # per-slide OG metadata + share previews — see specs/done/per-slide-og.md
 publish:
   baseUrl: https://slidev.oa.dev
   ogImage:
     size: [1200, 630]
     format: jpg
+# Deck-level OG (for shares of the bare https://slidev.oa.dev/ URL — per-slide URLs
+# get their own preview via `dist/_og/<n>-<slug>.html`). Reuses the auto-rendered
+# slide-1 image as the deck thumbnail.
+seoMeta:
+  ogTitle: Open-Athena/slidev
+  ogDescription: A fork of sli.dev that adds direct manipulation — click any image to drag, resize, rotate, reorder, or crop, with snap-to-alignment, undo/redo, and multi-tab live edits.
+  ogImage: https://slidev.oa.dev/_og/1-open-athena-slidev.jpg
+  ogUrl: https://slidev.oa.dev/
+  twitterCard: summary_large_image
+  twitterTitle: Open-Athena/slidev
+  twitterDescription: A fork of sli.dev that adds direct manipulation — click any image to drag, resize, rotate, reorder, or crop, with snap-to-alignment, undo/redo, and multi-tab live edits.
+  twitterImage: https://slidev.oa.dev/_og/1-open-athena-slidev.jpg
+  twitterUrl: https://slidev.oa.dev/
 ---
 
-<h1 class="!text-3xl !mt-0 !mb-1 font-mono">Open&#8209;Athena<span class="opacity-50">/</span>slidev</h1>
+<div class="flex items-center gap-3 !mb-4">
+  <h1 class="!text-3xl !mt-0 !mb-0 font-mono">Open&#8209;Athena<span class="opacity-50">/</span>slidev</h1>
+  <a href="https://github.com/Open-Athena/slidev" target="_blank" title="github.com/Open-Athena/slidev" class="opacity-70 hover:opacity-100 transition-opacity !no-underline">
+    <div class="i-carbon:logo-github text-3xl" />
+  </a>
+</div>
 
 A fork of <a href="https://sli.dev" target="_blank" class="font-semibold underline underline-offset-4 decoration-current/40 hover:decoration-current">sli.dev</a> that adds <span class="font-semibold">direct manipulation</span> — click any image to **drag**, **resize**, **rotate**, or **reorder** it; **double-click** to **crop**. Try it ↓
 
@@ -34,14 +56,13 @@ A fork of <a href="https://sli.dev" target="_blank" class="font-semibold underli
 <img v-drag="'feat-resize'" src="/feature-resize.svg">
 <img v-drag="'feat-resize-locked'" src="/feature-resize-locked.svg" data-lock-ar="1.7143">
 
-<div class="abs-b mb-3 w-full text-center text-xs opacity-60">
-Reorder: <kbd>⌘↑</kbd> / <kbd>⌘↓</kbd> forward/back · <kbd>⇧⌘↑</kbd> / <kbd>⇧⌘↓</kbd> to-front/back &nbsp;·&nbsp; Undo / redo: <kbd>⌘Z</kbd> / <kbd>⇧⌘Z</kbd>
-</div>
-
-<div class="abs-bl m-6 text-sm">
-  <a href="https://github.com/Open-Athena/slidev" target="_blank" class="underline underline-offset-4 decoration-current/40 hover:decoration-current">
-    github.com/Open-Athena/slidev
-  </a>
+<div class="abs-b mb-3 w-full text-center text-xs opacity-70 font-sans flex flex-col items-center gap-1">
+  <div>
+    Every edit is tracked &mdash; <Kbd keys="⌘Z" /> / <Kbd keys="⇧⌘Z" /> to undo/redo, or open the <strong>Version History</strong> drawer (toolbar, lower-right) to inspect and restore any change.
+  </div>
+  <div class="opacity-80">
+    Reorder: <Kbd keys="⌘↑" /> / <Kbd keys="⌘↓" /> forward/back &nbsp;·&nbsp; <Kbd keys="⇧⌘↑" /> / <Kbd keys="⇧⌘↓" /> to-front/back
+  </div>
 </div>
 
 <!--

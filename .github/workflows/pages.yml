@@ -51,6 +51,10 @@ jobs:
         run: echo 'slidev.oa.dev' > demo/starter/dist/CNAME
 
       - uses: actions/configure-pages@v5
+        # Auto-create the Pages site on first run instead of failing if the repo doesn't
+        # have Pages enabled yet. Requires `pages: write` (already set above).
+        with:
+          enablement: true
       - uses: actions/upload-pages-artifact@v3
         with:
           path: demo/starter/dist

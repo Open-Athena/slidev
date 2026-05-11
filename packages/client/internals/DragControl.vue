@@ -1280,9 +1280,10 @@ function getCropHandleProps(handle: 'top' | 'right' | 'bottom' | 'left' | 'topLe
       <div v-bind="getCropHandleProps('bottomLeft')" />
       <div v-bind="getCropHandleProps('bottomRight')" />
 
-      <!-- Crop mode toolbar -->
+      <!-- Crop mode toolbar — `font-sans` + explicit family so the theme's serif body
+           font doesn't bleed into the UI. -->
       <div
-        class="absolute flex items-center gap-2 bg-white dark:bg-gray-800 rounded shadow-lg px-3 py-1.5 text-xs"
+        class="absolute flex items-center gap-2 bg-white dark:bg-gray-800 rounded shadow-lg px-3 py-1.5 text-xs font-sans"
         :style="{
           bottom: '-40px',
           left: '50%',
@@ -1290,6 +1291,7 @@ function getCropHandleProps(handle: 'top' | 'right' | 'bottom' | 'left' | 'topLe
           zIndex: 101,
           pointerEvents: 'auto' as const,
           whiteSpace: 'nowrap',
+          fontFamily: `ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif`,
         }"
       >
         <span class="text-gray-500 dark:text-gray-400">Drag handles to crop</span>
@@ -1304,10 +1306,11 @@ function getCropHandleProps(handle: 'top' | 'right' | 'bottom' | 'left' | 'topLe
     <!-- Bottom floating bar: link info and/or reset AR button (hidden in crop mode).
          Use top:100% + margin so the bar sits cleanly *below* the bottom resize handles
          (which extend ~5px past the wrapper edge); `bottom:-32px` left them overlapping
-         and made the bottom corner / edge handles hard to grab. -->
+         and made the bottom corner / edge handles hard to grab. `font-family` pins to
+         system-ui sans so the deck theme's serif body font doesn't bleed into the UI. -->
     <div
       v-if="(associatedLink || (hasAspectRatioChanged && !isArrow && !autoHeight)) && !isCropping"
-      class="absolute flex items-center gap-2 bg-white dark:bg-gray-800 rounded shadow-lg px-2 py-1 text-xs"
+      class="absolute flex items-center gap-2 bg-white dark:bg-gray-800 rounded shadow-lg px-2 py-1 text-xs font-sans"
       :style="{
         top: '100%',
         marginTop: '12px',
@@ -1315,6 +1318,7 @@ function getCropHandleProps(handle: 'top' | 'right' | 'bottom' | 'left' | 'topLe
         transform: 'translateX(-50%)',
         zIndex: 101,
         pointerEvents: 'auto' as const,
+        fontFamily: `ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif`,
       }"
     >
       <!-- Link info -->
