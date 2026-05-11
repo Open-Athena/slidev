@@ -347,7 +347,7 @@ Check out [the guides](https://sli.dev/builtin/components.html) for more.
 <Tweet id="1390115482657726468" />
 ```
 
-<Tweet id="1390115482657726468" scale="0.65" />
+<Tweet id="1390115482657726468" />
 
 </div>
 </div>
