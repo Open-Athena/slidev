@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import CustomNavControls from '#slidev/custom-nav-controls'
 import { computed, ref, shallowRef } from 'vue'
-import { commitToYaml, describeEntry, canRedo as historyCanRedo, canUndo as historyCanUndo, isDirty as historyIsDirty, redo as historyRedo, undo as historyUndo, lastYamlCommitEventId, topActiveEventId, topRedoEntry, topUndoEntry } from '../composables/useDragHistory'
+import { commitToYaml, describeEntry, downloadCoordsYaml, canRedo as historyCanRedo, canUndo as historyCanUndo, isDirty as historyIsDirty, redo as historyRedo, undo as historyUndo, lastYamlCommitEventId, revertToYaml, topActiveEventId, topRedoEntry, topUndoEntry } from '../composables/useDragHistory'
 import { useDrawings } from '../composables/useDrawings'
 import { useNav } from '../composables/useNav'
 import { configs } from '../env'
@@ -74,6 +74,19 @@ async function onCommitClick() {
   await commitToYaml()
 }
 
+async function onRevertClick() {
+  if (!historyIsDirty.value)
+    return
+  const top = topActiveEventId.value ?? 0
+  const last = lastYamlCommitEventId.value ?? 0
+  const n = Math.max(0, top - last)
+  const noun = n === 1 ? 'edit' : 'edits'
+  // eslint-disable-next-line no-alert -- destructive op needs explicit confirmation; toast/modal would be over-engineered for a dev-only utility
+  if (!window.confirm(`Drop ${n} uncommitted ${noun} and reload from slides.coords.yaml?`))
+    return
+  await revertToYaml()
+}
+
 const RecordingControls = shallowRef<any>()
 if (__SLIDEV_FEATURE_RECORD__)
   import('./RecordingControls.vue').then(v => RecordingControls.value = v.default)
@@ -117,6 +130,21 @@ if (__SLIDEV_FEATURE_RECORD__)
           v-if="historyIsDirty"
           class="absolute top-0.5 right-0.5 w-1.5 h-1.5 rounded-full bg-orange-500"
         />
+      </IconButton>
+      <IconButton
+        v-if="__DEV__ && __SLIDEV_FEATURE_EDITOR__"
+        :class="{ disabled: !historyIsDirty }"
+        title="Revert uncommitted edits — drop state.db and re-hydrate from slides.coords.yaml"
+        @click="onRevertClick"
+      >
+        <div class="i-carbon:reset" />
+      </IconButton>
+      <IconButton
+        v-if="!__DEV__"
+        title="Download slides.coords.yaml (positions of every dragged element on every slide)"
+        @click="downloadCoordsYaml"
+      >
+        <div class="i-carbon:document-export" />
       </IconButton>
       <IconButton
         :title="showHistoryDrawer ? 'Hide edit history' : 'Show edit history'"

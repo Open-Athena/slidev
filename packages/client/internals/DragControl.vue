@@ -5,7 +5,7 @@ import type { DragElementState } from '../composables/useDragElements'
 import { clamp } from '@antfu/utils'
 import { useIntervalFn } from '@vueuse/core'
 import { computed, inject, onMounted, onUnmounted, ref, watchEffect } from 'vue'
-import { findSnap, getSnapTargets } from '../composables/useDragElements'
+import { findSnap, getDragElementsForPage, getSnapTargets } from '../composables/useDragElements'
 import { useSlideBounds } from '../composables/useSlideBounds'
 import { injectionSlideScale } from '../constants'
 import { slideHeight, slideWidth } from '../env'
@@ -460,7 +460,7 @@ function getBorderProps(dir: 'l' | 'r' | 't' | 'b') {
         // Snap the moving left edge midpoint
         let mx = rx - width.value * rotateCos.value
         let my = ry - width.value * rotateSin.value
-        const snapped = applyPointSnap(mx, my, ev.shiftKey || ev.metaKey)
+        const snapped = applyPointSnap(mx, my, ev.metaKey)
         mx = snapped.x
         my = snapped.y
         props.data.activeSnapLines.value = { x: snapped.linesX, y: snapped.linesY }
@@ -475,7 +475,7 @@ function getBorderProps(dir: 'l' | 'r' | 't' | 'b') {
         // Snap the moving right edge midpoint
         let mx = lx + width.value * rotateCos.value
         let my = ly + width.value * rotateSin.value
-        const snapped = applyPointSnap(mx, my, ev.shiftKey || ev.metaKey)
+        const snapped = applyPointSnap(mx, my, ev.metaKey)
         mx = snapped.x
         my = snapped.y
         props.data.activeSnapLines.value = { x: snapped.linesX, y: snapped.linesY }
@@ -490,7 +490,7 @@ function getBorderProps(dir: 'l' | 'r' | 't' | 'b') {
         // Snap the moving top edge midpoint
         let mx = bx + height.value * rotateSin.value
         let my = by - height.value * rotateCos.value
-        const snapped = applyPointSnap(mx, my, ev.shiftKey || ev.metaKey)
+        const snapped = applyPointSnap(mx, my, ev.metaKey)
         mx = snapped.x
         my = snapped.y
         props.data.activeSnapLines.value = { x: snapped.linesX, y: snapped.linesY }
@@ -505,7 +505,7 @@ function getBorderProps(dir: 'l' | 'r' | 't' | 'b') {
         // Snap the moving bottom edge midpoint
         let mx = tx - height.value * rotateSin.value
         let my = ty + height.value * rotateCos.value
-        const snapped = applyPointSnap(mx, my, ev.shiftKey || ev.metaKey)
+        const snapped = applyPointSnap(mx, my, ev.metaKey)
         mx = snapped.x
         my = snapped.y
         props.data.activeSnapLines.value = { x: snapped.linesX, y: snapped.linesY }
@@ -701,27 +701,44 @@ function resetAspectRatio() {
   void props.data.commitSnapshot()
 }
 
+// z of every *other* drag element on this slide (so we can move past ties).
+function siblingZs(): number[] {
+  return getDragElementsForPage(props.data.page.value)
+    .filter(el => el.dragId !== props.data.dragId)
+    .map(el => el.zIndex())
+}
+
 function bringForward() {
   props.data.saveSnapshot('zorder')
-  zIndex.value += 1
+  // If any sibling is at-or-above our current z, we need to leapfrog past it (a plain
+  // `z += 1` leaves us tied when a sibling is exactly z+1, so the visual order doesn't
+  // change). Find the lowest sibling z that's >= ours and go one above it.
+  const others = siblingZs()
+  const above = others.filter(z => z >= zIndex.value).sort((a, b) => a - b)
+  zIndex.value = above.length > 0 ? above[0] + 1 : zIndex.value + 1
   void props.data.commitSnapshot()
 }
 
 function sendBackward() {
   props.data.saveSnapshot('zorder')
-  zIndex.value = Math.max(1, zIndex.value - 1)
+  // Mirror of bringForward: find the highest sibling z that's <= ours and go one below.
+  const others = siblingZs()
+  const below = others.filter(z => z <= zIndex.value).sort((a, b) => b - a)
+  zIndex.value = Math.max(1, below.length > 0 ? below[0] - 1 : zIndex.value - 1)
   void props.data.commitSnapshot()
 }
 
 function bringToFront() {
   props.data.saveSnapshot('zorder')
-  zIndex.value = 1000
+  const others = siblingZs()
+  zIndex.value = others.length > 0 ? Math.max(...others) + 1 : zIndex.value
   void props.data.commitSnapshot()
 }
 
 function sendToBack() {
   props.data.saveSnapshot('zorder')
-  zIndex.value = 1
+  const others = siblingZs()
+  zIndex.value = others.length > 0 ? Math.max(1, Math.min(...others) - 1) : 1
   void props.data.commitSnapshot()
 }
 
@@ -901,15 +918,14 @@ function getCropHandleProps(handle: 'top' | 'right' | 'bottom' | 'left' | 'topLe
         cropRight.value = clamp(currentCropDrag.startCropRight - dx, 0, 100 - cropLeft.value - 10)
       }
 
-      // Hold Alt (Option) to constrain the crop region to the wrapper's AR — so the
-      // cropped image fills the frame without distortion. (We pick wrapper AR, not the
-      // image's natural AR, because the wrapper is already the user-chosen frame; a crop
-      // at any other AR would be visibly stretched when scaled to fit it.)
-      // Edge handles: keep the dragged edge, symmetrically adjust the perpendicular pair
-      // (centered crop). Corner handles: pick the larger drag axis as primary, derive the
-      // perpendicular edge belonging to the corner. Snap is skipped while Alt is held to
-      // avoid pulling edges off the AR-preserving position.
-      if (ev.altKey) {
+      // Hold Shift to constrain the crop region to the wrapper's AR — so the cropped image
+      // fills the frame without distortion. (We pick wrapper AR, not the image's natural
+      // AR, because the wrapper is already the user-chosen frame; a crop at any other AR
+      // would be visibly stretched when scaled to fit it.) Edge handles: keep the dragged
+      // edge, symmetrically adjust the perpendicular pair (centered crop). Corner handles:
+      // pick the larger drag axis as primary, derive the perpendicular edge. Snap is
+      // skipped while Shift is held so we don't pull edges off the AR-preserving position.
+      if (ev.shiftKey) {
         const w = width.value
         const hv = height.value
         const wrapperAR = w > 0 && hv > 0 ? w / hv : null

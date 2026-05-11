@@ -294,6 +294,26 @@ export async function commitYaml(db: Database.Database, userRoot: string): Promi
   return { committedEventId: top, dirty: false }
 }
 
+// Drop all events + materialized state, then re-hydrate from `slides.coords.yaml`. Used by
+// the "revert to committed" UI to discard uncommitted dev-server tweaks without making the
+// user kill the server / delete the DB by hand. Returns the new hydrate event so callers
+// can broadcast it.
+export async function revertToYaml(db: Database.Database, userRoot: string): Promise<EditEvent | null> {
+  const tx = db.transaction(() => {
+    db.prepare('DELETE FROM element_state').run()
+    db.prepare('DELETE FROM events').run()
+    setMeta(db, 'last_yaml_commit_event_id', '')
+  })
+  tx()
+  await hydrateIfEmpty(db, userRoot)
+  // After hydration, the latest event is the synthetic hydrate-from-yaml. Return it as the
+  // new top-of-stack so the client can sync.
+  const top = topActiveEventId(db)
+  if (top === null)
+    return null
+  return getEvent(db, top)
+}
+
 // Cold-start: if events table is empty, hydrate element_state from slides.coords.yaml and
 // insert one synthetic kind='hydrate' event so the timeline has a clear origin.
 export async function hydrateIfEmpty(db: Database.Database, userRoot: string): Promise<boolean> {

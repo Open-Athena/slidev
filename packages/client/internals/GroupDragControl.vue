@@ -61,8 +61,19 @@ const { left: slideLeft, top: slideTop } = useSlideBounds()
 const ctrlSize = 10
 const minRemain = 10
 
-// Active snap lines (from the primary element or group)
-const activeSnapLines = ref<{ x: number[], y: number[] }>({ x: [], y: [] })
+// Aggregate snap-line guides from all selected elements. The v-drag directive's body-drag
+// handler calls `state.applySnap(...)` on the clicked element during multi-select drags,
+// which writes into that element's `activeSnapLines` — but its `DragControl` isn't mounted
+// while multi-selected, so without this aggregation the red snap guides wouldn't render.
+const activeSnapLines = computed(() => {
+  const x = new Set<number>()
+  const y = new Set<number>()
+  for (const el of selectedElements.value) {
+    for (const lx of el.activeSnapLines.value.x) x.add(lx)
+    for (const ly of el.activeSnapLines.value.y) y.add(ly)
+  }
+  return { x: Array.from(x), y: Array.from(y) }
+})
 
 // Rotation state
 const isRotating = ref(false)
@@ -232,7 +243,10 @@ function onPointerup(ev: PointerEvent) {
     currentDrag.pendingGroupBefore,
     selectedElements.value,
   )
-  activeSnapLines.value = { x: [], y: [] }
+  // Clear any snap-line guides that the body-drag handler left on individual elements
+  // (the v-drag directive's pointerup only clears the primary element's lines).
+  for (const el of selectedElements.value)
+    el.clearSnapLines()
   currentDrag = null
 }
 

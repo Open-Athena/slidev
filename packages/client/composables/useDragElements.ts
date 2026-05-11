@@ -44,6 +44,7 @@ export interface DragElementInfo {
   width: () => number
   height: () => number
   rotate: () => number
+  zIndex: () => number
   cropTop: () => number
   cropRight: () => number
   cropBottom: () => number
@@ -239,7 +240,11 @@ export function useDragElement(directive: DirectiveBinding | null, posRaw?: stri
       width: rect.width / zoom.value,
       height: rect.height / zoom.value,
     }
-    actualHeight.value = ((bounds.value.width + bounds.value.height) / scale.value / (Math.abs(rotateSin.value) + Math.abs(rotateCos.value)) - width.value)
+    // `offsetHeight` is the unrotated layout-box height in slide CSS pixels and is
+    // not affected by ancestor transforms — so it stays correct during the slide-enter
+    // animation (parent scale=0) and when the tab is hidden, where `getBoundingClientRect`
+    // collapses to 0×0.
+    actualHeight.value = container.value.offsetHeight
   }
   watchStopHandles.push(watch(width, updateBounds, { flush: 'post' }))
 
@@ -511,6 +516,13 @@ export function useDragElement(directive: DirectiveBinding | null, posRaw?: stri
       if (container.value && Number.isFinite(x0.value))
         container.value.dataset.dragPositioned = ''
       updateBounds()
+      // Refresh bounds when the element resizes — covers img `load` (intrinsic size
+      // changes from 0×0 to natural dims), font reflow, etc.
+      if (container.value && typeof ResizeObserver !== 'undefined') {
+        const ro = new ResizeObserver(() => updateBounds())
+        ro.observe(container.value)
+        watchStopHandles.push(() => ro.disconnect())
+      }
       // Register for snap alignment
       registerDragElement(page.value, {
         dragId,
@@ -519,6 +531,7 @@ export function useDragElement(directive: DirectiveBinding | null, posRaw?: stri
         width: () => width.value,
         height: () => height.value,
         rotate: () => rotate.value,
+        zIndex: () => zIndex.value,
         cropTop: () => cropTop.value,
         cropRight: () => cropRight.value,
         cropBottom: () => cropBottom.value,

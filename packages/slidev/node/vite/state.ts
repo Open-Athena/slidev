@@ -12,6 +12,7 @@ import {
   listEvents,
   redo,
   restoreToEvent,
+  revertToYaml,
   undo,
 } from '../state/core'
 import { openStateDb } from '../state/db'
@@ -218,6 +219,12 @@ export function createStatePlugin(options: ResolvedSlidevOptions): Plugin {
             const result = await commitYaml(handle, options.userRoot)
             broadcast({ type: 'state-change', source: 'yaml-commit', topActiveEventId: result.committedEventId })
             return sendJson(res, 200, result)
+          }
+
+          if (req.method === 'POST' && path === '/__slidev/state/revert-to-yaml') {
+            const event = await revertToYaml(handle, options.userRoot)
+            broadcast({ type: 'state-change', source: 'revert-to-yaml', topActiveEventId: event?.id ?? null, triggeringEventId: event?.id })
+            return sendJson(res, 200, { event })
           }
 
           if (req.method === 'POST' && path === '/__slidev/state/restore') {

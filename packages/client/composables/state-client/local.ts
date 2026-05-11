@@ -348,6 +348,17 @@ export class LocalStateClient implements IStateClient {
     return { committedEventId: top, dirty: false }
   }
 
+  async revertToYaml(): Promise<EditEvent | null> {
+    // No bundled-yaml source-of-truth at runtime in static mode: the only way to "revert"
+    // is to drop everything and let the elements re-mount from their frontmatter/yaml-
+    // baked initial positions. We clear the event log + meta and let the registry's live
+    // values become the new ground truth on next interaction.
+    this.writeEvents([])
+    this.writeMeta({ lastEventId: 0, lastYamlCommitEventId: null })
+    this.broadcast({ type: 'state-change', source: 'revert-to-yaml', topActiveEventId: null })
+    return null
+  }
+
   subscribe(handler: (msg: StateChangeMessage) => void): () => void {
     this.subscribers.add(handler)
     return () => {

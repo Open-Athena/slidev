@@ -117,8 +117,8 @@ function handlePointermove(ev: PointerEvent) {
   const rawX = drag.startX0 + dxPx / s
   const rawY = drag.startY0 + dyPx / s
 
-  // Apply snap. Hold Shift or Cmd (metaKey) to disable snap.
-  const snapped = state.applySnap(rawX, rawY, ev.shiftKey || ev.metaKey)
+  // Apply snap. Hold ⌘ (metaKey) to disable snap-to-guides.
+  const snapped = state.applySnap(rawX, rawY, ev.metaKey)
   x0.value = snapped.x
   y0.value = snapped.y
 }
@@ -150,9 +150,12 @@ function handlePointercancel(ev: PointerEvent) {
 function handleDblclick(ev: MouseEvent) {
   ev.preventDefault()
   ev.stopPropagation()
-  if (container.value?.querySelector('iframe'))
+  const el = container.value
+  if (!el)
+    return
+  if (el.querySelector('iframe'))
     state.enterInteractMode()
-  else
+  else if (el.querySelector('img'))
     state.enterCropMode()
 }
 

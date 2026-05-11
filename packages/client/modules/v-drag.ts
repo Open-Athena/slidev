@@ -60,6 +60,14 @@ export function createVDragDirective() {
           el.dataset.dragId = state.dragId
           if (state.enabled)
             el.dataset.dragEditing = ''
+          // Opt-in AR lock via `data-lock-ar` attribute (numeric width/height ratio). Used
+          // for `<img v-drag>` on shapes whose natural AR we want preserved during resize.
+          // Read from vnode.props since the `created` hook fires before HTML attributes are
+          // applied to `el` — `el.dataset.lockAr` would be undefined here.
+          const lockARRaw = vnode.props?.['data-lock-ar']
+          const lockAR = lockARRaw != null ? Number(lockARRaw) : Number.NaN
+          if (Number.isFinite(lockAR) && lockAR > 0)
+            state.lockAspectRatio.value = lockAR
           state.watchStopHandles.push(
             watch(state.containerStyle, (style) => {
               for (const [k, v] of Object.entries(style)) {
@@ -202,8 +210,10 @@ export function createVDragDirective() {
               const dx = dxPx / scale
               const dy = dyPx / scale
 
-              // Hold Shift or Cmd (metaKey) to disable snap alignment.
-              const disableSnap = moveEv.shiftKey || moveEv.metaKey
+              // Hold ⌘ (metaKey) to disable snap-to-guides. Shift is reserved for "constrain"
+              // (lock AR / 15° rotate) elsewhere; keeping the two modifiers distinct avoids
+              // overloading Shift.
+              const disableSnap = moveEv.metaKey
               // For single selection, apply snap to the primary element
               if (selectedElements.length === 1) {
                 const rawX = startPositions[0].x0 + dx
@@ -247,16 +257,19 @@ export function createVDragDirective() {
             ev.stopPropagation()
           }
 
-          // Double-click to enter crop mode or interact mode (iframes)
+          // Double-click to enter crop mode (images) or interact mode (iframes).
+          // Crop mode renders preview <img>s of the wrapped image, so it only makes sense
+          // when there's actually an image to clip — otherwise the user just sees an empty
+          // blue rectangle floating over the slide.
           function handleDblclick(ev: MouseEvent) {
             ev.preventDefault()
             ev.stopPropagation()
-            if (!state.isArrow) {
-              if (el.querySelector('iframe'))
-                state.enterInteractMode()
-              else
-                state.enterCropMode()
-            }
+            if (state.isArrow)
+              return
+            if (el.querySelector('iframe'))
+              state.enterInteractMode()
+            else if (el.tagName === 'IMG' || el.querySelector('img'))
+              state.enterCropMode()
           }
 
           el.addEventListener('pointerdown', handlePointerdown, { capture: true })

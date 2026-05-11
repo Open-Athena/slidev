@@ -162,15 +162,32 @@ function clearPending(slideNo: number, dragId: string): void {
 // `restoreToEvent(<first event>)` would diff current ↔ current and return null, leaving
 // the user with no rollback target. Mirrors the dev-server's `hydrateIfEmpty` cold-start
 // behavior, scoped to the current slide since we only know about mounted elements.
-async function synthesizeHydrateIfEmpty(client: IStateClient, slideNo: number): Promise<void> {
+//
+// `imminentEdit` carries the items about to be pushed; for any element being edited we use
+// its `before` snapshot rather than `state.capture()`, since the live state has *already*
+// been mutated by the in-flight drag/rotate/etc. Without this, a Cmd+Z on the first edit
+// reverts to the post-mutation state instead of the original.
+async function synthesizeHydrateIfEmpty(
+  client: IStateClient,
+  slideNo: number,
+  imminentEdit?: EditItem[],
+): Promise<void> {
   if (topActiveEventId.value !== null)
     return
+  const beforeOverrides = new Map<string, ElementSnapshot>()
+  if (imminentEdit) {
+    for (const it of imminentEdit) {
+      if (it.before)
+        beforeOverrides.set(it.dragId, it.before)
+    }
+  }
   const items: EditItem[] = []
   for (const [k, state] of registry) {
     const [slideStr, dragId] = k.split(':')
     if (Number(slideStr) !== slideNo)
       continue
-    items.push({ dragId, before: null, after: state.capture() })
+    const after = beforeOverrides.get(dragId) ?? state.capture()
+    items.push({ dragId, before: null, after })
   }
   if (items.length === 0)
     return
@@ -186,7 +203,7 @@ async function synthesizeHydrateIfEmpty(client: IStateClient, slideNo: number): 
 
 async function postEdit(slideNo: number, kind: ClientEditKind, items: EditItem[]): Promise<void> {
   const client = await getStateClient()
-  await synthesizeHydrateIfEmpty(client, slideNo)
+  await synthesizeHydrateIfEmpty(client, slideNo, items)
   const event = await client.edit({ slideNo, kind, items })
   topActiveEventId.value = event.id
   topActiveEvent.value = event
@@ -387,6 +404,102 @@ export async function commitToYaml(): Promise<{ committedEventId: number | null 
   const result = await client.commitYaml()
   lastYamlCommitEventId.value = result.committedEventId
   return result
+}
+
+// Drop uncommitted dev-server tweaks and re-hydrate from `slides.coords.yaml`. The page
+// is reloaded after the server confirms, because each `<v-drag>` element holds reactive
+// state initialized at mount; a soft re-apply across an arbitrary set of slides is fragile
+// vs. just re-mounting from the bundled defaults. Dev-only; static-mode `revertToYaml`
+// clears localStorage and we reload there too so the elements rebuild from bundle.
+export async function revertToYaml(): Promise<void> {
+  const client = await getStateClient()
+  await client.revertToYaml()
+  // Allow the broadcast to land in other tabs before reloading; cheap insurance.
+  setTimeout(() => location.reload(), 50)
+}
+
+// Serialize an `ElementSnapshot` to the comma-separated posStr that `slides.coords.yaml`
+// expects: `x,y,w,h[,r,z,cropT,cropR,cropB,cropL]`. Trailing fields are elided when they're
+// at their defaults — mirrors the on-edit serializer in `useDragElements.ts`.
+function snapshotToPosStr(s: ElementSnapshot): string {
+  const parts = [
+    Math.round(s.x0 - s.width / 2),
+    Math.round(s.y0 - s.height / 2),
+    Math.round(s.width),
+    Math.round(s.height),
+  ]
+  const hasCrop = s.cropTop !== 0 || s.cropRight !== 0 || s.cropBottom !== 0 || s.cropLeft !== 0
+  const hasZIndex = s.zIndex !== 100
+  if (Math.round(s.rotate) !== 0 || hasZIndex || hasCrop)
+    parts.push(Math.round(s.rotate))
+  if (hasZIndex || hasCrop)
+    parts.push(Math.round(s.zIndex))
+  if (hasCrop)
+    parts.push(Math.round(s.cropTop), Math.round(s.cropRight), Math.round(s.cropBottom), Math.round(s.cropLeft))
+  return parts.join(',')
+}
+
+// Build the contents of `slides.coords.yaml` from currently-mounted elements (plus any
+// event-only state for slides not currently visible). Same on-disk format the dev server
+// writes via `commit-yaml`, so the file can be dropped straight into the repo.
+//
+// Sourcing rationale: edits live in localStorage events, but *initial* positions don't
+// generate events — they come from `slides.coords.yaml` baked into the bundle and surface
+// via each element's reactive state at mount. To export those reliably we iterate the
+// in-memory `registry` (every element on the current slide), then merge in event-derived
+// state for any slide-not-visible whose elements aren't registered. Caveat: elements on
+// never-visited slides won't appear; visit those slides first if you need to capture them.
+export async function buildCoordsYaml(): Promise<string> {
+  const client = await getStateClient()
+  const snapshot = await client.getSnapshot()
+  const bySlide = new Map<number, Map<string, ElementSnapshot>>()
+  // Layer 1: event-derived state (covers slides that have history but aren't mounted).
+  for (const [slideKey, byId] of Object.entries(snapshot.state)) {
+    const slideNo = Number(slideKey)
+    if (!Number.isFinite(slideNo))
+      continue
+    const map = new Map<string, ElementSnapshot>()
+    for (const [dragId, snap] of Object.entries(byId))
+      map.set(dragId, snap)
+    bySlide.set(slideNo, map)
+  }
+  // Layer 2: live registry overwrites event-derived state with the element's current
+  // reactive value. This is the only source for elements whose initial position came from
+  // the bundled yaml and hasn't been edited (no events exist for them).
+  for (const [, state] of registry) {
+    const slideNo = state.page.value
+    if (!bySlide.has(slideNo))
+      bySlide.set(slideNo, new Map())
+    bySlide.get(slideNo)!.set(state.dragId, state.capture())
+  }
+  const lines: string[] = []
+  lines.push('# Slidev drag coords — exported from a static deck.')
+  lines.push('# Drop into your repo as `slides.coords.yaml` and rebuild; positions become the default.')
+  const slides = Array.from(bySlide.keys()).sort((a, b) => a - b)
+  for (const slideNo of slides) {
+    const byId = bySlide.get(slideNo)!
+    if (byId.size === 0)
+      continue
+    lines.push(`"${slideNo}":`)
+    for (const dragId of Array.from(byId.keys()).sort())
+      lines.push(`  ${dragId}: ${snapshotToPosStr(byId.get(dragId)!)}`)
+  }
+  return `${lines.join('\n')}\n`
+}
+
+// Download the current state as a `slides.coords.yaml` file. Used in static mode (no
+// dev server endpoint) so authors can capture their tweaks and commit them to source.
+export async function downloadCoordsYaml(): Promise<void> {
+  const yaml = await buildCoordsYaml()
+  const blob = new Blob([yaml], { type: 'text/yaml' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = 'slides.coords.yaml'
+  document.body.appendChild(a)
+  a.click()
+  document.body.removeChild(a)
+  setTimeout(() => URL.revokeObjectURL(url), 1000)
 }
 
 const KIND_LABEL: Record<string, string> = {

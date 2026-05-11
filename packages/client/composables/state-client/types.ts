@@ -64,7 +64,7 @@ export interface CommitResult {
 // local client emits them on every mutation. Identical envelope across both backends.
 export interface StateChangeMessage {
   type: 'state-change'
-  source: 'edit' | 'undo' | 'redo' | 'restore' | 'yaml-commit'
+  source: 'edit' | 'undo' | 'redo' | 'restore' | 'yaml-commit' | 'revert-to-yaml'
   topActiveEventId: number | null
   triggeringEventId?: number | null
 }
@@ -100,6 +100,12 @@ export interface IStateClient {
   restore: (eventId: number) => Promise<EditEvent | null>
   /** Flush element_state → slides.coords.yaml. No-op for non-server backends. */
   commitYaml: () => Promise<CommitResult>
+  /**
+   * Drop all events and re-hydrate from `slides.coords.yaml`. Returns the new hydrate event,
+   * or null if there's nothing to revert to (no yaml on disk). Dev-only — no-op for
+   * static backends, which don't have a source-of-truth yaml to revert to.
+   */
+  revertToYaml: () => Promise<EditEvent | null>
   /** Subscribe to state-change broadcasts. Returns an unsubscribe fn. */
   subscribe: (handler: (msg: StateChangeMessage) => void) => () => void
   /** Tear down any open connections / timers. */

@@ -80,6 +80,14 @@ export class RemoteStateClient implements IStateClient {
     return await r.json() as CommitResult
   }
 
+  async revertToYaml(): Promise<EditEvent | null> {
+    const r = await fetch('/__slidev/state/revert-to-yaml', { method: 'POST' })
+    if (!r.ok)
+      return null
+    const body = await r.json() as { event: EditEvent | null }
+    return body.event
+  }
+
   subscribe(handler: (msg: StateChangeMessage) => void): () => void {
     this.subscribers.add(handler)
     if (!this.es && typeof EventSource !== 'undefined')
