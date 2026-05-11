@@ -2,8 +2,6 @@
 # Tracked in git by default; add to .gitignore if you'd rather keep positions personal.
 # Top-level keys are slide numbers (1-based); values are dragId → posStr.
 "1":
-  ClZua: 530,460,160,72
-"2":
   feat-reorder-2: 503,228,180,105,0,1000
   feat-crop: 287,172,180,105,0,100,16,16,10,7
   feat-crop-2: 288,251,180,105,0,100,28,9,28,28

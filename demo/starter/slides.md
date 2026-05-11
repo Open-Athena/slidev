@@ -1,25 +1,15 @@
 ---
-# try also 'default' to start simple
 theme: seriph
-# random image from a curated Unsplash collection by Anthony
-# like them? see https://unsplash.com/collections/94734566/slidev
-background: https://cover.sli.dev
-# some information about your slides (markdown enabled)
-title: Slidev — Open-Athena fork
+title: Open-Athena/slidev
 info: |
-  ## Slidev — Open-Athena fork
-  Adds direct manipulation: click + drag, snap, crop, undo, multi-tab live edits.
+  ## Open-Athena/slidev
+  A fork of sli.dev that adds direct manipulation: click + drag, snap, crop, undo, multi-tab live edits.
   Source: https://github.com/Open-Athena/slidev
-# apply UnoCSS classes to the current slide
-class: text-center
-# https://sli.dev/features/drawing
+layout: default
 drawings:
   persist: false
-# slide transition: https://sli.dev/guide/animations.html#slide-transitions
 transition: slide-left
-# enable Comark Syntax: https://comark.dev/syntax/markdown
 comark: true
-# duration of the presentation
 duration: 35min
 # make markdown images draggable by default (fork feature)
 draggableImages: true
@@ -31,29 +21,9 @@ publish:
     format: jpg
 ---
 
-# <span class="font-mono">Open&#8209;Athena<span class="opacity-50">/</span>slidev</span>
+<h1 class="!text-3xl !mt-0 !mb-1 font-mono">Open&#8209;Athena<span class="opacity-50">/</span>slidev</h1>
 
-A fork of <a href="https://sli.dev" target="_blank" class="text-white font-semibold underline underline-offset-4 decoration-white/40 hover:decoration-white">sli.dev</a> that adds <span class="text-white font-semibold">direct manipulation</span> — click + drag, snap, crop, undo, multi-tab live edits.
-
-<div class="abs-bl m-6 text-sm">
-  <a href="https://github.com/Open-Athena/slidev" target="_blank" class="text-white !text-opacity-90 hover:!text-opacity-100 underline underline-offset-4 decoration-white/40 hover:decoration-white">
-    github.com/Open-Athena/slidev
-  </a>
-</div>
-
-<!--
-This deck is upstream slidev's starter, with the OA fork's runtime additions layered in.
-Press space / → to advance.
--->
-
----
-layout: default
-title: Direct manipulation
----
-
-# Direct manipulation
-
-In OA/slidev, click any image to **drag**, **resize**, **rotate**, or **reorder** it; **double-click** to enter **crop** mode. Try it on the cards below.
+A fork of <a href="https://sli.dev" target="_blank" class="font-semibold underline underline-offset-4 decoration-current/40 hover:decoration-current">sli.dev</a> that adds <span class="font-semibold">direct manipulation</span> — click any image to **drag**, **resize**, **rotate**, or **reorder** it; **double-click** to **crop**. Try it ↓
 
 <img v-drag="'feat-rotate'" src="/feature-rotate.svg">
 <img v-drag="'feat-drag'" src="/feature-drag.svg">
@@ -67,6 +37,17 @@ In OA/slidev, click any image to **drag**, **resize**, **rotate**, or **reorder*
 <div class="abs-b mb-3 w-full text-center text-xs opacity-60">
 Reorder: <kbd>⌘↑</kbd> / <kbd>⌘↓</kbd> forward/back · <kbd>⇧⌘↑</kbd> / <kbd>⇧⌘↓</kbd> to-front/back &nbsp;·&nbsp; Undo / redo: <kbd>⌘Z</kbd> / <kbd>⇧⌘Z</kbd>
 </div>
+
+<div class="abs-bl m-6 text-sm">
+  <a href="https://github.com/Open-Athena/slidev" target="_blank" class="underline underline-offset-4 decoration-current/40 hover:decoration-current">
+    github.com/Open-Athena/slidev
+  </a>
+</div>
+
+<!--
+This deck is upstream slidev's starter, with the OA fork's direct-manipulation features layered in.
+Press space / → to advance.
+-->
 
 ---
 layout: center
