@@ -92,7 +92,8 @@ function unregisterDragElement(page: number, dragId: string) {
 // Snap alignment logic
 const SNAP_THRESHOLD = 8
 
-export function getSnapTargets(pageNum: number, selfDragId: string) {
+export function getSnapTargets(pageNum: number, selfDragId: string | Set<string>) {
+  const exclude = typeof selfDragId === 'string' ? new Set([selfDragId]) : selfDragId
   const targets = { x: new Set<number>(), y: new Set<number>() }
 
   // Slide edges and center
@@ -106,7 +107,7 @@ export function getSnapTargets(pageNum: number, selfDragId: string) {
   // Other elements on this page (use visible/cropped bounds)
   const elements = getDragElementsForPage(pageNum)
   for (const el of elements) {
-    if (el.dragId === selfDragId)
+    if (exclude.has(el.dragId))
       continue
     const { cx, cy, w, h } = getVisibleBounds(el)
     targets.x.add(cx - w / 2)

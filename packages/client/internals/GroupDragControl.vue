@@ -61,13 +61,19 @@ const { left: slideLeft, top: slideTop } = useSlideBounds()
 const ctrlSize = 10
 const minRemain = 10
 
-// Aggregate snap-line guides from all selected elements. The v-drag directive's body-drag
-// handler calls `state.applySnap(...)` on the clicked element during multi-select drags,
-// which writes into that element's `activeSnapLines` — but its `DragControl` isn't mounted
-// while multi-selected, so without this aggregation the red snap guides wouldn't render.
+// Snap-line guides during corner resize. The body-drag handler in `v-drag.ts` writes
+// snap lines onto the clicked element's `activeSnapLines`; corner resize lives here in
+// GroupDragControl and writes onto this local ref. The merged `activeSnapLines` computed
+// (below) renders both.
+const groupResizeSnapLines = ref<{ x: number[], y: number[] }>({ x: [], y: [] })
+
+// Aggregate snap-line guides from the local resize ref plus each selected element's own
+// lines (set by the v-drag directive during a multi-select body drag — that element's
+// `DragControl` isn't mounted while multi-selected, so without this aggregation the
+// red snap guides wouldn't render).
 const activeSnapLines = computed(() => {
-  const x = new Set<number>()
-  const y = new Set<number>()
+  const x = new Set<number>(groupResizeSnapLines.value.x)
+  const y = new Set<number>(groupResizeSnapLines.value.y)
   for (const el of selectedElements.value) {
     for (const lx of el.activeSnapLines.value.x) x.add(lx)
     for (const ly of el.activeSnapLines.value.y) y.add(ly)
@@ -154,9 +160,55 @@ function onPointerdown(ev: PointerEvent) {
   ;(ev.currentTarget as HTMLElement).setPointerCapture(ev.pointerId)
 }
 
-// Reserved for future snap alignment support
-void findSnap
-void getSnapTargets
+// Snap the dragged corner `(cornerX, cornerY)` of the group's bounding box to alignment
+// targets (slide edges/center + other elements' edges/centers). For free resize, snap each
+// axis independently. With `lockAR`, snap along the diagonal from the anchor through the
+// corner so the AR constraint isn't broken. Returns the snapped corner plus the guide
+// lines to render.
+function applyGroupCornerSnap(
+  cornerX: number,
+  cornerY: number,
+  anchorX: number,
+  anchorY: number,
+  lockAR: boolean,
+  excludeIds: Set<string>,
+  pageNum: number,
+): { x: number, y: number, linesX: number[], linesY: number[] } {
+  const targets = getSnapTargets(pageNum, excludeIds)
+  if (!lockAR) {
+    const sX = findSnap(cornerX, 0, targets.x)
+    const sY = findSnap(cornerY, 0, targets.y)
+    return { x: sX.value, y: sY.value, linesX: sX.lines, linesY: sY.lines }
+  }
+  // AR-locked: snap projects guide-aligned positions onto the AR-preserving diagonal.
+  const dx = cornerX - anchorX
+  const dy = cornerY - anchorY
+  if (Math.abs(dx) < 0.001 && Math.abs(dy) < 0.001)
+    return { x: cornerX, y: cornerY, linesX: [], linesY: [] }
+  const sX = findSnap(cornerX, 0, targets.x)
+  let xDist = Infinity
+  let xSnX = cornerX
+  let xSnY = cornerY
+  if (sX.lines.length > 0 && Math.abs(dx) > 0.001) {
+    xSnX = sX.value
+    xSnY = anchorY + (xSnX - anchorX) / dx * dy
+    xDist = Math.abs(sX.value - cornerX)
+  }
+  const sY = findSnap(cornerY, 0, targets.y)
+  let yDist = Infinity
+  let ySnX = cornerX
+  let ySnY = cornerY
+  if (sY.lines.length > 0 && Math.abs(dy) > 0.001) {
+    ySnY = sY.value
+    ySnX = anchorX + (ySnY - anchorY) / dy * dx
+    yDist = Math.abs(sY.value - cornerY)
+  }
+  if (xDist < yDist && xDist < Infinity)
+    return { x: xSnX, y: xSnY, linesX: [xSnX], linesY: [] }
+  if (yDist < Infinity)
+    return { x: ySnX, y: ySnY, linesX: [], linesY: [ySnY] }
+  return { x: cornerX, y: cornerY, linesX: [], linesY: [] }
+}
 
 function onPointermoveResize(ev: PointerEvent, isLeft: boolean, isTop: boolean) {
   if (!currentDrag || ev.buttons !== 1 || !bounds.value)
@@ -189,7 +241,7 @@ function onPointermoveResize(ev: PointerEvent, isLeft: boolean, isTop: boolean) 
   newWidth = Math.max(newWidth, minSize)
   newHeight = Math.max(newHeight, minSize)
 
-  // With Shift: preserve aspect ratio
+  // With Shift: preserve aspect ratio (per the deck-wide modifier convention).
   if (ev.shiftKey) {
     const origRatio = origWidth / origHeight
     const newRatio = newWidth / newHeight
@@ -199,6 +251,24 @@ function onPointermoveResize(ev: PointerEvent, isLeft: boolean, isTop: boolean) 
     else {
       newHeight = newWidth / origRatio
     }
+  }
+
+  // Snap the dragged corner unless ⌘ is held (per the modifier convention). For AR-locked
+  // (Shift) resize, snap along the AR-preserving diagonal so we don't break the constraint.
+  if (!ev.metaKey) {
+    const slideNo = selectedElements.value[0]?.page.value
+    if (slideNo != null) {
+      const cornerX = isLeft ? (anchorX - newWidth) : (anchorX + newWidth)
+      const cornerY = isTop ? (anchorY - newHeight) : (anchorY + newHeight)
+      const excludeIds = new Set(selectedElements.value.map(s => s.dragId))
+      const snapped = applyGroupCornerSnap(cornerX, cornerY, anchorX, anchorY, ev.shiftKey, excludeIds, slideNo)
+      groupResizeSnapLines.value = { x: snapped.linesX, y: snapped.linesY }
+      newWidth = Math.max(Math.abs(snapped.x - anchorX), minSize)
+      newHeight = Math.max(Math.abs(snapped.y - anchorY), minSize)
+    }
+  }
+  else {
+    groupResizeSnapLines.value = { x: [], y: [] }
   }
 
   // Calculate scale factors
@@ -244,9 +314,11 @@ function onPointerup(ev: PointerEvent) {
     selectedElements.value,
   )
   // Clear any snap-line guides that the body-drag handler left on individual elements
-  // (the v-drag directive's pointerup only clears the primary element's lines).
+  // (the v-drag directive's pointerup only clears the primary element's lines), and the
+  // corner-resize ones we wrote locally.
   for (const el of selectedElements.value)
     el.clearSnapLines()
+  groupResizeSnapLines.value = { x: [], y: [] }
   currentDrag = null
 }
 
