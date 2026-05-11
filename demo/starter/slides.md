@@ -1,5 +1,9 @@
 ---
 theme: seriph
+# Pin dark; the default `auto` (= follow system) renders the OG image in light
+# mode because headless Chrome has no media-preference set during the build's
+# Playwright export.
+colorSchema: dark
 title: Open-Athena/slidev
 description: A fork of sli.dev that adds direct manipulation — click any image to drag, resize, rotate, reorder, or crop, with snap-to-alignment, undo/redo, and multi-tab live edits.
 info: |
