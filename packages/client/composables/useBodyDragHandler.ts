@@ -211,10 +211,16 @@ export function handleBodyDragPointerdown(ev: PointerEvent, opts: BodyDragHandle
       // and the resulting offset is applied to every member of the group. This keeps
       // the group's relative layout intact while letting the dragged element honour
       // alignment guides from other on-slide objects.
+      //
+      // Exclude every selected element from snap targets — otherwise the dragged element
+      // snaps to its own group members' edges/centers, and since those members move with
+      // the drag, the alignment is invariant under translation: the group "sticks" to an
+      // internal snap line, the user pushes through, it sticks again. Visible as flicker.
       const clickedStart = startPositions.find(p => p.state === state)!
       const rawX = clickedStart.x0 + dx
       const rawY = clickedStart.y0 + dy
-      const snapped = state.applySnap(rawX, rawY, disableSnap)
+      const groupExclude = new Set(selectedElements.map(s => s.dragId))
+      const snapped = state.applySnap(rawX, rawY, disableSnap, groupExclude)
       const snapDx = snapped.x - rawX
       const snapDy = snapped.y - rawY
 

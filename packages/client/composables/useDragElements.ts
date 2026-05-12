@@ -428,7 +428,12 @@ export function useDragElement(directive: DirectiveBinding | null, posRaw?: stri
     dragging: computed((): boolean => isSelected(state)),
     // Snap alignment: compute snapped position and update guide lines
     // x/y are proposed x0/y0 (full element center); snap uses visible (cropped) bounds
-    applySnap(x: number, y: number, metaKey: boolean): { x: number, y: number } {
+    // excludeIds: dragIds to skip when building snap targets. Defaults to just this
+    // element's own dragId. Multi-select group drags pass the full selection so the
+    // group doesn't snap to its own members (which would otherwise pin the group to
+    // an internal alignment as it moves — visible as constant flicker/jitter around
+    // a snap line travelling with the group).
+    applySnap(x: number, y: number, metaKey: boolean, excludeIds?: Set<string>): { x: number, y: number } {
       if (metaKey) {
         activeSnapLines.value = { x: [], y: [] }
         return { x, y }
@@ -446,7 +451,7 @@ export function useDragElement(directive: DirectiveBinding | null, posRaw?: stri
       const visCX = x + offX * rotateCos.value - offY * rotateSin.value
       const visCY = y + offX * rotateSin.value + offY * rotateCos.value
 
-      const targets = getSnapTargets(page.value, dragId)
+      const targets = getSnapTargets(page.value, excludeIds ?? dragId)
       const snapX = findSnap(visCX, visHalfW, targets.x)
       const snapY = findSnap(visCY, visHalfH, targets.y)
       activeSnapLines.value = { x: snapX.lines, y: snapY.lines }
