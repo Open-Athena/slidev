@@ -11,15 +11,8 @@
   feat-resize-locked: 696,174,235,137
   feat-resize: 696,327,264,93
 "2":
-  tweet-1390115482657726468: 54,133,280,305
-  yt-luoMHjh-XcQ: 364,133,300,170
-  # Initial height is a rough seed — BlueSky.vue tracks the widget's iframe
-  # height via ResizeObserver and feeds it into `lock-aspect-ratio`, so the
-  # wrapper height auto-snaps to width / natural-AR on load. Resize then
-  # preserves the AR (corner handles), same as Tweet/YouTube. A previous
-  # iteration disabled AR-locking for BSky because yaml-commit broadcasts
-  # re-applying server state caused oscillation; that was fixed upstream
-  # (yaml-commit no longer re-applies element state), so AR-lock is back on.
-  bsky-3lgwg2vy44s2q: 695,142,260,150
+  tweet-1390115482657726468: 60,133,280,305
+  yt-luoMHjh-XcQ: 340,133,300,172
+  bsky-3lgwg2vy44s2q: 640,133,299,172
 "10":
   tweet-1390115482657726468: 620,110,280,305
