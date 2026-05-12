@@ -158,10 +158,14 @@ html {
   display: none;
 }
 
-/* Generic v-drag iframes (other than Youtube/Tweet, which scale-to-fit via
-   transform — see Youtube.vue / Tweet.vue) fill their wrapper.
-   - Without this, generic iframes fall back to HTML's 300×150 default. */
-[data-drag-positioned] iframe:not(.youtube):not(.twitter-tweet > iframe) {
+/* Generic v-drag iframes (other than Youtube/Tweet/BlueSky, all of which
+   scale-to-fit via transform — see Youtube.vue / Tweet.vue / BlueSky.vue)
+   fill their wrapper.
+   - Without this, generic iframes fall back to HTML's 300×150 default.
+   - BlueSky must be excluded because its widget sizes the iframe to its content
+     height via postMessage; forcing height: 100% here defeats that and clamps
+     rich posts (quoted threads, link cards, etc.) back to the 150px default. */
+[data-drag-positioned] iframe:not(.youtube):not(.twitter-tweet > iframe):not(.bluesky-embed > iframe) {
   width: 100% !important;
   height: 100% !important;
 }

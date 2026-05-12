@@ -39,9 +39,22 @@ const tweetStyle = computed(() => ({
 }))
 
 // Twitter's widget self-determines iframe height based on tweet content (and updates
-// via postMessage). Track that height so the v-drag wrapper's AR can lock to the
-// content's natural AR (= 550 / iframeHeight) — no empty gap below or clipped overflow.
-const tweetAR = ref<number | null>(null)
+// via postMessage). Compute `tweetAR` from that height so corner-resize preserves
+// the natural shape. See BlueSky.vue for the geometry derivation; the short
+// version is that the v-drag wrapper has 8 px of padding (`class="p-1"`), so the
+// "natural wrap AR" isn't just `iframe.W / iframe.H` — it's
+//   (fitW + 8) / (8 + iframe.H × fitW / 550)
+// where `fitW` is the inner (padding-stripped) width. Using a constant AR ratio
+// like `550 / iframeH` leaves a visible gap below the tweet at typical widths.
+const iframeHeight = ref(0)
+
+const tweetAR = computed(() => {
+  const ih = iframeHeight.value
+  const fitW = wrapperWidth.value
+  if (ih <= 0 || fitW <= 0)
+    return undefined
+  return (fitW + 8) / (8 + ih * fitW / TWEET_NATURAL_W)
+})
 
 const loaded = ref(false)
 const tweetNotFound = ref(false)
@@ -87,9 +100,7 @@ let iframeResizeObserver: ResizeObserver | null = null
 function watchIframeAR(iframe: HTMLIFrameElement) {
   iframeResizeObserver?.disconnect()
   iframeResizeObserver = new ResizeObserver(() => {
-    const h = iframe.offsetHeight
-    if (h > 0)
-      tweetAR.value = TWEET_NATURAL_W / h
+    iframeHeight.value = iframe.offsetHeight
   })
   iframeResizeObserver.observe(iframe)
 }
@@ -119,8 +130,11 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <VDrag v-if="props.draggable !== false" :pos="`tweet-${id}`" :lock-aspect-ratio="tweetAR ?? undefined">
+  <VDrag v-if="props.draggable !== false" :pos="`tweet-${id}`" :lock-aspect-ratio="tweetAR">
     <div ref="wrapper" class="tweet-fit">
+      <!-- DragControl.associatedLink picks this up via `querySelector('a')`,
+           surfacing a clickable URL in the control bar when the embed is selected. -->
+      <a :href="`https://x.com/i/web/status/${id}`" target="_blank" rel="noopener noreferrer" aria-hidden="true" class="tweet-link" />
       <div ref="tweet" class="tweet slidev-tweet" :style="tweetStyle">
         <div v-if="!loaded || tweetNotFound" class="w-30 h-30 my-10px bg-gray-400 bg-opacity-10 rounded-lg flex opacity-50">
           <div class="m-auto animate-pulse text-4xl">
@@ -148,6 +162,14 @@ onUnmounted(() => {
   width: 100%;
   height: 100%;
   overflow: hidden;
+}
+.tweet-link {
+  position: absolute;
+  width: 0;
+  height: 0;
+  overflow: hidden;
+  opacity: 0;
+  pointer-events: none;
 }
 </style>
 
