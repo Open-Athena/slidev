@@ -24,12 +24,25 @@ every successful entry.
 
 ### Contents
 
-Each row in the gallery:
+Each card in the gallery:
 
-- Thumbnail (`<img loading="lazy">`) of the per-slide OG image
-- Slide number + title (clickable; links to the canonical slide URL, same
-  target that the per-slide OG shell redirects to)
-- Slug + raw image link (smaller, secondary)
+- Thumbnail (`<img loading="lazy">`) of the per-slide OG image — wrapped
+  in a `<button popovertarget="lb-N">` so clicking opens a full-size
+  lightbox of the image.
+- Slide number + title + slug.
+- Action row with two affordances:
+  - `slide` icon link to the canonical slide URL (same target that the
+    per-slide OG shell redirects to).
+  - `image` icon button (mirrors thumb click — also opens the lightbox,
+    for discoverability).
+
+### Lightbox
+
+Implemented with the HTML `popover` attribute (baseline since 2024) —
+**no JS**. Each thumbnail's `popovertarget="lb-N"` opens the
+corresponding `<div id="lb-N" popover>`. The image inside is wrapped in
+a `popovertargetaction="hide"` button so clicking the image closes the
+lightbox; ESC + click-on-backdrop also close (popover-auto default).
 
 Header / metadata:
 
