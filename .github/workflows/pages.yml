@@ -44,7 +44,12 @@ jobs:
         run: nr build
 
       - name: Build demo
+        # `VITE_GIT_SHA` feeds the Install slide's `<InstallSnippet />` so the
+        # deployed slide shows a SHA that's actually live on `pkg.pr.new` for
+        # the corresponding deploy. Falls back to `git rev-parse` locally.
         run: pnpm -C demo/starter build
+        env:
+          VITE_GIT_SHA: ${{ github.sha }}
 
       - name: Add CNAME
         # GH Pages reads CNAME from the artifact root to bind the custom domain.

@@ -42,11 +42,11 @@ Not published to npm — installs go through [`pkg.pr.new`], which auto-publishe
 ```bash
 # Pin to a specific commit SHA — see CR run summaries for the latest:
 # https://github.com/Open-Athena/slidev/actions/workflows/cr.yml
-npm install \
-  'https://pkg.pr.new/Open-Athena/slidev/@slidev/cli@<sha>' \
-  'https://pkg.pr.new/Open-Athena/slidev/@slidev/client@<sha>' \
-  'https://pkg.pr.new/Open-Athena/slidev/@slidev/parser@<sha>'
+SHA=<sha>
+npm install https://pkg.pr.new/Open-Athena/slidev/@slidev/{cli,client,parser}@$SHA
 ```
+
+(Brace expansion is bash / zsh; drop the braces and run the three URLs separately in fish / dash.)
 
 All three packages are required: `@slidev/cli` (the build/dev CLI) depends on `@slidev/client` + `@slidev/parser` at exact upstream versions, so installing just the cli would silently pull the other two from upstream npm and lose the fork features. The fork pkgs keep their `@slidev/*` names, so `node_modules/@slidev/{cli,client,parser}` end up wired together correctly and themes (incl. [`oa-slidev-theme`]) keep working without changes.
 

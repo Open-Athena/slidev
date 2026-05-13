@@ -91,16 +91,37 @@ Tweets, YouTube videos, and Bluesky posts — all draggable, resizable, and rota
 
 SHA-pinned preview packages via [`pkg.pr.new`](https://pkg.pr.new) — works with `npm` / `pnpm` / `yarn`:
 
-```bash {all|2-4|*}
-npm install \
-  'https://pkg.pr.new/Open-Athena/slidev/@slidev/cli@<sha>' \
-  'https://pkg.pr.new/Open-Athena/slidev/@slidev/client@<sha>' \
-  'https://pkg.pr.new/Open-Athena/slidev/@slidev/parser@<sha>'
+```bash
+# latest main:
+SHA=__OA_SHA__
+npm install https://pkg.pr.new/Open-Athena/slidev/@slidev/{cli,client,parser}@$SHA
 ```
+
+<script setup lang="ts">
+import { nextTick, onMounted } from 'vue'
+
+// __OA_SHA__ in the fenced block above is a placeholder. Shiki emits its own
+// spans before Vue compiles the slide, so we swap the text post-mount instead
+// of via interpolation. Keeps the copy button + Shiki highlighting intact.
+const sha = (import.meta.env.VITE_GIT_SHA as string | undefined)?.slice(0, 7) || 'main'
+
+onMounted(async () => {
+  await nextTick()
+  document.querySelectorAll('code').forEach((code) => {
+    code.querySelectorAll('span').forEach((span) => {
+      if (span.textContent === '__OA_SHA__') {
+        span.textContent = sha
+        span.style.color = '#d59f00'
+        span.style.fontWeight = '600'
+      }
+    })
+  })
+})
+</script>
 
 <div class="text-sm opacity-70 mt-4">
 
-All three are required — the cli pulls its sibling pkgs at upstream versions otherwise. SHAs logged on every [CR run](https://github.com/Open-Athena/slidev/actions/workflows/cr.yml). Themes (incl. `@slidev/theme-seriph`) keep working — fork packages keep their `@slidev/*` names.
+All three are required — the cli pulls its sibling pkgs at upstream versions otherwise. Themes (incl. `@slidev/theme-seriph`) keep working — fork packages keep their `@slidev/*` names.
 
 </div>
 
