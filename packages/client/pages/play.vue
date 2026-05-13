@@ -27,11 +27,15 @@ function onClick(e: MouseEvent) {
     return
 
   if (e.button === 0 && (e.target as HTMLElement)?.id === 'slide-container') {
-    // click right to next, left to previous
-    if ((e.pageX / window.innerWidth) > 0.5)
-      next()
-    else
+    // Only the outer 15% on each side advances/rewinds slides. The middle 70%
+    // (and the letterbox/pillarbox bars near vertical center) is a no-op, so
+    // clicking off-element to defocus doesn't accidentally page the deck.
+    const x = e.pageX / window.innerWidth
+    const HOT = 0.15
+    if (x < HOT)
       prev()
+    else if (x > 1 - HOT)
+      next()
   }
 }
 

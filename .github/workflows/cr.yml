@@ -1,14 +1,15 @@
 # Continuous Releases provided by https://pkg.pr.new
 #
-# Disabled for the Open-Athena fork: pkg-pr-new requires the `pkg-pr-new`
-# GitHub App to be installed on the org, which it isn't here. Every push was
-# failing with `Check failed (404): The app https://github.com/apps/pkg-pr-new
-# is not installed on Open-Athena/slidev`. We don't publish per-PR previews of
-# the slidev packages from this fork, so disable auto-triggers. Manual runs
-# stay available via `workflow_dispatch` if anyone wants to re-enable per-push
-# behaviour after installing the app.
+# Every push to main publishes preview packages keyed by commit SHA. Users
+# install with e.g.
+#   npm i 'https://pkg.pr.new/Open-Athena/slidev/@slidev/cli@<sha>'
+# (any package manager). See README for the install pattern.
 name: CR (Continuous Releases)
-on: workflow_dispatch
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
 
 jobs:
   cr:
