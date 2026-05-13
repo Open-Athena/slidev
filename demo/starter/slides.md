@@ -88,10 +88,6 @@ Tweets, YouTube videos, and Bluesky posts — all draggable, resizable, and rota
 
 <BlueSky uri="https://bsky.app/profile/sli.dev/post/3lgwg2vy44s2q" />
 
-<div class="abs-b mb-3 w-full text-center text-xs opacity-70 font-sans">
-Each embed is draggable &mdash; same direct-manipulation gestures as the SVG cards on slide 1.
-</div>
-
 ---
 layout: center
 class: text-center
@@ -99,7 +95,7 @@ class: text-center
 
 # &lt;/fork&gt; &lt;upstream&gt; →
 
-The fork's direct-manipulation features stay active on every slide that follows — try grabbing the logo on the Draggable Elements slide.
+upstream sli.dev deck follows…
 
 ---
 
