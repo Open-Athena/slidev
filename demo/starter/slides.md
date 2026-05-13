@@ -89,24 +89,18 @@ Tweets, YouTube videos, and Bluesky posts — all draggable, resizable, and rota
 
 # Install
 
-Not on npm — pull from the auto-built [`dist` branch](https://github.com/Open-Athena/slidev/tree/dist):
+SHA-pinned preview packages via [`pkg.pr.new`](https://pkg.pr.new) — works with `npm` / `pnpm` / `yarn`:
 
-```jsonc {*|3-5|2-6|all}
-// package.json — pnpm.overrides on all three fork packages
-{
-  "pnpm": {
-    "overrides": {
-      "@slidev/cli":    "github:Open-Athena/slidev#dist&path:/packages/slidev",
-      "@slidev/client": "github:Open-Athena/slidev#dist&path:/packages/client",
-      "@slidev/parser": "github:Open-Athena/slidev#dist&path:/packages/parser"
-    }
-  }
-}
+```bash {all|2-4|*}
+npm install \
+  'https://pkg.pr.new/Open-Athena/slidev/@slidev/cli@<sha>' \
+  'https://pkg.pr.new/Open-Athena/slidev/@slidev/client@<sha>' \
+  'https://pkg.pr.new/Open-Athena/slidev/@slidev/parser@<sha>'
 ```
 
 <div class="text-sm opacity-70 mt-4">
 
-Pin `#dist` → `#<sha>` for reproducible builds; SHAs are logged on every [build-dist run](https://github.com/Open-Athena/slidev/actions/workflows/build-dist.yml). [`pnpm-dep-source`](https://github.com/runsascoded/pnpm-dep-source) (`pds`) automates the switch between fork dist / npm / local-workspace sources.
+All three are required — the cli pulls its sibling pkgs at upstream versions otherwise. SHAs logged on every [CR run](https://github.com/Open-Athena/slidev/actions/workflows/cr.yml). Themes (incl. `@slidev/theme-seriph`) keep working — fork packages keep their `@slidev/*` names.
 
 </div>
 

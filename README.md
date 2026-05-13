@@ -37,7 +37,24 @@ State persists to **`<userRoot>/.slidev/state.db`** (SQLite, dev-server only —
 
 ### Installing this fork
 
-Not published to npm — install from the auto-built [`dist` branch] (rebuilt on every push to `main` via [`npm-dist`]). Use `pnpm.overrides` for **all three** fork packages, since the dist branch's `@slidev/cli` references its sibling `@slidev/client` + `@slidev/parser` by their npm version (overriding only `@slidev/cli` would silently pull upstream client/parser from npm):
+Not published to npm — installs go through [`pkg.pr.new`], which auto-publishes a SHA-pinned preview of every fork package on each push to `main` (via the [`cr.yml`] workflow). Works with `npm` / `pnpm` / `yarn`, no `pnpm.overrides`, no manual version bumps:
+
+```bash
+# Pin to a specific commit SHA — see CR run summaries for the latest:
+# https://github.com/Open-Athena/slidev/actions/workflows/cr.yml
+npm install \
+  'https://pkg.pr.new/Open-Athena/slidev/@slidev/cli@<sha>' \
+  'https://pkg.pr.new/Open-Athena/slidev/@slidev/client@<sha>' \
+  'https://pkg.pr.new/Open-Athena/slidev/@slidev/parser@<sha>'
+```
+
+All three packages are required: `@slidev/cli` (the build/dev CLI) depends on `@slidev/client` + `@slidev/parser` at exact upstream versions, so installing just the cli would silently pull the other two from upstream npm and lose the fork features. The fork pkgs keep their `@slidev/*` names, so `node_modules/@slidev/{cli,client,parser}` end up wired together correctly and themes (incl. [`oa-slidev-theme`]) keep working without changes.
+
+`@slidev/types` is unchanged in this fork — pull it straight from upstream npm if needed.
+
+#### Alternate install: dist branch + `pnpm.overrides`
+
+A second install path exists for `pnpm` users who'd rather pull from a git ref directly: the [`dist` branch] is auto-built per push and contains reified `package.json`s for each fork package.
 
 ```jsonc
 // package.json
@@ -52,12 +69,12 @@ Not published to npm — install from the auto-built [`dist` branch] (rebuilt on
 }
 ```
 
-Then `pnpm install`. **Pin to a specific commit SHA** rather than the floating `#dist` branch for reproducible builds — see the [build-dist workflow runs] for SHAs (each completed run logs the install commands as a workflow annotation). [`pnpm-dep-source`] (`pds`) automates this: `pds init github:Open-Athena/slidev` then `pds gh slidev` resolves to the current dist SHA.
+Pin `#dist` → `#<sha>` for reproducible builds. Overrides are required (rather than direct deps) because the dist `@slidev/cli` references its siblings by exact upstream version — direct deps would semver-mismatch.
 
+[`pkg.pr.new`]: https://pkg.pr.new
+[`cr.yml`]: https://github.com/Open-Athena/slidev/actions/workflows/cr.yml
+[`oa-slidev-theme`]: https://github.com/Open-Athena/oa-slidev-theme
 [`dist` branch]: https://github.com/Open-Athena/slidev/tree/dist
-[`npm-dist`]: https://github.com/runsascoded/npm-dist
-[build-dist workflow runs]: https://github.com/Open-Athena/slidev/actions/workflows/build-dist.yml
-[`pnpm-dep-source`]: https://github.com/runsascoded/pnpm-dep-source
 
 ---
 
