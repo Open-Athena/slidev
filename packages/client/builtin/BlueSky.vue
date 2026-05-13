@@ -278,7 +278,11 @@ onUnmounted(() => {
 
 <template>
   <VDrag v-if="props.draggable !== false" :pos="bskyDragId" :lock-aspect-ratio="bskyAR">
-    <div ref="wrapper" class="bluesky-fit">
+    <!-- `data-waitfor="iframe"` signals to `exportSlides` (Playwright build-time
+         render — PDF/PNG/OG) to wait for Bluesky's widget to inject its iframe
+         before screenshotting. Otherwise the screenshot can fire before the
+         widget mounts (BSky's `window.bluesky.scan` populates async). -->
+    <div ref="wrapper" class="bluesky-fit" data-waitfor="iframe">
       <div ref="container" class="slidev-bluesky" :style="innerStyle">
         <blockquote
           v-if="resolvedUri"
@@ -300,7 +304,7 @@ onUnmounted(() => {
     </div>
   </VDrag>
   <Transform v-else :scale="scale || 1">
-    <div ref="container" class="slidev-bluesky">
+    <div ref="container" class="slidev-bluesky" data-waitfor="iframe">
       <blockquote
         v-if="resolvedUri"
         class="bluesky-embed"

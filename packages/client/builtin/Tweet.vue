@@ -131,7 +131,11 @@ onUnmounted(() => {
 
 <template>
   <VDrag v-if="props.draggable !== false" :pos="`tweet-${id}`" :lock-aspect-ratio="tweetAR">
-    <div ref="wrapper" class="tweet-fit">
+    <!-- `data-waitfor="iframe"` signals to `exportSlides` (Playwright build-time
+         render — PDF/PNG/OG) to wait for Twitter's widget to inject its iframe
+         before screenshotting. Otherwise the screenshot can fire before the
+         widget mounts (Twitter's `twttr.widgets.createTweet` resolves async). -->
+    <div ref="wrapper" class="tweet-fit" data-waitfor="iframe">
       <!-- DragControl.associatedLink picks this up via `querySelector('a')`,
            surfacing a clickable URL in the control bar when the embed is selected. -->
       <a :href="`https://x.com/i/web/status/${id}`" target="_blank" rel="noopener noreferrer" aria-hidden="true" class="tweet-link" />
@@ -146,7 +150,7 @@ onUnmounted(() => {
     </div>
   </VDrag>
   <Transform v-else :scale="scale || 1">
-    <div ref="tweet" class="tweet slidev-tweet">
+    <div ref="tweet" class="tweet slidev-tweet" data-waitfor="iframe">
       <div v-if="!loaded || tweetNotFound" class="w-30 h-30 my-10px bg-gray-400 bg-opacity-10 rounded-lg flex opacity-50">
         <div class="m-auto animate-pulse text-4xl">
           <div class="i-carbon:logo-twitter" />

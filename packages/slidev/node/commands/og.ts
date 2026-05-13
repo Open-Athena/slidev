@@ -339,12 +339,12 @@ export async function generateOgShells(
   await fs.mkdir(cacheDir, { recursive: true })
   const cachePath = (p: SlideOgInfo) => resolve(cacheDir, `${p.no}-${p.contentHash}.${format}`)
 
-  // Extra delay (ms) after the page `load` event before screenshotting, so
-  // dynamic embeds (Twitter, BlueSky, etc. — their iframes mount via script
-  // post-load) have time to populate. 3 s covers the common case without
-  // bloating the OG-build wallclock by much. Configurable via headmatter
-  // `publish.ogImage.wait` (in ms).
-  const wait: number = typeof ogCfg.wait === 'number' ? ogCfg.wait : 3000
+  // Extra delay (ms) after the page `load` event before screenshotting. The
+  // primary mechanism for waiting on async-loading content is `data-waitfor`
+  // (see `exportSlides` + the Tweet / BlueSky components), so default is 0.
+  // Escape hatch via headmatter `publish.ogImage.wait` for decks with custom
+  // embeds that can't (or don't) emit a `data-waitfor` signal.
+  const wait: number = typeof ogCfg.wait === 'number' ? ogCfg.wait : 0
 
   // Render-key: changes to size/format/wait invalidate the entire cache.
   const renderKey = `${size[0]}x${size[1]}.${format}.w${wait}`
