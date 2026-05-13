@@ -24,9 +24,6 @@ selectable: true
 # per-slide OG metadata + share previews — see specs/done/per-slide-og.md
 publish:
   baseUrl: https://slidev.oa.dev
-  ogImage:
-    size: [1200, 630]
-    format: jpg
 # Deck-level OG (for shares of the bare https://slidev.oa.dev/ URL — per-slide URLs
 # get their own preview via `dist/_og/<n>-<slug>.html`). Reuses the auto-rendered
 # slide-1 image as the deck thumbnail.
