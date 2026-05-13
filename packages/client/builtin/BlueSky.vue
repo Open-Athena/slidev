@@ -26,6 +26,13 @@ const props = withDefaults(defineProps<{
 // fixed natural width and visually fit-to-wrapper via CSS transform, so a
 // v-drag wrapper at arbitrary dims renders the post cleanly.
 const BSKY_NATURAL_W = 550
+// BSky's embed.bsky.app iframe surrounds the post card with ~8 px of white body
+// bg + a brand-blue 1 px rounded border. We crop *inside* that border (≥ 10 px
+// is enough to land past the curve too) and draw our own border on
+// `.bluesky-fit` — flush with the v-drag selection BB, no halo or stray BSky
+// curve peeking through.
+const BSKY_INSET = 12
+const BSKY_VISIBLE_W = BSKY_NATURAL_W - 2 * BSKY_INSET
 
 // Stable dragId derived from the post id (last URL/at-URI segment). Falls back
 // to a slugified uri if no recognizable post segment is present.
@@ -40,10 +47,15 @@ const RE_BLUESKY_POST_URL = /^\/profile\/([^/]+)\/post\/([^/?#]+)$/
 const container = ref<HTMLElement | null>(null)
 const wrapper = ref<HTMLElement | null>(null)
 const { width: wrapperWidth } = useElementSize(wrapper)
-const fitScale = computed(() => wrapperWidth.value > 0 ? wrapperWidth.value / BSKY_NATURAL_W : 1)
+// `fitScale` sizes the iframe so its *clipped interior* (= `BSKY_VISIBLE_W`)
+// fills the wrapper, then we translate by `-BSKY_INSET` so the cropped region
+// aligns flush with `.bluesky-fit`. The remaining BSky chrome (white pad +
+// blue border) overscans past `.bluesky-fit` and is clipped by `overflow:
+// hidden` + our own border-radius.
+const fitScale = computed(() => wrapperWidth.value > 0 ? wrapperWidth.value / BSKY_VISIBLE_W : 1)
 const innerStyle = computed(() => ({
   width: `${BSKY_NATURAL_W}px`,
-  transform: `scale(${fitScale.value})`,
+  transform: `scale(${fitScale.value}) translate(-${BSKY_INSET}px, -${BSKY_INSET}px)`,
   transformOrigin: 'top left',
 }))
 
@@ -82,13 +94,19 @@ function watchIframeAR(iframe: HTMLIFrameElement) {
 //
 // `wrapperWidth` from `useElementSize(.bluesky-fit)` already reports the
 // padding-stripped inner width, so `wrap.W = wrapperWidth + 8`.
+// Wrap AR is computed from the *visible* (clipped) iframe dims (W − 2·INSET,
+// H − 2·INSET) since that's what fills the wrapper after the overscan-scale.
+// v-drag's 8 px padding is added back on top.
 const bskyAR = computed(() => {
   const ih = iframeHeight.value
   const fitW = wrapperWidth.value
   if (ih <= 0 || fitW <= 0)
     return undefined
+  const visH = ih - 2 * BSKY_INSET
+  if (visH <= 0)
+    return undefined
   const wrapW = fitW + 8
-  const wrapH = 8 + ih * fitW / BSKY_NATURAL_W
+  const wrapH = 8 + visH * fitW / BSKY_VISIBLE_W
   return wrapW / wrapH
 })
 
@@ -304,6 +322,11 @@ onUnmounted(() => {
   width: 100%;
   height: 100%;
   overflow: hidden;
+  /* Border + radius are *our own* — the original BSky brand-blue stroke is
+     cropped off by `BSKY_INSET`. Sits flush against the v-drag selection BB. */
+  border-radius: 8px;
+  border: 1px solid rgb(0 106 255);
+  box-sizing: border-box;
 }
 /* Anchor must exist in DOM for DragControl.associatedLink to find it via
    `querySelector('a')`, but visually invisible — it lives outside the embed's
@@ -319,9 +342,14 @@ onUnmounted(() => {
 </style>
 
 <style>
+/* `clip-path` crops the iframe's BSky-chrome (white body bg + brand-blue
+   border) in iframe-local coords; the surrounding scale+translate (see
+   `innerStyle` in script) maps the clipped region flush to `.bluesky-fit`'s
+   edges. `overflow: hidden` on `.bluesky-fit` is the outer safety net. */
 .slidev-bluesky .bluesky-embed iframe {
-  border-radius: 12px;
-  overflow: hidden;
+  color-scheme: dark;
+  background: transparent;
+  clip-path: inset(12px);
 }
 /* Bluesky's widget creates `.bluesky-embed` as a flex container around the
    injected iframe. Defaults that need overriding inside our wrapper:
