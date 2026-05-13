@@ -88,7 +88,10 @@ export default function setupRoutes() {
   routes.push(
     {
       name: 'play',
-      path: '/:no',
+      // Constrain `:no` to digits only — otherwise any single-segment path
+      // (e.g. `/_og`) matches and `play.vue` silently falls back to slide 1.
+      // Non-numeric paths now fall through to the `NotFound` route below.
+      path: '/:no(\\d+)',
       component: () => import('../pages/play.vue'),
     },
     {

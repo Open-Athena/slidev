@@ -124,7 +124,12 @@ export async function build(
     }
   }
 
-  // copy index.html to 404.html for GitHub Pages
+  // Copy index.html to 404.html for GitHub Pages. GH Pages serves 404.html for
+  // any path it can't find on disk — for slidev that includes every deep link
+  // (`/1`, `/2`, …) since the SPA doesn't pre-render per-slide HTML files. The
+  // SPA bootstraps from this 404.html copy, reads `location.pathname`, and
+  // routes to the right page (or to its own `404.vue` for genuinely-bad
+  // paths — see `/:no(\\d+)` constraint in `setup/routes.ts`).
   await fs.copyFile(resolve(outDir, 'index.html'), resolve(outDir, '404.html'))
   // _redirects for SPA
   const redirectsPath = resolve(outDir, '_redirects')
