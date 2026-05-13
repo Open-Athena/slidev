@@ -35,6 +35,30 @@
 
 State persists to **`<userRoot>/.slidev/state.db`** (SQLite, dev-server only — powers undo/redo, history, multi-tab sync) and **`<userRoot>/slides.coords.yaml`** (checked-in source of truth; flushed via the toolbar "Commit to YAML" button — orange dot when the DB is ahead). Production builds ship neither — published decks are read-only static HTML/JS.
 
+### Installing this fork
+
+Not published to npm — install from the auto-built [`dist` branch] (rebuilt on every push to `main` via [`npm-dist`]). Use `pnpm.overrides` for **all three** fork packages, since the dist branch's `@slidev/cli` references its sibling `@slidev/client` + `@slidev/parser` by their npm version (overriding only `@slidev/cli` would silently pull upstream client/parser from npm):
+
+```jsonc
+// package.json
+{
+  "pnpm": {
+    "overrides": {
+      "@slidev/cli":    "github:Open-Athena/slidev#dist&path:/packages/slidev",
+      "@slidev/client": "github:Open-Athena/slidev#dist&path:/packages/client",
+      "@slidev/parser": "github:Open-Athena/slidev#dist&path:/packages/parser"
+    }
+  }
+}
+```
+
+Then `pnpm install`. **Pin to a specific commit SHA** rather than the floating `#dist` branch for reproducible builds — see the [build-dist workflow runs] for SHAs (each completed run logs the install commands as a workflow annotation). [`pnpm-dep-source`] (`pds`) automates this: `pds init github:Open-Athena/slidev` then `pds gh slidev` resolves to the current dist SHA.
+
+[`dist` branch]: https://github.com/Open-Athena/slidev/tree/dist
+[`npm-dist`]: https://github.com/runsascoded/npm-dist
+[build-dist workflow runs]: https://github.com/Open-Athena/slidev/actions/workflows/build-dist.yml
+[`pnpm-dep-source`]: https://github.com/runsascoded/pnpm-dep-source
+
 ---
 
 <!-- ⬇ Original sli.dev README continues from here. -->

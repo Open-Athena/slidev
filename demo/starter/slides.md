@@ -86,6 +86,31 @@ Tweets, YouTube videos, and Bluesky posts — all draggable, resizable, and rota
 <BlueSky uri="https://bsky.app/profile/sli.dev/post/3lgwg2vy44s2q" />
 
 ---
+
+# Install
+
+Not on npm — pull from the auto-built [`dist` branch](https://github.com/Open-Athena/slidev/tree/dist):
+
+```jsonc {*|3-5|2-6|all}
+// package.json — pnpm.overrides on all three fork packages
+{
+  "pnpm": {
+    "overrides": {
+      "@slidev/cli":    "github:Open-Athena/slidev#dist&path:/packages/slidev",
+      "@slidev/client": "github:Open-Athena/slidev#dist&path:/packages/client",
+      "@slidev/parser": "github:Open-Athena/slidev#dist&path:/packages/parser"
+    }
+  }
+}
+```
+
+<div class="text-sm opacity-70 mt-4">
+
+Pin `#dist` → `#<sha>` for reproducible builds; SHAs are logged on every [build-dist run](https://github.com/Open-Athena/slidev/actions/workflows/build-dist.yml). [`pnpm-dep-source`](https://github.com/runsascoded/pnpm-dep-source) (`pds`) automates the switch between fork dist / npm / local-workspace sources.
+
+</div>
+
+---
 layout: center
 class: text-center
 ---
