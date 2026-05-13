@@ -1,3 +1,44 @@
+<!-- Open-Athena/slidev fork preamble — the original sli.dev README begins after the horizontal rule. -->
+
+<p align="center">
+  <a href="https://slidev.oa.dev" target="_blank">
+    <img src="https://slidev.oa.dev/_og/1-open-athena-slidev.jpg" alt="Open-Athena/slidev — direct manipulation demo" width="720">
+  </a>
+</p>
+
+<h3 align="center">
+  <a href="https://slidev.oa.dev"><code>Open-Athena/slidev</code></a> — a fork of <a href="https://sli.dev">sli.dev</a>
+</h3>
+
+<p align="center">
+  Adds <b>direct manipulation</b> for slide content: click any image to <b>drag</b>, <b>resize</b>, <b>rotate</b>, or <b>reorder</b>; double-click to <b>crop</b>.<br>
+  <a href="https://slidev.oa.dev"><b>Live demo →</b></a> · <a href="https://slidev.oa.dev/_og/">slide gallery</a>
+</p>
+
+### What this fork adds
+
+- 🖱️ **Drag / resize / rotate** any markdown image or embed; positions persist to `slides.coords.yaml`
+- ✂️ **Crop** — double-click an image to enter crop mode
+- 📐 **Snap-to-guides** during drag/resize against other slide elements (hold ⌘ to disable); ⇧ locks AR
+- 📚 **Z-order shortcuts**: ⌘↑/⌘↓ forward/back · ⇧⌘↑/⇧⌘↓ to-front/back
+- ↩️ **Undo / redo** (⌘Z / ⇧⌘Z), with a right-side **version-history drawer** that can restore any prior state
+- 🌐 **Multi-tab live edits** — changes in one browser tab propagate to others via SSE
+- 🖼️ **Draggable embeds**: `<Tweet>`, `<Youtube>`, `<BlueSky>` — see [slide 2](https://slidev.oa.dev/2)
+- 🔍 **Pinch-zoom & pan** in slide view (trackpad / touch)
+- 📤 **Per-slide OG cards** built into `slidev build` + a [thumbnail gallery](https://slidev.oa.dev/_og/)
+
+<p align="center">
+  <a href="https://slidev.oa.dev/2" target="_blank">
+    <img src="https://slidev.oa.dev/_og/2-embeds.jpg" alt="Draggable Tweet, YouTube, and Bluesky embeds" width="640">
+  </a>
+</p>
+
+State persists to **`<userRoot>/.slidev/state.db`** (SQLite, dev-server only — powers undo/redo, history, multi-tab sync) and **`<userRoot>/slides.coords.yaml`** (checked-in source of truth; flushed via the toolbar "Commit to YAML" button — orange dot when the DB is ahead). Production builds ship neither — published decks are read-only static HTML/JS.
+
+---
+
+<!-- ⬇ Original sli.dev README continues from here. -->
+
 <br>
 <p align="center">
 <a href="https://sli.dev" target="_blank">
