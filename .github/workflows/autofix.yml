@@ -2,11 +2,11 @@ name: autofix.ci
 
 # Disabled for the Open-Athena fork: autofix-ci/action fails with `The
 # autofix.ci action is not allowed to modify the .github directory` on every
-# main push, because our fork edits workflow files (this one, `pages.yml`,
-# `build-dist.yml`) outside of autofix.ci's allowlist. We don't depend on the
-# bot to commit lint fixes from CI — the husky / lint-staged pre-commit hook
-# already runs eslint --fix locally. Manual `workflow_dispatch` stays
-# available if anyone wants to re-enable per-push autofix behaviour.
+# main push, because our fork edits workflow files (this one, `pages.yml`)
+# outside of autofix.ci's allowlist. We don't depend on the bot to commit lint
+# fixes from CI — the husky / lint-staged pre-commit hook already runs
+# `eslint --fix` locally. Manual `workflow_dispatch` stays available if anyone
+# wants to re-enable per-push autofix behaviour.
 on: workflow_dispatch
 
 permissions:

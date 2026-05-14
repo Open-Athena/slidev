@@ -52,29 +52,9 @@ All three packages are required: `@slidev/cli` (the build/dev CLI) depends on `@
 
 `@slidev/types` is unchanged in this fork — pull it straight from upstream npm if needed.
 
-#### Alternate install: dist branch + `pnpm.overrides`
-
-A second install path exists for `pnpm` users who'd rather pull from a git ref directly: the [`dist` branch] is auto-built per push and contains reified `package.json`s for each fork package.
-
-```jsonc
-// package.json
-{
-  "pnpm": {
-    "overrides": {
-      "@slidev/cli":    "github:Open-Athena/slidev#dist&path:/packages/slidev",
-      "@slidev/client": "github:Open-Athena/slidev#dist&path:/packages/client",
-      "@slidev/parser": "github:Open-Athena/slidev#dist&path:/packages/parser"
-    }
-  }
-}
-```
-
-Pin `#dist` → `#<sha>` for reproducible builds. Overrides are required (rather than direct deps) because the dist `@slidev/cli` references its siblings by exact upstream version — direct deps would semver-mismatch.
-
 [`pkg.pr.new`]: https://pkg.pr.new
 [`cr.yml`]: https://github.com/Open-Athena/slidev/actions/workflows/cr.yml
 [`oa-slidev-theme`]: https://github.com/Open-Athena/oa-slidev-theme
-[`dist` branch]: https://github.com/Open-Athena/slidev/tree/dist
 
 ---
 
