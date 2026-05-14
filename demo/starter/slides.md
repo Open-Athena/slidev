@@ -24,6 +24,10 @@ selectable: true
 # per-slide OG metadata + share previews — see specs/done/per-slide-og.md
 publish:
   baseUrl: https://slidev.oa.dev
+  # 'n-slug' (default): /3-install · 'n': /3 · 'slug': /install. All three URL
+  # forms keep resolving regardless; this only sets which one ends up in
+  # <link rel=canonical>, og:url, and the URL bar after in-deck nav.
+  canonicalForm: n-slug
 # Deck-level QR overlay (per-slide override via `qr:` in any slide's frontmatter,
 # `qr: false` disables on that slide). Points at the canonical /<n>-<slug> URL.
 qr:

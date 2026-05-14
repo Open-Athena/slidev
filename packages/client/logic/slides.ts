@@ -3,6 +3,7 @@ import { slides } from '#slidev/slides'
 import { tryOnMounted } from '@vueuse/core'
 import { computed, watch } from 'vue'
 import { useSlideContext } from '../context'
+import { configs } from '../env'
 
 export { slides }
 
@@ -50,6 +51,18 @@ export function getSlide(noOrSlug: number | string) {
   })
 }
 
+// Mirrors `og.ts:canonicalPathFor` (server side) so the URL bar after in-deck
+// nav stays in sync with the canonical form stamped into `<link rel=canonical>`
+// at build time.
+function canonicalPathFor(no: number, slug: string, form: 'n' | 'n-slug' | 'slug'): string {
+  switch (form) {
+    case 'n': return String(no)
+    case 'slug': return slug || String(no)
+    case 'n-slug':
+    default: return slug ? `${no}-${slug}` : String(no)
+  }
+}
+
 export function getSlidePath(
   route: SlideRoute | number | string,
   presenter: boolean,
@@ -58,10 +71,9 @@ export function getSlidePath(
   if (typeof route === 'number' || typeof route === 'string')
     route = getSlide(route)!
   // `routeAlias` is the legacy upstream knob (kept working for compatibility);
-  // when both `routeAlias` and `slug` (auto-derived) exist, presenter / export
-  // routes use the alias verbatim, but the public slide URL prefers the canonical
-  // `<n>-<slug>` form so shared links stay readable + per-slide OG pre-renders
-  // resolve cleanly.
+  // presenter / export routes use the alias verbatim, but the public slide URL
+  // follows `publish.canonicalForm` (default `n-slug`) so shared links stay
+  // readable + per-slide OG pre-renders resolve cleanly.
   const alias = route.meta.slide?.frontmatter.routeAlias
   if (presenter)
     return `/presenter/${alias ?? route.no}`
@@ -69,8 +81,9 @@ export function getSlidePath(
     return `/export/${alias ?? route.no}`
   if (alias)
     return `/${alias}`
-  const slug = slugForSlide(route)
-  return slug ? `/${route.no}-${slug}` : `/${route.no}`
+  const form = (configs.publish as any)?.canonicalForm
+  const resolved: 'n' | 'n-slug' | 'slug' = (form === 'n' || form === 'slug') ? form : 'n-slug'
+  return `/${canonicalPathFor(route.no, slugForSlide(route), resolved)}`
 }
 
 export function useIsSlideActive() {

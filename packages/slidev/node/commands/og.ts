@@ -129,6 +129,20 @@ function joinUrl(base: string, path: string): string {
   return `${base.replace(/\/+$/, '')}/${path.replace(/^\/+/, '')}`
 }
 
+type CanonicalForm = 'n' | 'n-slug' | 'slug'
+
+export function canonicalPathFor(no: number, slug: string, form: CanonicalForm): string {
+  // `slug` form gracefully degrades to `n` when no slug is derivable, so the
+  // result always resolves to a real slide. `n-slug` (default) likewise drops
+  // back to `n` when there's no slug. Pure `n` ignores the slug entirely.
+  switch (form) {
+    case 'n': return String(no)
+    case 'slug': return slug || String(no)
+    case 'n-slug':
+    default: return slug ? `${no}-${slug}` : String(no)
+  }
+}
+
 function planSlide(
   slide: SlideInfo,
   no: number,
@@ -137,6 +151,7 @@ function planSlide(
   appBase: string,
   ext: 'png' | 'jpg',
   renderKey: string,
+  canonicalForm: CanonicalForm,
 ): SlideOgInfo {
   const slug = pickSlug(slide, no)
   const title = pickTitle(slide, deckTitle, no)
@@ -145,12 +160,12 @@ function planSlide(
   const htmlFilename = `${no}-${slug}.html`
   const fm = slide.frontmatter ?? {}
   const overrideSrc = typeof fm.ogImage === 'string' ? fm.ogImage : null
-  // Canonical URL is `/<n>-<slug>` (when a slug is available) — number prefix for stable
-  // ordering, slug for semantic share-friendliness. Bare `/<n>` and bare `/<slug>` both
-  // resolve via additional pre-rendered shells + a slug-route redirect; the canonical
-  // is what scrapers and the URL bar end up on.
-  const canonicalPath = slug ? `${no}-${slug}` : String(no)
-  const appPath = joinUrl(appBase || '/', canonicalPath)
+  // Canonical URL form is `publish.canonicalForm` (default `'n-slug'`) — see
+  // `canonicalPathFor`. All three URL forms keep resolving regardless of this
+  // setting (each emits its own pre-rendered shell + the slug-route redirect
+  // handles bare slugs); this only changes which one is stamped into
+  // `<link rel=canonical>` / `og:url`.
+  const appPath = joinUrl(appBase || '/', canonicalPathFor(no, slug, canonicalForm))
   const canonical = joinUrl(baseUrl, appPath)
   const imageUrl = joinUrl(baseUrl, joinUrl(appBase || '/', `_og/${imageFilename}`))
   // Cache key includes the slide source + render-relevant config (size/format) — captured by
@@ -330,6 +345,10 @@ export async function generateOgShells(
 
   const deckTitle: string = cfg.title ?? 'Slidev'
   const appBase: string = config.base ?? '/'
+  const canonicalForm: CanonicalForm
+    = cfg.publish?.canonicalForm === 'n' || cfg.publish?.canonicalForm === 'slug'
+      ? cfg.publish.canonicalForm
+      : 'n-slug'
 
   const ogDir = resolve(outDir, '_og')
   await fs.mkdir(ogDir, { recursive: true })
@@ -358,7 +377,7 @@ export async function generateOgShells(
     const fm = slide.frontmatter ?? {}
     if (fm.skipOg || fm.hide || fm.disabled)
       continue
-    plans.push(planSlide(slide, i + 1, deckTitle, baseUrl, appBase, format, renderKey))
+    plans.push(planSlide(slide, i + 1, deckTitle, baseUrl, appBase, format, renderKey, canonicalForm))
   }
 
   // Decide which slides need image generation. Three buckets:

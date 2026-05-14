@@ -286,6 +286,19 @@ export interface HeadmatterConfig extends TransitionOptions {
   publish?: {
     /** Absolute URL where the deck is hosted (e.g. `https://slides.example.com`). */
     baseUrl?: string
+    /**
+     * Canonical URL form for per-slide share links.
+     *
+     * - `'n-slug'` (default): `/3-install` — slide number + slug for ordering + semantics.
+     * - `'n'`: `/3` — slidev's original convention; slug surfaces only in QR / share UI.
+     * - `'slug'`: `/install` — renumber-resistant; loses ordering signal in the URL.
+     *
+     * All three URL forms keep resolving regardless of this setting (the build emits
+     * `dist/<n>.html`, `dist/<n>-<slug>.html`, and `dist/<slug>.html`); this only
+     * changes which one ends up in `<link rel=canonical>`, `og:url`, the URL bar after
+     * in-deck nav, and the `y` yank.
+     */
+    canonicalForm?: 'n' | 'n-slug' | 'slug'
     /** Per-slide OG image generation knobs (used by `slidev build`). */
     ogImage?: {
       /** Image dimensions; default `[1200, 630]` (BlueSky / Twitter / OG standard). */

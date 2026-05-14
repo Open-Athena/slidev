@@ -61,13 +61,24 @@ const deckQrCfg = computed(() => {
   return (typeof v === 'object' && v !== null) ? v as Record<string, any> : {}
 })
 
-const resolved = computed(() => ({
-  position: (props.position ?? slideQrCfg.value.position ?? deckQrCfg.value.position ?? 'br') as Position,
-  size: (props.size ?? slideQrCfg.value.size ?? deckQrCfg.value.size ?? 80) as number,
-  showText: props.showText ?? slideQrCfg.value.showText ?? deckQrCfg.value.showText ?? false,
-  urlForm: (props.urlForm ?? slideQrCfg.value.url ?? deckQrCfg.value.url ?? 'canonical') as UrlForm,
-  ecc: (props.ecc ?? slideQrCfg.value.ecc ?? deckQrCfg.value.ecc ?? 'M') as Ecc,
-}))
+// Resolution order: explicit prop > per-slide `qr:` > deck-level `qr:` >
+// (for `urlForm` only) deck-level `publish.canonicalForm` > built-in default.
+// Plumbing `publish.canonicalForm` here keeps the QR target consistent with
+// `<link rel=canonical>` / `og:url` / the URL bar after in-deck nav by default,
+// while still letting decks point QRs at a different URL form if they want
+// (e.g. canonical `/n-slug` but QR-scan `/n` for brevity).
+const resolved = computed(() => {
+  const canonical = (configs.publish as any)?.canonicalForm
+  const canonicalUrlForm: UrlForm | undefined
+    = canonical === 'n' || canonical === 'slug' || canonical === 'n-slug' ? canonical : undefined
+  return {
+    position: (props.position ?? slideQrCfg.value.position ?? deckQrCfg.value.position ?? 'br') as Position,
+    size: (props.size ?? slideQrCfg.value.size ?? deckQrCfg.value.size ?? 80) as number,
+    showText: props.showText ?? slideQrCfg.value.showText ?? deckQrCfg.value.showText ?? false,
+    urlForm: (props.urlForm ?? slideQrCfg.value.url ?? deckQrCfg.value.url ?? canonicalUrlForm ?? 'canonical') as UrlForm,
+    ecc: (props.ecc ?? slideQrCfg.value.ecc ?? deckQrCfg.value.ecc ?? 'M') as Ecc,
+  }
+})
 
 // In dev, location.origin is the right base (e.g. http://localhost:3282). In
 // prod, `publish.baseUrl` is the canonical absolute URL. Fall back to
