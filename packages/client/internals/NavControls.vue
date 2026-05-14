@@ -147,7 +147,7 @@ if (__SLIDEV_FEATURE_RECORD__)
         <div class="i-carbon:document-export" />
       </IconButton>
       <IconButton
-        :title="showHistoryDrawer ? 'Hide edit history' : 'Show edit history'"
+        :title="`${showHistoryDrawer ? 'Hide' : 'Show'} edit history (h)`"
         :class="showHistoryDrawer ? 'text-primary' : ''"
         @click="showHistoryDrawer = !showHistoryDrawer"
       >

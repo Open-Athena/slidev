@@ -4,6 +4,7 @@ import type { CSSProperties, PropType } from 'vue'
 import { SlideBottom, SlideTop } from '#slidev/global-layers'
 import { provideLocal } from '@vueuse/core'
 import { computed, ref, toRef } from 'vue'
+import SlideQR from '../builtin/SlideQR.vue'
 import { injectionClicksContext, injectionCurrentPage, injectionFrontmatter, injectionRenderContext, injectionRoute, injectionSlideZoom } from '../constants'
 import { configs } from '../env'
 import { getSlideClass } from '../utils'
@@ -24,6 +25,23 @@ const props = defineProps({
 })
 
 const zoom = computed(() => props.route.meta?.slide?.frontmatter.zoom ?? 1)
+
+// Auto-inject the per-slide QR overlay when deck-level `qr:` config is set
+// (any non-falsy value enables) AND the slide hasn't opted out via `qr: false`
+// or `qr: 'none'`. The SlideQR component itself reads the merged config and
+// renders nothing when disabled, but gating the *render* keeps the DOM clean
+// (no empty divs) for decks that don't use the feature at all.
+const showQr = computed(() => {
+  const slideQr = props.route.meta?.slide?.frontmatter.qr
+  if (slideQr === false || slideQr === 'none')
+    return false
+  const deckQr = (configs as any).qr
+  // Enable when deck-level config is present (object or truthy), or when this
+  // slide explicitly opts in via per-slide `qr:` (also object).
+  const deckEnabled = (typeof deckQr === 'object' && deckQr !== null) || deckQr === true
+  const slideEnabled = (typeof slideQr === 'object' && slideQr !== null) || slideQr === true
+  return deckEnabled || slideEnabled
+})
 
 provideLocal(injectionRoute, props.route)
 provideLocal(injectionFrontmatter, props.route.meta.slide.frontmatter)
@@ -48,6 +66,7 @@ const style = computed<CSSProperties>(() => ({
     <SlideBottom />
     <component :is="props.route.component" />
     <SlideTop />
+    <SlideQR v-if="showQr" />
   </div>
 </template>
 

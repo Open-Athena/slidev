@@ -14,6 +14,7 @@ import NavControls from '../internals/NavControls.vue'
 import PresenterMouse from '../internals/PresenterMouse.vue'
 import SlideContainer from '../internals/SlideContainer.vue'
 import SlidesShow from '../internals/SlidesShow.vue'
+import SlugChip from '../internals/SlugChip.vue'
 import { onContextMenu } from '../logic/contextMenu'
 import { registerShortcuts } from '../logic/shortcuts'
 import { editorHeight, editorWidth, isEditorVertical, isScreenVertical, showEditor, viewerCssFilter, viewerCssFilterDefaults } from '../state'
@@ -111,6 +112,7 @@ const contentStyle = computed(() => {
     >
       <template #default>
         <SlidesShow render-context="slide" />
+        <SlugChip />
         <PresenterMouse />
         <div
           v-if="fileDropActive || fileDropInFlight"

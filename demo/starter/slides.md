@@ -24,6 +24,12 @@ selectable: true
 # per-slide OG metadata + share previews — see specs/done/per-slide-og.md
 publish:
   baseUrl: https://slidev.oa.dev
+# Deck-level QR overlay (per-slide override via `qr:` in any slide's frontmatter,
+# `qr: false` disables on that slide). Points at the canonical /<n>-<slug> URL.
+qr:
+  position: br
+  size: 72
+  showText: true
 # Deck-level OG (for shares of the bare https://slidev.oa.dev/ URL — per-slide URLs
 # get their own preview via `dist/_og/<n>-<slug>.html`). Reuses the auto-rendered
 # slide-1 image as the deck thumbnail.
@@ -73,6 +79,8 @@ Press space / → to advance.
 
 ---
 layout: default
+# Hide the auto-injected QR on this slide — embeds compete with it for the BR corner.
+qr: false
 ---
 
 # Embeds
