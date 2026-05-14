@@ -62,23 +62,19 @@ const deckQrCfg = computed(() => {
 })
 
 // Resolution order: explicit prop > per-slide `qr:` > deck-level `qr:` >
-// (for `urlForm` only) deck-level `publish.canonicalForm` > built-in default.
-// Plumbing `publish.canonicalForm` here keeps the QR target consistent with
-// `<link rel=canonical>` / `og:url` / the URL bar after in-deck nav by default,
-// while still letting decks point QRs at a different URL form if they want
-// (e.g. canonical `/n-slug` but QR-scan `/n` for brevity).
-const resolved = computed(() => {
-  const canonical = (configs.publish as any)?.canonicalForm
-  const canonicalUrlForm: UrlForm | undefined
-    = canonical === 'n' || canonical === 'slug' || canonical === 'n-slug' ? canonical : undefined
-  return {
-    position: (props.position ?? slideQrCfg.value.position ?? deckQrCfg.value.position ?? 'br') as Position,
-    size: (props.size ?? slideQrCfg.value.size ?? deckQrCfg.value.size ?? 80) as number,
-    showText: props.showText ?? slideQrCfg.value.showText ?? deckQrCfg.value.showText ?? false,
-    urlForm: (props.urlForm ?? slideQrCfg.value.url ?? deckQrCfg.value.url ?? canonicalUrlForm ?? 'canonical') as UrlForm,
-    ecc: (props.ecc ?? slideQrCfg.value.ecc ?? deckQrCfg.value.ecc ?? 'M') as Ecc,
-  }
-})
+// built-in default. The QR target defaults to `'n'` (shortest URL form → fewest
+// QR modules → chunkier, easier-to-scan pixels at a given visual size); set
+// `qr.url: canonical` (or `'n-slug'` / `'slug'`) to follow `publish.canonicalForm`
+// instead. ECC defaults to `'L'` (smallest QR version) — the QR is shown on a
+// clean digital slide, not a printed handout, so the extra error correction
+// doesn't earn its size cost.
+const resolved = computed(() => ({
+  position: (props.position ?? slideQrCfg.value.position ?? deckQrCfg.value.position ?? 'br') as Position,
+  size: (props.size ?? slideQrCfg.value.size ?? deckQrCfg.value.size ?? 96) as number,
+  showText: props.showText ?? slideQrCfg.value.showText ?? deckQrCfg.value.showText ?? false,
+  urlForm: (props.urlForm ?? slideQrCfg.value.url ?? deckQrCfg.value.url ?? 'n') as UrlForm,
+  ecc: (props.ecc ?? slideQrCfg.value.ecc ?? deckQrCfg.value.ecc ?? 'L') as Ecc,
+}))
 
 // In dev, location.origin is the right base (e.g. http://localhost:3282). In
 // prod, `publish.baseUrl` is the canonical absolute URL. Fall back to
@@ -97,11 +93,18 @@ const slidePath = computed(() => {
   const no = $page.value
   const slide = getSlide(no)
   const slug = slugForSlide(slide)
-  switch (resolved.value.urlForm) {
+  let form: UrlForm = resolved.value.urlForm
+  if (form === 'canonical') {
+    // `'canonical'` means "follow the deck's `publish.canonicalForm`" — useful
+    // when a deck explicitly wants the QR to match share/scrape canonical URL
+    // rather than the chunky-QR default.
+    const c = (configs.publish as any)?.canonicalForm
+    form = (c === 'n' || c === 'slug' || c === 'n-slug') ? c : 'n-slug'
+  }
+  switch (form) {
     case 'n': return String(no)
     case 'slug': return slug || String(no)
     case 'n-slug':
-    case 'canonical':
     default: return slug ? `${no}-${slug}` : String(no)
   }
 })
@@ -112,7 +115,12 @@ const targetUrl = computed(() => {
   return `${origin.value}/${slidePath.value}`
 })
 
-const svg = computed(() => renderSVG(targetUrl.value, { ecc: resolved.value.ecc }))
+// Display label strips the protocol — `slidev.oa.dev/3` reads more naturally
+// in the QR caption than `https://slidev.oa.dev/3`, and the scheme is implicit
+// once the QR is scanned anyway.
+const displayUrl = computed(() => targetUrl.value.replace(/^https?:\/\//, ''))
+
+const svg = computed(() => renderSVG(targetUrl.value, { ecc: resolved.value.ecc, border: 2 }))
 
 const positionStyle = computed(() => {
   const p = resolved.value.position
@@ -140,7 +148,7 @@ const disabled = computed(() => slideQrCfg.value.disabled === true)
     :data-position="resolved.position"
   >
     <div v-if="resolved.showText" class="slidev-qr-url">
-      {{ targetUrl }}
+      {{ displayUrl }}
     </div>
     <div
       class="slidev-qr-svg"
@@ -164,21 +172,24 @@ const disabled = computed(() => slideQrCfg.value.disabled === true)
 }
 .slidev-qr-url {
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 11px;
-  opacity: 0.7;
-  background: rgb(255 255 255 / 0.85);
-  padding: 1px 4px;
-  border-radius: 3px;
+  font-size: 10px;
+  opacity: 0.55;
+  /* Inherit slide foreground; no background — let it sit on the slide instead
+     of looking like a stuck-on label. Truncate gracefully if the path grows. */
+  color: inherit;
   max-width: 220px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 .slidev-qr-svg {
+  /* No extra padding — `uqr` already renders a 2-module quiet zone (via the
+     `border: 2` option), and stacking CSS padding on top of that creates the
+     fat double-border the earlier version had. */
   background: white;
-  padding: 4px;
-  border-radius: 4px;
+  border-radius: 3px;
   box-shadow: 0 1px 4px rgb(0 0 0 / 0.08);
+  overflow: hidden;
 }
 .slidev-qr-svg :deep(svg) {
   display: block;

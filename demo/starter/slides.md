@@ -29,10 +29,10 @@ publish:
   # <link rel=canonical>, og:url, and the URL bar after in-deck nav.
   canonicalForm: n-slug
 # Deck-level QR overlay (per-slide override via `qr:` in any slide's frontmatter,
-# `qr: false` disables on that slide). Points at the canonical /<n>-<slug> URL.
+# `qr: false` disables on that slide). QR target defaults to `/n` for the
+# shortest URL → fewest modules → chunkier scannable pixels.
 qr:
   position: br
-  size: 72
   showText: true
 # Deck-level OG (for shares of the bare https://slidev.oa.dev/ URL — per-slide URLs
 # get their own preview via `dist/_og/<n>-<slug>.html`). Reuses the auto-rendered
