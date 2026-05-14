@@ -28,17 +28,21 @@ const zoom = computed(() => props.route.meta?.slide?.frontmatter.zoom ?? 1)
 
 // Auto-inject the per-slide QR overlay when deck-level `qr:` config is set
 // (any non-falsy value enables) AND the slide hasn't opted out via `qr: false`
-// or `qr: 'none'`. The SlideQR component itself reads the merged config and
-// renders nothing when disabled, but gating the *render* keeps the DOM clean
-// (no empty divs) for decks that don't use the feature at all.
+// / `qr: 'none'` in its frontmatter or via the deck-level `qr.skipSlides`
+// list. `skipSlides` is the escape hatch for slide 1, whose frontmatter is the
+// deck headmatter itself — you can't add `qr: false` there without disabling
+// QR everywhere. The SlideQR component itself also renders nothing when
+// disabled, but gating the *render* keeps the DOM clean for decks that don't
+// use the feature at all.
 const showQr = computed(() => {
   const slideQr = props.route.meta?.slide?.frontmatter.qr
   if (slideQr === false || slideQr === 'none')
     return false
   const deckQr = (configs as any).qr
-  // Enable when deck-level config is present (object or truthy), or when this
-  // slide explicitly opts in via per-slide `qr:` (also object).
-  const deckEnabled = (typeof deckQr === 'object' && deckQr !== null) || deckQr === true
+  const deckObj = (typeof deckQr === 'object' && deckQr !== null) ? deckQr as Record<string, any> : null
+  if (deckObj && Array.isArray(deckObj.skipSlides) && deckObj.skipSlides.includes(props.route.no))
+    return false
+  const deckEnabled = deckObj !== null || deckQr === true
   const slideEnabled = (typeof slideQr === 'object' && slideQr !== null) || slideQr === true
   return deckEnabled || slideEnabled
 })

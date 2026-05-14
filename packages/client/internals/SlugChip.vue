@@ -76,7 +76,7 @@ async function copyUrl() {
   transition: opacity 0.15s;
   pointer-events: auto;
 }
-#slide-content:hover .slugchip,
+#slide-container:hover .slugchip,
 .slugchip:focus,
 .slugchip:hover {
   opacity: 0.9;

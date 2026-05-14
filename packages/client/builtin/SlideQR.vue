@@ -36,6 +36,15 @@ const props = withDefaults(defineProps<{
    * Default: deck-level `qr.ecc`, else `'M'`.
    */
   ecc?: Ecc
+  /**
+   * Uppercase the encoded URL. QR's alphanumeric mode encodes `0-9 A-Z $%*+-./:`
+   * (no lowercase) at 5.5 bits/char vs byte mode's 8 bits/char — for URLs that
+   * are otherwise alphanumeric, an all-caps version drops a QR version or two
+   * (chunkier, easier-to-scan pixels at a given visual size). Caveat: only safe
+   * when the path itself is case-insensitive — works for `urlForm: 'n'` (digits
+   * only) but breaks slug routes unless the server normalizes case.
+   */
+  uppercase?: boolean
 }>(), {
   url: undefined,
   position: undefined,
@@ -43,6 +52,7 @@ const props = withDefaults(defineProps<{
   showText: undefined,
   urlForm: undefined,
   ecc: undefined,
+  uppercase: undefined,
 })
 
 const { $page, $frontmatter } = useSlideContext()
@@ -74,6 +84,7 @@ const resolved = computed(() => ({
   showText: props.showText ?? slideQrCfg.value.showText ?? deckQrCfg.value.showText ?? false,
   urlForm: (props.urlForm ?? slideQrCfg.value.url ?? deckQrCfg.value.url ?? 'n') as UrlForm,
   ecc: (props.ecc ?? slideQrCfg.value.ecc ?? deckQrCfg.value.ecc ?? 'L') as Ecc,
+  uppercase: props.uppercase ?? slideQrCfg.value.uppercase ?? deckQrCfg.value.uppercase ?? false,
 }))
 
 // In dev, location.origin is the right base (e.g. http://localhost:3282). In
@@ -115,12 +126,18 @@ const targetUrl = computed(() => {
   return `${origin.value}/${slidePath.value}`
 })
 
+// Final encoded payload — uppercase when configured so the encoder can use
+// alphanumeric mode (5.5 bits/char) instead of byte mode (8 bits/char) for the
+// whole URL. Display label uses the same casing as the encoded payload so what
+// you see matches what the scanner decodes.
+const encodedUrl = computed(() => resolved.value.uppercase ? targetUrl.value.toUpperCase() : targetUrl.value)
+
 // Display label strips the protocol — `slidev.oa.dev/3` reads more naturally
 // in the QR caption than `https://slidev.oa.dev/3`, and the scheme is implicit
 // once the QR is scanned anyway.
-const displayUrl = computed(() => targetUrl.value.replace(/^https?:\/\//, ''))
+const displayUrl = computed(() => encodedUrl.value.replace(/^https?:\/\//i, ''))
 
-const svg = computed(() => renderSVG(targetUrl.value, { ecc: resolved.value.ecc, border: 2 }))
+const svg = computed(() => renderSVG(encodedUrl.value, { ecc: resolved.value.ecc, border: 1 }))
 
 const positionStyle = computed(() => {
   const p = resolved.value.position

@@ -112,7 +112,6 @@ const contentStyle = computed(() => {
     >
       <template #default>
         <SlidesShow render-context="slide" />
-        <SlugChip />
         <PresenterMouse />
         <div
           v-if="fileDropActive || fileDropInFlight"
@@ -126,6 +125,7 @@ const contentStyle = computed(() => {
         <LaserPointer />
       </template>
       <template #controls>
+        <SlugChip />
         <div
           v-if="!isPrintMode"
           class="absolute bottom-0 left-0 transition duration-300 opacity-0 hover:opacity-100 focus-within:opacity-100 focus-visible:opacity-100"

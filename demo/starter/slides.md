@@ -29,11 +29,16 @@ publish:
   # <link rel=canonical>, og:url, and the URL bar after in-deck nav.
   canonicalForm: n-slug
 # Deck-level QR overlay (per-slide override via `qr:` in any slide's frontmatter,
-# `qr: false` disables on that slide). QR target defaults to `/n` for the
-# shortest URL → fewest modules → chunkier scannable pixels.
+# `qr: false` disables on that slide; `skipSlides` is the escape hatch for slide
+# 1, whose frontmatter is this headmatter and can't carry its own `qr` value).
+# QR target defaults to `/n` for the shortest URL → fewest modules → chunkier
+# scannable pixels; `uppercase: true` switches the encoder to alphanumeric mode
+# (5.5 bits/char vs 8) for an extra version-drop on alphanumeric URLs.
 qr:
   position: br
   showText: true
+  uppercase: true
+  skipSlides: [1]
 # Deck-level OG (for shares of the bare https://slidev.oa.dev/ URL — per-slide URLs
 # get their own preview via `dist/_og/<n>-<slug>.html`). Reuses the auto-rendered
 # slide-1 image as the deck thumbnail.
@@ -83,13 +88,11 @@ Press space / → to advance.
 
 ---
 layout: default
-# Hide the auto-injected QR on this slide — embeds compete with it for the BR corner.
-qr: false
 ---
 
 # Embeds
 
-Tweets, YouTube videos, and Bluesky posts — all draggable, resizable, and rotatable.
+Tweets, YouTube videos, and Bluesky posts — all draggable, resizable, and rotatable. Each slide also auto-gets a **QR** (lower-right) linking to its canonical URL — handy for an audience that wants to scan-and-share without finding the deck URL.
 
 <Tweet id="1390115482657726468" />
 
