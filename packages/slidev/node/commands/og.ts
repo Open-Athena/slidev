@@ -145,10 +145,12 @@ function planSlide(
   const htmlFilename = `${no}-${slug}.html`
   const fm = slide.frontmatter ?? {}
   const overrideSrc = typeof fm.ogImage === 'string' ? fm.ogImage : null
-  // The canonical URL is the SPA path (`/<n>` plus the configured app base) — slug routing
-  // is Phase 2 of the spec; for Phase 1 the canonical resolves via the deterministic
-  // integer route.
-  const appPath = joinUrl(appBase || '/', String(no))
+  // Canonical URL is `/<n>-<slug>` (when a slug is available) — number prefix for stable
+  // ordering, slug for semantic share-friendliness. Bare `/<n>` and bare `/<slug>` both
+  // resolve via additional pre-rendered shells + a slug-route redirect; the canonical
+  // is what scrapers and the URL bar end up on.
+  const canonicalPath = slug ? `${no}-${slug}` : String(no)
+  const appPath = joinUrl(appBase || '/', canonicalPath)
   const canonical = joinUrl(baseUrl, appPath)
   const imageUrl = joinUrl(baseUrl, joinUrl(appBase || '/', `_og/${imageFilename}`))
   // Cache key includes the slide source + render-relevant config (size/format) — captured by
@@ -475,8 +477,106 @@ export async function generateOgShells(
   const deckUrl = joinUrl(baseUrl, appBase || '/')
   await fs.writeFile(resolve(ogDir, 'index.html'), renderIndex(plans, deckTitle, deckUrl, size), 'utf-8')
 
+  // Per-slide SPA shells so canonical URLs serve per-slide og:*/twitter:* meta to
+  // scrapers without giving up the SPA. Three filenames per slide (all identical
+  // content; only the *filename* differs — the og:url / canonical pinned in the
+  // meta is always `/<n>-<slug>`):
+  //   - `dist/<n>.html`           — number-only legacy / stable-ordering URL
+  //   - `dist/<n>-<slug>.html`    — canonical
+  //   - `dist/<slug>.html`        — bare-slug alias (renumber-resistant; skipped on collision)
+  // GH Pages serves these for `/<n>`, `/<n>-<slug>`, `/<slug>` respectively (the
+  // pretty-URL routing GH Pages does for `*.html` files). Browsers see the SPA
+  // bootstrap exactly as they would from `index.html` / `404.html`.
+  const shellPath = resolve(outDir, 'index.html')
+  let bareSlugCount = 0
+  if (existsSync(shellPath)) {
+    const baseShell = await fs.readFile(shellPath, 'utf-8')
+
+    // Find slugs that would collide with each other, or with files we already emit
+    // (`index`, `404`). Those slides skip the bare-slug alias; their canonical
+    // `/<n>-<slug>` still works.
+    const slugCounts = new Map<string, number>()
+    for (const p of plans) {
+      if (p.slug)
+        slugCounts.set(p.slug, (slugCounts.get(p.slug) ?? 0) + 1)
+    }
+    const reservedSlugs = new Set(['index', '404'])
+
+    for (const p of plans) {
+      const rendered = injectPerSlideMeta(baseShell, p)
+      // Always emit number-only shell (legacy + stable-ordering URL).
+      await fs.writeFile(resolve(outDir, `${p.no}.html`), rendered, 'utf-8')
+      // Emit canonical `<n>-<slug>.html` when slug present.
+      if (p.slug)
+        await fs.writeFile(resolve(outDir, `${p.no}-${p.slug}.html`), rendered, 'utf-8')
+      // Emit bare `<slug>.html` only when slug is unique + not reserved.
+      if (p.slug && !reservedSlugs.has(p.slug) && slugCounts.get(p.slug) === 1) {
+        await fs.writeFile(resolve(outDir, `${p.slug}.html`), rendered, 'utf-8')
+        bareSlugCount++
+      }
+    }
+  }
+
   // eslint-disable-next-line no-console
-  console.log(`[Slidev] OG: wrote ${plans.length} shell(s) + gallery index, rendered ${toRender.length} new image(s) (${cached.length} from cache) to ${ogDir}`)
+  console.log(`[Slidev] OG: wrote ${plans.length} shell(s) + gallery index + per-slide SPA shells (${plans.length} numbered, ${plans.filter(p => p.slug).length} slugged, ${bareSlugCount} bare-slug), rendered ${toRender.length} new image(s) (${cached.length} from cache) to ${ogDir}`)
+}
+
+function escapeRegex(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
+// Rewrite a single `<meta {attr}="{key}" content="...">` value in-place. Tolerant
+// of attribute-order variants (`attr` and `content` may appear in either order
+// in source HTML); returns the input unchanged when no matching tag is found.
+function replaceMeta(html: string, attr: 'name' | 'property', key: string, value: string): string {
+  const v = htmlEscape(value)
+  // attr-first: <meta name="x" content="y">
+  const re1 = new RegExp(`(<meta\\s+${attr}="${escapeRegex(key)}"\\s+content=")[^"]*(")`)
+  if (re1.test(html))
+    return html.replace(re1, `$1${v}$2`)
+  // content-first: <meta content="y" name="x">
+  const re2 = new RegExp(`(<meta\\s+content=")[^"]*("\\s+${attr}="${escapeRegex(key)}")`)
+  return html.replace(re2, `$1${v}$2`)
+}
+
+// Build a per-slide variant of the SPA shell, mutating only the head meta —
+// title, description, og:*, twitter:* — so canonical `/<n>` URLs serve correct
+// per-slide share cards to scrapers (browsers boot the SPA from this shell
+// exactly as from `index.html`/`404.html`). Idempotent: if the deck-level shell
+// already has a meta we'd inject, we replace its value; otherwise we append.
+function injectPerSlideMeta(shell: string, info: SlideOgInfo): string {
+  let html = shell
+  const t = info.title
+  const d = info.description
+  const u = info.canonical
+  const img = info.imageUrl
+
+  html = html.replace(/<title>[^<]*<\/title>/, `<title>${htmlEscape(t)}</title>`)
+  html = replaceMeta(html, 'name', 'description', d)
+  html = replaceMeta(html, 'property', 'og:title', t)
+  html = replaceMeta(html, 'property', 'og:description', d)
+  html = replaceMeta(html, 'property', 'og:image', img)
+  html = replaceMeta(html, 'property', 'og:url', u)
+  // Vite's deck-level shell uses `property="twitter:..."`; the `_og/*.html` shells
+  // use `name="twitter:..."`. Try both so we cover whatever the source emits.
+  html = replaceMeta(html, 'property', 'twitter:title', t)
+  html = replaceMeta(html, 'property', 'twitter:description', d)
+  html = replaceMeta(html, 'property', 'twitter:image', img)
+  html = replaceMeta(html, 'property', 'twitter:url', u)
+  html = replaceMeta(html, 'name', 'twitter:title', t)
+  html = replaceMeta(html, 'name', 'twitter:description', d)
+  html = replaceMeta(html, 'name', 'twitter:image', img)
+  html = replaceMeta(html, 'name', 'twitter:url', u)
+
+  // Canonical link: replace if present, else inject before </head>.
+  if (/<link\s+rel="canonical"/.test(html)) {
+    html = html.replace(/(<link\s+rel="canonical"\s+href=")[^"]*(")/, `$1${htmlEscape(u)}$2`)
+  }
+  else {
+    html = html.replace(/<\/head>/, `<link rel="canonical" href="${htmlEscape(u)}">\n</head>`)
+  }
+
+  return html
 }
 
 async function transcodeOrCopy(srcPng: string, dstJpg: string, quality: number): Promise<void> {

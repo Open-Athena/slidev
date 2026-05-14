@@ -1,6 +1,7 @@
 import type { RouteLocationNormalized, RouteRecordRaw } from 'vue-router'
 import configs from '#slidev/configs'
 import setups from '#slidev/setups/routes'
+import { getSlide, slugForSlide } from '../logic/slides'
 
 export default function setupRoutes() {
   const routes: RouteRecordRaw[] = []
@@ -87,16 +88,39 @@ export default function setupRoutes() {
 
   routes.push(
     {
+      // Canonical `/<n>-<slug>` form (e.g. `/3-install`). The slug param is
+      // decorative — play.vue resolves by `:no`. We accept any slug here (don't
+      // verify it matches the current slug) so renaming a slug doesn't break
+      // existing shared links: stale `/3-old-slug` URLs still land on slide 3.
+      name: 'play-slug',
+      path: '/:no(\\d+)-:slug([a-z0-9][a-z0-9-]*)',
+      component: () => import('../pages/play.vue'),
+    },
+    {
       name: 'play',
       // Constrain `:no` to digits only — otherwise any single-segment path
       // (e.g. `/_og`) matches and `play.vue` silently falls back to slide 1.
-      // Non-numeric paths now fall through to the `NotFound` route below.
+      // Non-numeric paths now fall through to the slug-only / NotFound routes.
       path: '/:no(\\d+)',
       component: () => import('../pages/play.vue'),
     },
     {
       path: '',
       redirect: { path: '/1' },
+    },
+    {
+      // Bare slug — resolve via the slide list (matches `frontmatter.slug`,
+      // `routeAlias`, or slugified title) and redirect to the canonical
+      // `/<n>-<slug>` form. Falls through to NotFound when no slide matches.
+      path: '/:slug([a-z][a-z0-9-]*)',
+      redirect: (to) => {
+        const slug = String(to.params.slug)
+        const slide = getSlide(slug)
+        if (!slide)
+          return { name: 'NotFound', params: { pathMatch: [slug] } }
+        const canonicalSlug = slugForSlide(slide) || slug
+        return { path: `/${slide.no}-${canonicalSlug}` }
+      },
     },
     {
       path: '/:pathMatch(.*)*',
