@@ -5,6 +5,7 @@ import { useDrawings } from '../composables/useDrawings'
 import { useFileDrop } from '../composables/useFileDrop'
 import { useHideCursorIdle } from '../composables/useHideCursorIdle'
 import { useNav } from '../composables/useNav'
+import { usePasteImage } from '../composables/usePasteImage'
 import { usePinchZoomPan } from '../composables/usePinchZoomPan'
 import { useSwipeControls } from '../composables/useSwipeControls'
 import { useWakeLock } from '../composables/useWakeLock'
@@ -44,6 +45,7 @@ usePinchZoomPan(root)
 useSwipeControls(root)
 registerShortcuts()
 const { dropActive: fileDropActive, inFlight: fileDropInFlight } = useFileDrop()
+usePasteImage()
 if (__SLIDEV_FEATURE_WAKE_LOCK__)
   useWakeLock()
 useHideCursorIdle(computed(() => isPlaying.value && !isEmbedded.value && !showEditor.value))
