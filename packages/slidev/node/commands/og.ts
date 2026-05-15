@@ -71,6 +71,10 @@ function firstParagraph(content: string): string {
   let text = content
   // Strip fenced code blocks (``` ... ```)
   text = text.replace(/```[\s\S]*?```/g, '')
+  // Strip `<style>` and `<script>` blocks WITH their contents — `<[^>]+>` below
+  // only removes opening/closing tags, which would leave CSS / JS body text
+  // leaking into the description.
+  text = text.replace(/<(style|script)\b[^>]*>[\s\S]*?<\/\1>/gi, '')
   // Strip Vue/HTML components and tags entirely (incl. self-closing)
   text = text.replace(/<[^>]+>/g, '')
   const lines = text.split(/\r?\n/)
