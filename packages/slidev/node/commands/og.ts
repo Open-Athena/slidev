@@ -102,12 +102,26 @@ function firstParagraph(content: string): string {
     .slice(0, 300)
 }
 
+// Strip markdown link syntax from a heading title — slidev passes the raw
+// heading source as `slide.title`, so `# Demo: [foo.bar](https://foo.bar)`
+// arrives as `Demo: [foo.bar](https://foo.bar)`. Keep the anchor text, drop
+// the URL. Also collapse leftover `**bold**` / `*italic*` / `` `code` ``
+// markers so the title reads naturally in social cards.
+function stripMd(s: string): string {
+  return s
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+    .replace(/\*\*?([^*]+)\*\*?/g, '$1')
+    .replace(/`([^`]+)`/g, '$1')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
 function pickTitle(slide: SlideInfo, deckTitle: string, no: number): string {
   const fm = slide.frontmatter ?? {}
   if (typeof fm.title === 'string' && fm.title.trim())
-    return fm.title.trim()
+    return stripMd(fm.title)
   if (typeof slide.title === 'string' && slide.title.trim())
-    return slide.title.trim()
+    return stripMd(slide.title)
   return `${deckTitle} — Slide ${no}`
 }
 
