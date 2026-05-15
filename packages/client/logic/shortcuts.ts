@@ -4,7 +4,9 @@ import type { Ref } from 'vue'
 import { onKeyDown, onKeyStroke } from '@vueuse/core'
 import { and, not } from '@vueuse/math'
 import { watch } from 'vue'
+import { deleteSelectedElements } from '../composables/useDeleteElement'
 import { redo as historyRedo, undo as historyUndo } from '../composables/useDragHistory'
+import { hasSelection } from '../composables/useMultiSelect'
 import { useNav } from '../composables/useNav'
 import { configs } from '../env'
 import { getSlidePath } from '../logic/slides'
@@ -40,6 +42,22 @@ export function registerShortcuts() {
     if (typeof navigator !== 'undefined' && navigator.clipboard) {
       void navigator.clipboard.writeText(url)
     }
+  })
+
+  // Backspace / Delete on a selected v-drag element removes its source line(s)
+  // from `slides.md`. Source-removal is the source of truth — the dragPos
+  // entry in `slides.coords.yaml` becomes an orphan but is harmless. See
+  // `specs/delete-and-insert-flow.md` (Stage 1) for the long-term plan;
+  // tonight is MVP without undo round-trip.
+  onKeyDown(['Backspace', 'Delete'], (e) => {
+    if (!enabled.value)
+      return
+    if (!hasSelection.value)
+      return
+    e.preventDefault()
+    void deleteSelectedElements().catch((err) => {
+      console.error('[Slidev] Delete failed:', err)
+    })
   })
 
   // Global undo / redo for v-drag edits — operates on the deck-global stack so it works
