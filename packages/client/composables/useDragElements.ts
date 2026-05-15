@@ -6,6 +6,10 @@ import { injectionCurrentPage, injectionFrontmatter, injectionRenderContext, inj
 import { slideHeight, slideWidth } from '../env'
 import { makeId } from '../logic/utils'
 import { directiveInject } from '../utils'
+// `getVisibleBounds`, `findSnap`, `SNAP_THRESHOLD` moved to `./snap.ts` so the
+// snap math is unit-testable without a Vue runtime / vite virtual modules.
+// Re-exported below for callers that already import them from this module.
+import { getVisibleBounds } from './snap'
 import {
   discardTopMatching,
   beginEdit as historyBeginEdit,
@@ -24,6 +28,7 @@ import {
 import { clearSelection, isSelected, removeFromSelection, selectElement } from './useMultiSelect'
 import { useNav } from './useNav'
 import { useSlideBounds } from './useSlideBounds'
+
 import { useDynamicSlideInfo } from './useSlideInfo'
 
 export type DragElementDataSource = 'frontmatter' | 'prop' | 'directive'
@@ -50,28 +55,6 @@ export interface DragElementInfo {
   cropBottom: () => number
   cropLeft: () => number
 }
-
-// Compute visible (cropped) center and dimensions for an element
-function getVisibleBounds(el: DragElementInfo) {
-  const w = el.width()
-  const h = el.height()
-  const cT = el.cropTop()
-  const cR = el.cropRight()
-  const cB = el.cropBottom()
-  const cL = el.cropLeft()
-  const visW = w * (100 - cL - cR) / 100
-  const visH = h * (100 - cT - cB) / 100
-  // Crop offset in local coords (before rotation)
-  const offX = (cL - cR) / 100 * w / 2
-  const offY = (cT - cB) / 100 * h / 2
-  const rad = el.rotate() * Math.PI / 180
-  const cos = Math.cos(rad)
-  const sin = Math.sin(rad)
-  // Visible center in world coords
-  const cx = el.x0() + offX * cos - offY * sin
-  const cy = el.y0() + offX * sin + offY * cos
-  return { cx, cy, w: visW, h: visH }
-}
 const dragElementRegistry: Map<number, Map<string, DragElementInfo>> = new Map()
 
 export function getDragElementsForPage(page: number): DragElementInfo[] {
@@ -88,9 +71,6 @@ function registerDragElement(page: number, info: DragElementInfo) {
 function unregisterDragElement(page: number, dragId: string) {
   dragElementRegistry.get(page)?.delete(dragId)
 }
-
-// Snap alignment logic
-const SNAP_THRESHOLD = 8
 
 export function getSnapTargets(pageNum: number, selfDragId: string | Set<string>) {
   const exclude = typeof selfDragId === 'string' ? new Set([selfDragId]) : selfDragId
@@ -121,28 +101,7 @@ export function getSnapTargets(pageNum: number, selfDragId: string | Set<string>
   return { x: Array.from(targets.x), y: Array.from(targets.y) }
 }
 
-export function findSnap(value: number, elementHalfSize: number, targets: number[]): { value: number, lines: number[] } {
-  let best: { dist: number, val: number, line: number } | null = null
-
-  const leftEdge = value - elementHalfSize
-  const rightEdge = value + elementHalfSize
-
-  for (const t of targets) {
-    const centerDist = Math.abs(value - t)
-    if (centerDist < SNAP_THRESHOLD && (!best || centerDist < best.dist))
-      best = { dist: centerDist, val: t, line: t }
-
-    const leftDist = Math.abs(leftEdge - t)
-    if (leftDist < SNAP_THRESHOLD && (!best || leftDist < best.dist))
-      best = { dist: leftDist, val: t + elementHalfSize, line: t }
-
-    const rightDist = Math.abs(rightEdge - t)
-    if (rightDist < SNAP_THRESHOLD && (!best || rightDist < best.dist))
-      best = { dist: rightDist, val: t - elementHalfSize, line: t }
-  }
-
-  return best ? { value: best.val, lines: [best.line] } : { value, lines: [] }
-}
+export { findSnap, getVisibleBounds, SNAP_THRESHOLD } from './snap'
 
 export function useDragElementsUpdater(no: number) {
   if (!(__DEV__ && __SLIDEV_FEATURE_EDITOR__))
@@ -286,17 +245,12 @@ export function useDragElement(directive: DirectiveBinding | null, posRaw?: stri
           zIndex: zIndex.value,
         }
 
-    // In crop mode, hide the original element so only DragControl's preview is visible
-    if (isCropping.value) {
-      baseStyle.opacity = 0
-    }
-    else {
-      // Reset opacity when not cropping
-      baseStyle.opacity = 1
-      // Apply crop via clip-path when not in crop mode
-      if (hasCrop.value) {
-        baseStyle.clipPath = `inset(${cropTop.value}% ${cropRight.value}% ${cropBottom.value}% ${cropLeft.value}%)`
-      }
+    // In crop mode, drop the clip-path so the full image is visible (DragControl
+    // overlays four dimmer rectangles on the *cropped-out* edges; the in-crop
+    // region just shows the original render straight through).
+    baseStyle.opacity = 1
+    if (!isCropping.value && hasCrop.value) {
+      baseStyle.clipPath = `inset(${cropTop.value}% ${cropRight.value}% ${cropBottom.value}% ${cropLeft.value}%)`
     }
 
     return baseStyle

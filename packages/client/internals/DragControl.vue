@@ -120,32 +120,6 @@ const associatedLink = computed(() => {
   return null
 })
 
-// Get image source from the dragged element (for rendering in crop mode)
-const imageSrc = computed(() => {
-  const el = props.data.container.value
-  if (!el)
-    return null
-
-  // Check if element itself is an image
-  if (el.tagName === 'IMG')
-    return (el as HTMLImageElement).src
-
-  // Check for img inside the element
-  const img = el.querySelector('img')
-  if (img)
-    return img.src
-
-  // Check for background-image style
-  const bgImage = window.getComputedStyle(el).backgroundImage
-  if (bgImage && bgImage !== 'none') {
-    const match = bgImage.match(/url\(["']?(.+?)["']?\)/)
-    if (match)
-      return match[1]
-  }
-
-  return null
-})
-
 const slideScale = inject(injectionSlideScale, ref(1))
 const scale = computed(() => slideScale.value * zoom.value)
 const { left: slideLeft, top: slideTop } = useSlideBounds()
@@ -205,6 +179,18 @@ let currentDrag: {
   lby: number
   rbx: number
   rby: number
+} | null = null
+
+// Last corner-resize pointermove parameters (clientX/Y + which corner). Lets a
+// Shift keydown / keyup mid-drag re-fire the resize math at the current cursor
+// position without requiring an actual mouse move — otherwise the AR-lock
+// toggle feels "stuck" because `ev.shiftKey` only updates on pointer events.
+let lastCornerMove: {
+  isLeft: boolean
+  isTop: boolean
+  clientX: number
+  clientY: number
+  metaKey: boolean
 } | null = null
 
 function onPointerdown(ev: PointerEvent) {
@@ -314,6 +300,7 @@ function onPointerup(ev: PointerEvent) {
 
   ev.preventDefault()
   ev.stopPropagation()
+  lastCornerMove = null
 
   props.data.clearSnapLines()
   // Force the pending edit's commit to fire now (rather than on the watcher's debounce),
@@ -324,110 +311,124 @@ function onPointerup(ev: PointerEvent) {
 
 const ctrlClasses = `absolute border border-gray bg-gray dark:border-gray-500 dark:bg-gray-800 bg-opacity-30 `
 
+// Extracted corner-resize math so the pointermove handler AND the Shift
+// keydown/keyup re-fire (see `lastCornerMove` + the global key listeners below)
+// can share it. `shiftKey` is passed in rather than read from a PointerEvent so
+// a synthetic re-fire on key transition uses the desired state, not whatever
+// stale shift bit the last pointermove had.
+function applyCornerResize(isLeft: boolean, isTop: boolean, clientX: number, clientY: number, shiftKey: boolean, metaKey: boolean) {
+  if (!currentDrag)
+    return
+
+  let x = (clientX - slideLeft.value) / scale.value
+  let y = (clientY - slideTop.value) / scale.value
+
+  const { ltx, lty, rtx, rty, lbx, lby, rbx, rby } = currentDrag
+
+  // AR is locked when shift is held OR the wrapper sets lockAspectRatio (e.g. YT/Tweet).
+  // The wrapper's value is the *natural* AR of the content (16:9 for YT, dynamic for
+  // Tweet); when there's no wrapper AR, shift falls back to the element's *original*
+  // AR (captured at pointerdown into `currentDrag.width/height`, never mutated mid-
+  // drag) so the constraint is the pre-drag shape, not whatever skewed dims we'd
+  // accumulated by free-resizing first.
+  const lockARValue = props.data.lockAspectRatio.value
+  const lockAR = lockARValue || (shiftKey ? currentDrag.width / currentDrag.height : 0)
+  const wMin = Math.max(minSize.value, minSize.value * (lockAR || 1))
+  function getSize(w1: number, h1: number) {
+    if (lockAR) {
+      const w = Math.max(w1, h1 * lockAR, wMin)
+      const h = w / lockAR
+      return { w, h }
+    }
+    else {
+      return { w: Math.max(w1, minSize.value), h: Math.max(h1, minSize.value) }
+    }
+  }
+
+  if (isLeft) {
+    if (isTop) {
+      const w1 = (rbx - x) * rotateCos.value + (rby - y) * rotateSin.value
+      const h1 = -(rbx - x) * rotateSin.value + (rby - y) * rotateCos.value
+      const { w, h } = getSize(w1, h1)
+      x = rbx - w * rotateCos.value + h * rotateSin.value
+      y = rby - w * rotateSin.value - h * rotateCos.value
+    }
+    else {
+      const w1 = (rtx - x) * rotateCos.value - (y - rty) * rotateSin.value
+      const h1 = (rtx - x) * rotateSin.value + (y - rty) * rotateCos.value
+      const { w, h } = getSize(w1, h1)
+      x = rtx - w * rotateCos.value - h * rotateSin.value
+      y = rty - w * rotateSin.value + h * rotateCos.value
+    }
+  }
+  else {
+    if (isTop) {
+      const w1 = (x - lbx) * rotateCos.value - (lby - y) * rotateSin.value
+      const h1 = (x - lbx) * rotateSin.value + (lby - y) * rotateCos.value
+      const { w, h } = getSize(w1, h1)
+      x = lbx + w * rotateCos.value + h * rotateSin.value
+      y = lby + w * rotateSin.value - h * rotateCos.value
+    }
+    else {
+      const w1 = (x - ltx) * rotateCos.value + (y - lty) * rotateSin.value
+      const h1 = -(x - ltx) * rotateSin.value + (y - lty) * rotateCos.value
+      const { w, h } = getSize(w1, h1)
+      x = ltx + w * rotateCos.value - h * rotateSin.value
+      y = lty + w * rotateSin.value + h * rotateCos.value
+    }
+  }
+
+  // Snap the dragged corner to alignment targets. When AR is locked (above),
+  // snap projects guide-aligned positions onto the AR-preserving diagonal.
+  const anchorX = isLeft ? (isTop ? rbx : rtx) : (isTop ? lbx : ltx)
+  const anchorY = isLeft ? (isTop ? rby : rty) : (isTop ? lby : lty)
+  const snapped = lockAR
+    ? applyDiagonalSnap(x, y, anchorX, anchorY, metaKey)
+    : applyPointSnap(x, y, metaKey)
+  x = snapped.x
+  y = snapped.y
+  props.data.activeSnapLines.value = { x: snapped.linesX, y: snapped.linesY }
+
+  if (isLeft) {
+    if (isTop) {
+      x0.value = (x + rbx) / 2
+      y0.value = (y + rby) / 2
+      width.value = (rbx - x) * rotateCos.value + (rby - y) * rotateSin.value
+      height.value = -(rbx - x) * rotateSin.value + (rby - y) * rotateCos.value
+    }
+    else {
+      x0.value = (x + rtx) / 2
+      y0.value = (y + rty) / 2
+      width.value = (rtx - x) * rotateCos.value - (y - rty) * rotateSin.value
+      height.value = (rtx - x) * rotateSin.value + (y - rty) * rotateCos.value
+    }
+  }
+  else {
+    if (isTop) {
+      x0.value = (x + lbx) / 2
+      y0.value = (y + lby) / 2
+      width.value = (x - lbx) * rotateCos.value - (lby - y) * rotateSin.value
+      height.value = (x - lbx) * rotateSin.value + (lby - y) * rotateCos.value
+    }
+    else {
+      x0.value = (x + ltx) / 2
+      y0.value = (y + lty) / 2
+      width.value = (x - ltx) * rotateCos.value + (y - lty) * rotateSin.value
+      height.value = -(x - ltx) * rotateSin.value + (y - lty) * rotateCos.value
+    }
+  }
+}
+
 function getCornerProps(isLeft: boolean, isTop: boolean) {
   return {
     onPointerdown,
     onPointermove: (ev: PointerEvent) => {
       if (!currentDrag || ev.buttons !== 1)
         return
-
       ev.preventDefault()
       ev.stopPropagation()
-
-      let x = (ev.clientX - slideLeft.value) / scale.value
-      let y = (ev.clientY - slideTop.value) / scale.value
-
-      const { ltx, lty, rtx, rty, lbx, lby, rbx, rby } = currentDrag
-
-      // AR is locked when shift is held OR the wrapper sets lockAspectRatio (e.g. YT/Tweet).
-      // The wrapper's value is the *natural* AR of the content (16:9 for YT, dynamic for
-      // Tweet); falls back to the wrapper's current AR when shift-resizing arbitrary content.
-      const lockARValue = props.data.lockAspectRatio.value
-      const lockAR = lockARValue || (ev.shiftKey ? currentDrag.width / currentDrag.height : 0)
-      const wMin = Math.max(minSize.value, minSize.value * (lockAR || 1))
-      function getSize(w1: number, h1: number) {
-        if (lockAR) {
-          const w = Math.max(w1, h1 * lockAR, wMin)
-          const h = w / lockAR
-          return { w, h }
-        }
-        else {
-          return { w: Math.max(w1, minSize.value), h: Math.max(h1, minSize.value) }
-        }
-      }
-
-      if (isLeft) {
-        if (isTop) {
-          const w1 = (rbx - x) * rotateCos.value + (rby - y) * rotateSin.value
-          const h1 = -(rbx - x) * rotateSin.value + (rby - y) * rotateCos.value
-          const { w, h } = getSize(w1, h1)
-          x = rbx - w * rotateCos.value + h * rotateSin.value
-          y = rby - w * rotateSin.value - h * rotateCos.value
-        }
-        else {
-          const w1 = (rtx - x) * rotateCos.value - (y - rty) * rotateSin.value
-          const h1 = (rtx - x) * rotateSin.value + (y - rty) * rotateCos.value
-          const { w, h } = getSize(w1, h1)
-          x = rtx - w * rotateCos.value - h * rotateSin.value
-          y = rty - w * rotateSin.value + h * rotateCos.value
-        }
-      }
-      else {
-        if (isTop) {
-          const w1 = (x - lbx) * rotateCos.value - (lby - y) * rotateSin.value
-          const h1 = (x - lbx) * rotateSin.value + (lby - y) * rotateCos.value
-          const { w, h } = getSize(w1, h1)
-          x = lbx + w * rotateCos.value + h * rotateSin.value
-          y = lby + w * rotateSin.value - h * rotateCos.value
-        }
-        else {
-          const w1 = (x - ltx) * rotateCos.value + (y - lty) * rotateSin.value
-          const h1 = -(x - ltx) * rotateSin.value + (y - lty) * rotateCos.value
-          const { w, h } = getSize(w1, h1)
-          x = ltx + w * rotateCos.value - h * rotateSin.value
-          y = lty + w * rotateSin.value + h * rotateCos.value
-        }
-      }
-
-      // Snap the dragged corner to alignment targets. When AR is locked (above),
-      // snap projects guide-aligned positions onto the AR-preserving diagonal.
-      const anchorX = isLeft ? (isTop ? rbx : rtx) : (isTop ? lbx : ltx)
-      const anchorY = isLeft ? (isTop ? rby : rty) : (isTop ? lby : lty)
-      const snapped = lockAR
-        ? applyDiagonalSnap(x, y, anchorX, anchorY, ev.metaKey)
-        : applyPointSnap(x, y, ev.metaKey)
-      x = snapped.x
-      y = snapped.y
-      props.data.activeSnapLines.value = { x: snapped.linesX, y: snapped.linesY }
-
-      if (isLeft) {
-        if (isTop) {
-          x0.value = (x + rbx) / 2
-          y0.value = (y + rby) / 2
-          width.value = (rbx - x) * rotateCos.value + (rby - y) * rotateSin.value
-          height.value = -(rbx - x) * rotateSin.value + (rby - y) * rotateCos.value
-        }
-        else {
-          x0.value = (x + rtx) / 2
-          y0.value = (y + rty) / 2
-          width.value = (rtx - x) * rotateCos.value - (y - rty) * rotateSin.value
-          height.value = (rtx - x) * rotateSin.value + (y - rty) * rotateCos.value
-        }
-      }
-      else {
-        if (isTop) {
-          x0.value = (x + lbx) / 2
-          y0.value = (y + lby) / 2
-          width.value = (x - lbx) * rotateCos.value - (lby - y) * rotateSin.value
-          height.value = (x - lbx) * rotateSin.value + (lby - y) * rotateCos.value
-        }
-        else {
-          x0.value = (x + ltx) / 2
-          y0.value = (y + lty) / 2
-          width.value = (x - ltx) * rotateCos.value + (y - lty) * rotateSin.value
-          height.value = -(x - ltx) * rotateSin.value + (y - lty) * rotateCos.value
-        }
-      }
+      lastCornerMove = { isLeft, isTop, clientX: ev.clientX, clientY: ev.clientY, metaKey: ev.metaKey }
+      applyCornerResize(isLeft, isTop, ev.clientX, ev.clientY, ev.shiftKey, ev.metaKey)
     },
     onPointerup,
     style: {
@@ -775,11 +776,34 @@ function onZOrderKeyDown(e: KeyboardEvent) {
     (e.shiftKey ? sendToBack : sendBackward)()
 }
 
+// During a corner-resize drag, Shift toggles AR-lock. `ev.shiftKey` only
+// refreshes on pointer events, so pressing or releasing Shift with the mouse
+// stationary leaves the AR-lock state stale until the next mousemove —
+// "stuck" from the user's POV. These listeners re-fire the resize math at the
+// last cursor position whenever Shift transitions, so the AR snap toggles
+// instantly.
+function onResizeShiftChange(e: KeyboardEvent) {
+  if (e.key !== 'Shift' || !lastCornerMove)
+    return
+  applyCornerResize(
+    lastCornerMove.isLeft,
+    lastCornerMove.isTop,
+    lastCornerMove.clientX,
+    lastCornerMove.clientY,
+    e.type === 'keydown',
+    lastCornerMove.metaKey,
+  )
+}
+
 onMounted(() => {
   window.addEventListener('keydown', onZOrderKeyDown, { capture: true })
+  window.addEventListener('keydown', onResizeShiftChange)
+  window.addEventListener('keyup', onResizeShiftChange)
 })
 onUnmounted(() => {
   window.removeEventListener('keydown', onZOrderKeyDown, { capture: true })
+  window.removeEventListener('keydown', onResizeShiftChange)
+  window.removeEventListener('keyup', onResizeShiftChange)
 })
 
 // Enter key to exit crop mode or interact mode
@@ -1224,45 +1248,32 @@ function getCropHandleProps(handle: 'top' | 'right' | 'bottom' | 'left' | 'topLe
       </template>
     </div>
 
-    <!-- Crop mode -->
+    <!-- Crop mode: render four dimmer rectangles over the *cropped-out* edges of
+         the already-rendered element. We used to also re-render the image
+         twice (one full-opacity clipped + one dimmed-full-image background)
+         but that breaks for any image source with alpha transparency: both
+         overlays let the slide bg show through, losing whatever backdrop the
+         original `<img>`'s render gave the image (e.g. a theme's white card,
+         a parent's bg-color, the body's color). The four-rectangle approach
+         leaves the original render untouched and only darkens the four
+         not-going-to-be-kept margins. -->
     <div v-if="isCropping" class="absolute inset-0" :style="{ pointerEvents: 'auto' }" @dblclick="handleDblclick">
-      <!-- Background: Full image at reduced opacity (shows what will be cropped out) -->
-      <img
-        v-if="imageSrc"
-        :src="imageSrc"
-        class="absolute inset-0 w-full h-full object-fill"
-        :style="{ opacity: 0.35 }"
-      >
-
-      <!-- Foreground: Cropped region at full opacity (shows what will remain) -->
-      <img
-        v-if="imageSrc"
-        :src="imageSrc"
-        class="absolute inset-0 w-full h-full object-fill"
-        :style="{
-          clipPath: `inset(${cropTop}% ${cropRight}% ${cropBottom}% ${cropLeft}%)`,
-        }"
-      >
-
-      <!-- Fallback for non-image elements: checkerboard overlay -->
-      <template v-if="!imageSrc">
-        <div
-          class="absolute crop-overlay"
-          :style="{ top: 0, left: 0, right: 0, height: `${cropTop}%` }"
-        />
-        <div
-          class="absolute crop-overlay"
-          :style="{ bottom: 0, left: 0, right: 0, height: `${cropBottom}%` }"
-        />
-        <div
-          class="absolute crop-overlay"
-          :style="{ top: `${cropTop}%`, left: 0, bottom: `${cropBottom}%`, width: `${cropLeft}%` }"
-        />
-        <div
-          class="absolute crop-overlay"
-          :style="{ top: `${cropTop}%`, right: 0, bottom: `${cropBottom}%`, width: `${cropRight}%` }"
-        />
-      </template>
+      <div
+        class="absolute crop-overlay"
+        :style="{ top: 0, left: 0, right: 0, height: `${cropTop}%` }"
+      />
+      <div
+        class="absolute crop-overlay"
+        :style="{ bottom: 0, left: 0, right: 0, height: `${cropBottom}%` }"
+      />
+      <div
+        class="absolute crop-overlay"
+        :style="{ top: `${cropTop}%`, left: 0, bottom: `${cropBottom}%`, width: `${cropLeft}%` }"
+      />
+      <div
+        class="absolute crop-overlay"
+        :style="{ top: `${cropTop}%`, right: 0, bottom: `${cropBottom}%`, width: `${cropRight}%` }"
+      />
 
       <!-- Crop region border - blue like Google's -->
       <div
