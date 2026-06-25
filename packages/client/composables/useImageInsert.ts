@@ -19,7 +19,7 @@ export async function uploadFile(file: File): Promise<UploadResult> {
   return json as UploadResult
 }
 
-function escapeAlt(s: string): string {
+export function escapeAlt(s: string): string {
   return s.replace(/[[\]]/g, '\\$&')
 }
 

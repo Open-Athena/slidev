@@ -52,7 +52,7 @@ export function slugify(s: string): string {
     .slice(0, 80) || ''
 }
 
-function pickSlug(slide: SlideInfo, no: number): string {
+export function pickSlug(slide: SlideInfo, no: number): string {
   const fm = slide.frontmatter ?? {}
   return (
     (typeof fm.slug === 'string' && slugify(fm.slug))
@@ -65,7 +65,7 @@ function pickSlug(slide: SlideInfo, no: number): string {
 
 // Strip frontmatter, fenced blocks, components, and basic markdown markers to recover the first
 // paragraph of human-readable text. Heuristic — good enough for OG description fallback.
-function firstParagraph(content: string): string {
+export function firstParagraph(content: string): string {
   if (!content)
     return ''
   let text = content
@@ -107,7 +107,7 @@ function firstParagraph(content: string): string {
 // arrives as `Demo: [foo.bar](https://foo.bar)`. Keep the anchor text, drop
 // the URL. Also collapse leftover `**bold**` / `*italic*` / `` `code` ``
 // markers so the title reads naturally in social cards.
-function stripMd(s: string): string {
+export function stripMd(s: string): string {
   return s
     .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
     .replace(/\*\*?([^*]+)\*\*?/g, '$1')
@@ -116,7 +116,7 @@ function stripMd(s: string): string {
     .trim()
 }
 
-function pickTitle(slide: SlideInfo, deckTitle: string, no: number): string {
+export function pickTitle(slide: SlideInfo, deckTitle: string, no: number): string {
   const fm = slide.frontmatter ?? {}
   if (typeof fm.title === 'string' && fm.title.trim())
     return stripMd(fm.title)
@@ -132,7 +132,7 @@ function pickDescription(slide: SlideInfo): string {
   return firstParagraph(slide.content)
 }
 
-function htmlEscape(s: string): string {
+export function htmlEscape(s: string): string {
   return s
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
@@ -143,7 +143,7 @@ function htmlEscape(s: string): string {
 
 // Join two URL-ish parts so there's exactly one slash between them (and trailing slashes on
 // the base don't cause `//` doubling).
-function joinUrl(base: string, path: string): string {
+export function joinUrl(base: string, path: string): string {
   return `${base.replace(/\/+$/, '')}/${path.replace(/^\/+/, '')}`
 }
 

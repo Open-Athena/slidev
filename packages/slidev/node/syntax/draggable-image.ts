@@ -16,7 +16,7 @@ export interface DraggableImageOptions {
  * Extract a stable ID from an image source path/URL.
  * E.g., `/images/mario.png` → `mario`, `https://example.com/cat.jpg?v=2` → `cat`
  */
-function extractImageId(src: string): string {
+export function extractImageId(src: string): string {
   // Remove query string and hash
   const cleanSrc = src.split(/[?#]/)[0]
   // Get basename (last path segment)
