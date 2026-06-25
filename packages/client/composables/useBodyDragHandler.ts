@@ -75,6 +75,55 @@ export function handleBodyDragPointerdown(ev: PointerEvent, opts: BodyDragHandle
   if (ev.pointerType === 'touch' && activeTouchCount.value > 1)
     return
 
+  // Touch tap-vs-swipe disambiguation. On touch, a tap+slide on an unselected element
+  // used to (a) immediately select it and (b) `stopPropagation`, which hid the gesture
+  // from `useSwipeControls` and turned what felt like a swipe-to-nav into a
+  // body-drag-from-the-first-touch. Defer the decision: track movement, and on
+  // pointerup with no significant movement, select (a true tap). Otherwise no-op and
+  // let the swipe handler take over for slide nav. Touch drag is then a two-gesture
+  // flow — tap to select, then tap-and-drag to move — which falls through to the
+  // standard drag path below since `wasAlreadySelected` is now true.
+  const isTouchTap = ev.pointerType === 'touch' && !isSelected(state) && !ev.shiftKey
+  if (isTouchTap) {
+    // Deliberately NO stopPropagation: events bubble to the swipe handler on the
+    // slide root. NO preventDefault either, so the browser's own gesture handling
+    // (vertical scroll degrading to a tap on the original spot) keeps working.
+    const startX = ev.clientX
+    const startY = ev.clientY
+    const pointerId = ev.pointerId
+    let moved = false
+    function onMove(moveEv: PointerEvent) {
+      if (moveEv.pointerId !== pointerId)
+        return
+      if (Math.hypot(moveEv.clientX - startX, moveEv.clientY - startY) >= TOUCH_MOVE_THRESHOLD_PX) {
+        moved = true
+        cleanup()
+      }
+    }
+    function onUp(upEv: PointerEvent) {
+      if (upEv.pointerId !== pointerId)
+        return
+      cleanup()
+      if (!moved) {
+        // True tap on the element — select it. Stop propagation so the tap doesn't
+        // also reach an underlying anchor / click handler.
+        upEv.preventDefault()
+        upEv.stopPropagation()
+        state.startDragging()
+      }
+      // If moved: do nothing. The swipe handler (or browser default) gets the gesture.
+    }
+    function cleanup() {
+      document.removeEventListener('pointermove', onMove)
+      document.removeEventListener('pointerup', onUp)
+      document.removeEventListener('pointercancel', cleanup)
+    }
+    document.addEventListener('pointermove', onMove)
+    document.addEventListener('pointerup', onUp)
+    document.addEventListener('pointercancel', cleanup)
+    return
+  }
+
   ev.preventDefault()
   ev.stopPropagation()
   // The image consumer (`<img v-drag>`) sits on top of an anchor that has its own
