@@ -22,6 +22,8 @@ import { editorHeight, editorWidth, isEditorVertical, isScreenVertical, showEdit
 
 const { next, prev, isPrintMode, isPlaying, isEmbedded } = useNav()
 const { isDrawing } = useDrawings()
+// Whether the auto-hiding nav bar (non-persist mode) is currently summoned.
+const navHover = ref(false)
 
 const root = ref<HTMLDivElement>()
 function onClick(e: MouseEvent) {
@@ -128,16 +130,29 @@ const contentStyle = computed(() => {
       </template>
       <template #controls>
         <SlugChip />
-        <div
-          v-if="!isPrintMode"
-          class="absolute bottom-0 left-0 transition duration-300 opacity-0 hover:opacity-100 focus-within:opacity-100 focus-visible:opacity-100"
-          :class="[
-            persistNav ? '!opacity-100 right-0' : 'opacity-0 p-2',
-            isDrawing ? 'pointer-events-none' : '',
-          ]"
-        >
-          <NavControls :persist="persistNav" />
-        </div>
+        <template v-if="!isPrintMode">
+          <!-- Narrow "summon" strip. Hovering the bar's full footprint used to pop
+               it open — and, being only opacity-0 (not removed), it also swallowed
+               clicks over any slide content in the lower-left. Restrict the hover
+               target to a thin bottom strip, and make the hidden bar
+               pointer-events-none so clicks pass through to the slide. -->
+          <div
+            v-if="!persistNav"
+            class="absolute bottom-0 left-0 h-3.5 w-80"
+            @mouseenter="navHover = true"
+          />
+          <div
+            class="absolute bottom-0 left-0 transition duration-300 focus-within:opacity-100 focus-within:pointer-events-auto"
+            :class="[
+              persistNav ? '!opacity-100 right-0' : (navHover ? 'opacity-100 p-2' : 'opacity-0 pointer-events-none p-2'),
+              isDrawing ? 'pointer-events-none' : '',
+            ]"
+            @mouseenter="navHover = true"
+            @mouseleave="navHover = false"
+          >
+            <NavControls :persist="persistNav" />
+          </div>
+        </template>
       </template>
     </SlideContainer>
     <SideEditor v-if="SideEditor && showEditor" :resize="true" />
