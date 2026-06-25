@@ -186,6 +186,7 @@ export function createStatePlugin(options: ResolvedSlidevOptions): Plugin {
               kind: string
               items: Array<{ dragId: string, before: unknown, after: unknown }>
               label?: string | null
+              source?: { lineRange: [number, number], lines: string[] }
             }>(req)
             if (typeof body.slideNo !== 'number' || !body.kind || !Array.isArray(body.items))
               return sendJson(res, 400, { error: 'edit requires {slideNo, kind, items[]}' })
@@ -194,6 +195,7 @@ export function createStatePlugin(options: ResolvedSlidevOptions): Plugin {
               kind: body.kind as never,
               items: body.items as never,
               label: body.label ?? null,
+              source: body.source,
             })
             broadcast({ type: 'state-change', source: 'edit', topActiveEventId: event.id, triggeringEventId: event.id })
             return sendJson(res, 200, { event })

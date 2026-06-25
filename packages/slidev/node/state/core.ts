@@ -23,15 +23,17 @@ interface EventRow {
 }
 
 function rowToEvent(row: EventRow): EditEvent {
+  const parsed = JSON.parse(row.payload) as { items: EditItem[], source?: EditEvent['source'] }
   return {
     id: row.id,
     ts: row.ts,
     slideNo: row.slide_no,
     kind: row.kind as EditKind,
-    items: JSON.parse(row.payload).items as EditItem[],
+    items: parsed.items,
     undoneAt: row.undone_at,
     abandonedAt: row.abandoned_at,
     label: row.label,
+    source: parsed.source,
   }
 }
 
@@ -137,6 +139,12 @@ export interface InsertEditOptions {
   kind: EditKind
   items: EditItem[]
   label?: string | null
+  /**
+   * Optional source-line splice context for `kind: 'delete'` events — what
+   * lines to put back on undo. Round-trips through the event payload's JSON
+   * blob; ignored for other event kinds.
+   */
+  source?: EditEvent['source']
 }
 
 // Insert a new event. Atomically: bump abandoned_at on any currently-undone events (the
@@ -144,7 +152,11 @@ export interface InsertEditOptions {
 // `after`. Returns the full event with its assigned id.
 export function insertEdit(db: Database.Database, opts: InsertEditOptions): EditEvent {
   const ts = Date.now()
-  const payload = JSON.stringify({ items: opts.items })
+  const payload = JSON.stringify(
+    opts.source !== undefined
+      ? { items: opts.items, source: opts.source }
+      : { items: opts.items },
+  )
   const tx = db.transaction(() => {
     db.prepare('UPDATE events SET abandoned_at = ? WHERE undone_at IS NOT NULL AND abandoned_at IS NULL').run(ts)
     const info = db.prepare(

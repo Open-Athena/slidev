@@ -16,12 +16,23 @@ export interface ElementSnapshot {
   cropLeft: number
 }
 
-export type EditKind = 'move' | 'resize' | 'rotate' | 'crop' | 'zorder' | 'restore' | 'hydrate'
+export type EditKind = 'move' | 'resize' | 'rotate' | 'crop' | 'zorder' | 'restore' | 'hydrate' | 'delete'
 
 export interface EditItem {
   dragId: string
   before: ElementSnapshot | null
   after: ElementSnapshot | null
+}
+
+/**
+ * Source-line splice metadata for `delete` events. The client captures the
+ * removed slide-content lines + their line range so undo can re-insert them
+ * (via the `/__slidev/slides/<n>.json` POST endpoint). Redo re-removes the
+ * same range. Round-trips through the event payload's JSON blob server-side.
+ */
+export interface DeleteSourceContext {
+  lineRange: [start: number, end: number]
+  lines: string[]
 }
 
 export interface EditEvent {
@@ -33,6 +44,8 @@ export interface EditEvent {
   undoneAt: number | null
   abandonedAt: number | null
   label: string | null
+  /** Present only for `kind: 'delete'` events. */
+  source?: DeleteSourceContext
 }
 
 export type AllElementState = Record<string, Record<string, ElementSnapshot>>
@@ -74,6 +87,8 @@ export interface EditOptions {
   kind: EditKind
   items: EditItem[]
   label?: string | null
+  /** Set for `kind: 'delete'` to round-trip splice context through the event log. */
+  source?: DeleteSourceContext
 }
 
 export interface ListEventsOptions {

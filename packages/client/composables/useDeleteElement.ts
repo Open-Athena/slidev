@@ -1,23 +1,20 @@
 import type { SlidePatch } from '@slidev/types'
+import type { ElementSnapshot } from './state-client'
+import { sliceLineRange } from './delete-source'
+import { pushDelete } from './useDragHistory'
 import { clearSelection, getSelectedElements } from './useMultiSelect'
 
-// MVP delete: drop the markdown source line(s) for each selected element.
-// Source-removal alone is enough to make the element disappear — once the slide
-// markdown re-renders without the line, the v-drag wrapper unmounts and its
-// registration is cleaned up via the existing `unmounted()` hook in
-// `useDragElement`. The orphaned dragPos in `slides.coords.yaml` is harmless
-// (just a stale key) and gets cleaned up the next time the user commits to YAML
-// or hand-edits.
+// Delete a selected v-drag element by stripping the markdown lines that produced it. Each
+// element becomes its own `kind: 'delete'` event in the SQLite event log; Cmd+Z unwinds
+// them LIFO. The event payload carries the *exact* splice (start, end, lines) that was
+// applied — including any blank-line collapsing — so undo can re-insert the same bytes at
+// the same position. See `pushDelete` / `applyDeleteSplice` in `useDragHistory.ts` for the
+// undo/redo plumbing on the server side.
 //
-// Deferred for follow-up:
-//   - Undo (needs a new `delete` EditKind that round-trips through the SQLite
-//     event log with the removed source-line range stored in the payload).
-//   - Cleanup of stale `slides.coords.yaml` dragPos entries.
-//   - Group delete as a single event (today each selection is its own write).
-//   - Toast / error feedback when an element can't be deleted (no
-//     `markdownSource`, e.g. theme-rendered chrome).
-//
-// See `specs/delete-and-insert-flow.md` for the long-term plan.
+// Deferred:
+//   - Cleanup of stale `slides.coords.yaml` dragPos entries (no-op now; harmless leftovers).
+//   - Group delete as a single event (multi-select today emits N events).
+//   - Toast / error feedback when an element can't be deleted (no `markdownSource`).
 
 async function fetchSlideContent(no: number): Promise<string> {
   const res = await fetch(`/__slidev/slides/${no}.json`)
@@ -38,30 +35,19 @@ async function patchSlideContent(no: number, content: string): Promise<void> {
     throw new Error(`Failed to patch slide ${no} (${res.status})`)
 }
 
-// Strip lines `[startLine, endLine)` (0-indexed, end exclusive — markdown-it
-// convention) from a slide's content. If both the line *before* the range and
-// the line *after* are blank, drop one of them too to avoid leaving a
-// double-blank gap where a paragraph used to live.
-function removeLineRange(content: string, startLine: number, endLine: number): string {
-  const lines = content.split('\n')
-  const before = lines.slice(0, startLine)
-  const after = lines.slice(endLine)
-  // Collapse one of two flanking blank lines if both exist.
-  if (before.length && after.length && before[before.length - 1] === '' && after[0] === '')
-    after.shift()
-  return [...before, ...after].join('\n')
-}
-
 export async function deleteSelectedElements(): Promise<{ deleted: number, skipped: number }> {
   const selected = Array.from(getSelectedElements())
   if (selected.length === 0)
     return { deleted: 0, skipped: 0 }
 
-  // Group by slide so a single GET+POST round-trip per slide handles all
-  // deletions on that slide (in particular, multi-select within a single slide
-  // would otherwise GET stale content on the 2nd+ deletions).
-  interface Range { dragId: string, start: number, end: number }
-  const bySlide = new Map<number, Range[]>()
+  interface Job {
+    dragId: string
+    slideNo: number
+    start: number
+    end: number
+    before: ElementSnapshot
+  }
+  const jobs: Job[] = []
   let skipped = 0
   for (const state of selected) {
     if (!state.markdownSource) {
@@ -70,22 +56,50 @@ export async function deleteSelectedElements(): Promise<{ deleted: number, skipp
       continue
     }
     const [start, end] = state.markdownSource
-    const slideNo = state.page.value
-    const list = bySlide.get(slideNo) ?? []
-    list.push({ dragId: state.dragId, start, end })
-    bySlide.set(slideNo, list)
+    jobs.push({
+      dragId: state.dragId,
+      slideNo: state.page.value,
+      start,
+      end,
+      before: {
+        x0: state.x0.value,
+        y0: state.y0.value,
+        width: state.width.value,
+        height: state.height.value,
+        rotate: state.rotate.value,
+        zIndex: state.zIndex.value,
+        cropTop: state.cropTop.value,
+        cropRight: state.cropRight.value,
+        cropBottom: state.cropBottom.value,
+        cropLeft: state.cropLeft.value,
+      },
+    })
   }
+  // Process highest-line first so each splice's `start/end` stays valid against the
+  // working content (everything below this element is untouched at this point). Recording
+  // the splice relative to the working content at splice time means LIFO undo re-inserts
+  // at the position the markdown was in just before this delete fired.
+  jobs.sort((a, b) => b.slideNo - a.slideNo || b.start - a.start)
 
+  // Per-slide working content, mutated across multiple jobs targeting the same slide.
+  const working = new Map<number, string>()
   let deleted = 0
-  for (const [slideNo, ranges] of bySlide.entries()) {
-    // Splice from highest line first so earlier indices stay valid.
-    ranges.sort((a, b) => b.start - a.start)
-    let content = await fetchSlideContent(slideNo)
-    for (const r of ranges)
-      content = removeLineRange(content, r.start, r.end)
-    await patchSlideContent(slideNo, content)
-    deleted += ranges.length
+  for (const job of jobs) {
+    let content = working.get(job.slideNo)
+    if (content === undefined)
+      content = await fetchSlideContent(job.slideNo)
+    const result = sliceLineRange(content, job.start, job.end)
+    working.set(job.slideNo, result.content)
+    await pushDelete(job.slideNo, job.dragId, job.before, {
+      lineRange: [result.removed.start, result.removed.end],
+      lines: result.removed.lines,
+    })
+    deleted++
   }
+  // POST each slide's final content once. HMR fires after this and unmounts the deleted
+  // elements; the server-side event log already reflects the delete.
+  for (const [slideNo, content] of working)
+    await patchSlideContent(slideNo, content)
 
   clearSelection()
   return { deleted, skipped }

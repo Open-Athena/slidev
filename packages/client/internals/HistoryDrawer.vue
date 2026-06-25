@@ -75,6 +75,7 @@ const KIND_ICON: Record<string, string> = {
   rotate: 'i-carbon:rotate',
   crop: 'i-carbon:crop',
   zorder: 'i-carbon:layers',
+  delete: 'i-carbon:trash-can',
   restore: 'i-carbon:reset',
   hydrate: 'i-carbon:db2-database',
 }

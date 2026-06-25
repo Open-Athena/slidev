@@ -7,6 +7,7 @@ import type {
   ListEventsOptions,
 } from './state-client'
 import { computed, ref } from 'vue'
+import { findLineRun } from './delete-source'
 import { getStateClient } from './state-client'
 import { useNav } from './useNav'
 
@@ -24,7 +25,14 @@ export type {
 // kinds — restore/hydrate are internal-only and produced by the client backends, never
 // pushed by UI code. Keeps our public API expressive while letting the IStateClient layer
 // handle every kind uniformly.
-export type EditKind = 'move' | 'resize' | 'rotate' | 'crop' | 'zorder'
+export type EditKind = 'move' | 'resize' | 'rotate' | 'crop' | 'zorder' | 'delete'
+
+// Source-line splice context carried on `delete` events so undo can re-insert what the
+// delete removed (and redo can re-remove it). Mirrors `DeleteSourceContext` in state-client.
+export interface DeleteSource {
+  lineRange: [number, number]
+  lines: string[]
+}
 
 export interface RegisteredState {
   page: { value: number }
@@ -201,10 +209,10 @@ async function synthesizeHydrateIfEmpty(
   topActiveEvent.value = event
 }
 
-async function postEdit(slideNo: number, kind: ClientEditKind, items: EditItem[]): Promise<void> {
+async function postEdit(slideNo: number, kind: ClientEditKind, items: EditItem[], source?: DeleteSource): Promise<void> {
   const client = await getStateClient()
   await synthesizeHydrateIfEmpty(client, slideNo, items)
-  const event = await client.edit({ slideNo, kind, items })
+  const event = await client.edit({ slideNo, kind, items, source })
   topActiveEventId.value = event.id
   topActiveEvent.value = event
   topRedoableEvent.value = null
@@ -252,6 +260,50 @@ export function discardEdit(state: RegisteredState): void {
 
 export async function pushEdit(slideNo: number, kind: EditKind, dragId: string, before: ElementSnapshot, after: ElementSnapshot): Promise<void> {
   await postEdit(slideNo, kind, [{ dragId, before, after }])
+}
+
+// Single-element delete: records `before` so undo can hydrate the re-mounted element via
+// `historyInitialState`, and carries the source-line splice context so undo/redo can
+// re-insert / re-remove the markdown lines.
+export async function pushDelete(slideNo: number, dragId: string, before: ElementSnapshot, source: DeleteSource): Promise<void> {
+  await postEdit(slideNo, 'delete', [{ dragId, before, after: null }], source)
+}
+
+// Splice helper used by undo/redo of `delete` events. `mode === 'insert'` puts
+// `source.lines` back roughly at `source.lineRange[0]` (clamped to current source length);
+// `mode === 'remove'` finds `source.lines` by content match and removes them. The recorded
+// `lineRange` is a hint, not a guarantee — slidev's source-load normalization (e.g.
+// trimming trailing whitespace) can shift line indices between when the delete was
+// recorded and when undo/redo runs.
+async function applyDeleteSplice(slideNo: number, source: DeleteSource, mode: 'insert' | 'remove'): Promise<void> {
+  const res = await fetch(`/__slidev/slides/${slideNo}.json`)
+  if (!res.ok)
+    throw new Error(`Failed to fetch slide ${slideNo} (${res.status})`)
+  const json = await res.json() as { content: string }
+  const lines = json.content.split('\n')
+  let next: string
+  if (mode === 'remove') {
+    // Locate the lines we previously inserted (or that were re-inserted by an undo) by
+    // content. Falls back to a no-op if nothing matches — usually means the user manually
+    // edited the slide and removed them already.
+    const at = findLineRun(lines, source.lines)
+    if (at < 0)
+      return
+    next = [...lines.slice(0, at), ...lines.slice(at + source.lines.length)].join('\n')
+  }
+  else {
+    // Insert at the recorded position, clamped to [0, lines.length]. If the original
+    // position lies past the (possibly normalized) end, the lines append.
+    const at = Math.min(source.lineRange[0], lines.length)
+    next = [...lines.slice(0, at), ...source.lines, ...lines.slice(at)].join('\n')
+  }
+  const post = await fetch(`/__slidev/slides/${slideNo}.json`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+    body: JSON.stringify({ content: next, skipHmr: false }),
+  })
+  if (!post.ok)
+    throw new Error(`Failed to patch slide ${slideNo} (${post.status})`)
 }
 
 export async function pushGroupEdit(slideNo: number, kind: EditKind, items: Array<{ dragId: string, before: ElementSnapshot, after: ElementSnapshot }>): Promise<void> {
@@ -387,6 +439,12 @@ export async function undo(): Promise<void> {
   if (!result)
     return
   applyAffected(result.affected)
+  // Undo of a `delete` event: server has already re-added the element's `element_state`
+  // row (via `recomputeElements`), but the markdown source still has the lines stripped.
+  // Re-insert them; HMR re-mounts the v-drag wrapper, and its mounted() watcher picks up
+  // the restored snapshot from `historyInitialState`.
+  if (result.event.kind === 'delete' && result.event.source)
+    await applyDeleteSplice(result.event.slideNo, result.event.source, 'insert')
   topActiveEventId.value = result.topActiveEventId
   await fetchTopEvents()
   bumpEventStream()
@@ -402,6 +460,10 @@ export async function redo(): Promise<void> {
   if (!result)
     return
   applyAffected(result.affected)
+  // Symmetric to undo: re-remove the lines so the element unmounts. Server has already
+  // dropped `element_state`; we just need the source to match.
+  if (result.event.kind === 'delete' && result.event.source)
+    await applyDeleteSplice(result.event.slideNo, result.event.source, 'remove')
   topActiveEventId.value = result.topActiveEventId
   await fetchTopEvents()
   bumpEventStream()
@@ -516,6 +578,7 @@ const KIND_LABEL: Record<string, string> = {
   rotate: 'rotation',
   crop: 'crop',
   zorder: 'z-order change',
+  delete: 'delete',
   hydrate: 'hydrate',
   restore: 'restore',
 }

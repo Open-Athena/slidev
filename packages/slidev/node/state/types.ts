@@ -1,7 +1,19 @@
 // Shared shapes between dev-server state module and the client. Keep in sync with
 // `packages/client/composables/useDragHistory.ts`.
 
-export type EditKind = 'move' | 'resize' | 'rotate' | 'crop' | 'zorder' | 'restore' | 'hydrate'
+export type EditKind = 'move' | 'resize' | 'rotate' | 'crop' | 'zorder' | 'restore' | 'hydrate' | 'delete'
+
+/**
+ * Source-line splice metadata for `delete` events. The server records the
+ * removed slide-content lines + their line range so undo can re-insert them.
+ * The slide source mutation itself is performed via the existing
+ * `/__slidev/slides/<n>.json` POST (not via this struct); this only stores what
+ * to put back. Redo re-removes the same range.
+ */
+export interface DeleteSourceContext {
+  lineRange: [start: number, end: number]
+  lines: string[]
+}
 
 export interface ElementSnapshot {
   x0: number
@@ -31,6 +43,8 @@ export interface EditEvent {
   undoneAt: number | null
   abandonedAt: number | null
   label: string | null
+  /** Present only for `kind: 'delete'` events; tells undo what source lines to put back. */
+  source?: DeleteSourceContext
 }
 
 // `{[slideNo]: {[dragId]: ElementSnapshot}}`

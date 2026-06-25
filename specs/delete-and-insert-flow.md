@@ -2,10 +2,24 @@
 
 ## Status
 
-Followup spec from the embed-polish work in commit `<TBD>`. Not yet
-implemented. Filed because the user typed Backspace on a `<BlueSky>` embed and
-expected it to disappear, and noticed there's no other way to add a new
-embed/image to a slide besides hand-editing markdown.
+Followup spec from the embed-polish work. Filed because the user typed
+Backspace on a `<BlueSky>` embed and expected it to disappear, and noticed
+there's no other way to add a new embed/image to a slide besides hand-editing
+markdown.
+
+- **Stage 1 (delete) — done.** Backspace/Delete strips the selected element's
+  source line(s) (`e5068ac9`), and deletion now round-trips through the SQLite
+  event log as a `kind: 'delete'` event so Cmd+Z re-inserts the exact removed
+  lines (undo) and Cmd+Shift+Z re-removes them (redo). The splice context
+  (`lineRange` + `lines`) rides on the event payload; see `pushDelete` /
+  `applyDeleteSplice` in `useDragHistory.ts` and `sliceLineRange` /
+  `findLineRun` in `delete-source.ts`. Deferred within Stage 1: stale
+  `slides.coords.yaml` dragPos cleanup (harmless leftover), single-event group
+  delete (multi-select emits N events today), and toast feedback for
+  un-deletable elements.
+- **Insert (embeds) — not implemented.** Adding a Tweet/YouTube/BlueSky still
+  means hand-typing the tag; the picker only covers images
+  (`specs/done/insert-image-picker.md`).
 
 ## Motivation
 
