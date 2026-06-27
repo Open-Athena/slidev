@@ -9,7 +9,7 @@ import { directiveInject } from '../utils'
 // `getVisibleBounds`, `findSnap`, `SNAP_THRESHOLD` moved to `./snap.ts` so the
 // snap math is unit-testable without a Vue runtime / vite virtual modules.
 // Re-exported below for callers that already import them from this module.
-import { getVisibleBounds } from './snap'
+import { findSnap, getVisibleBounds } from './snap'
 import {
   discardTopMatching,
   beginEdit as historyBeginEdit,
