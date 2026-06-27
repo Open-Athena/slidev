@@ -441,6 +441,7 @@ onMounted(() => {
   --slidev-presenter-notes-width: 360px;
   --slidev-presenter-notes-row-size: 280px;
   --uno: bg-gray/20 flex-1 of-hidden;
+  position: relative;
   display: grid;
   gap: 1px 1px;
 }
@@ -577,8 +578,6 @@ onMounted(() => {
   top: 0;
   width: 1px;
   height: 100%;
-  background-color: currentColor;
-  opacity: 0.2;
   transform: translateX(-50%);
 }
 
@@ -601,8 +600,6 @@ onMounted(() => {
   top: 0;
   width: 1px;
   height: 100%;
-  background-color: currentColor;
-  opacity: 0.2;
   transform: translateX(-50%);
 }
 </style>

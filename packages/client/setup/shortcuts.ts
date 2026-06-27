@@ -1,6 +1,6 @@
 import type { NavOperations, ShortcutOptions } from '@slidev/types'
-import setups from '#slidev/setups/shortcuts'
 import { and, not, or } from '@vueuse/math'
+import setups from '#slidev/setups/shortcuts'
 import { useDrawings } from '../composables/useDrawings'
 import { hasSelection } from '../composables/useMultiSelect'
 import { useNav } from '../composables/useNav'

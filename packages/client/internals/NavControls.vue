@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import CustomNavControls from '#slidev/custom-nav-controls'
 import { computed, ref, shallowRef } from 'vue'
+import CustomNavControls from '#slidev/custom-nav-controls'
 import { commitToYaml, describeEntry, downloadCoordsYaml, canRedo as historyCanRedo, canUndo as historyCanUndo, isDirty as historyIsDirty, redo as historyRedo, undo as historyUndo, lastYamlCommitEventId, revertToYaml, topActiveEventId, topRedoEntry, topUndoEntry } from '../composables/useDragHistory'
 import { useDrawings } from '../composables/useDrawings'
 import { useNav } from '../composables/useNav'

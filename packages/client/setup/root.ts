@@ -1,7 +1,7 @@
-import setups from '#slidev/setups/root'
 import { useHead } from '@unhead/vue'
 import { computed, getCurrentInstance, reactive, ref, shallowRef, watch } from 'vue'
 import { useRouter } from 'vue-router'
+import setups from '#slidev/setups/root'
 import { createFixedClicks } from '../composables/useClicks'
 import { connectStateStream, hydrateFromServer } from '../composables/useDragHistory'
 import { useEmbeddedControl } from '../composables/useEmbeddedCtrl'
