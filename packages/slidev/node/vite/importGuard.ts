@@ -35,6 +35,14 @@ export function createSlideImportGuardPlugin(): Plugin {
 
       const importer = filePathFromId(id) ?? id
       await Promise.all(extractImportSources(code, id).map(async ({ value, start }) => {
+        // Public-dir assets are referenced with a root-absolute URL (e.g.
+        // `<img src="/foo.svg">` compiles to `import _ from '/foo.svg'`). Vite serves
+        // them from `publicDir` and resolves the leading `/` to the filesystem root, so
+        // they'd otherwise be flagged as outside fs.allow. They're explicitly-served
+        // static files, not arbitrary fs reads — exempt them.
+        if (isPublicAsset(value, config.publicDir))
+          return
+
         const resolved = await this.resolve(value, importer, { skipSelf: true })
         if (!resolved || resolved.external)
           return
@@ -80,6 +88,17 @@ export function filePathFromId(id: string): string | null {
 
 export function isAllowedFile(filePath: string, allowRoots: string[]) {
   return allowRoots.some(root => isFileInRoot(root, filePath))
+}
+
+// A root-absolute import (`/foo.svg`) that maps to an existing file under Vite's
+// `publicDir`. These are served statically by Vite and are safe to import from slides.
+export function isPublicAsset(value: string, publicDir: string | false | undefined): boolean {
+  if (!value.startsWith('/') || value.startsWith('/@') || !publicDir)
+    return false
+  const rel = cleanUrl(value).slice(1)
+  if (!rel)
+    return false
+  return existsSync(path.join(publicDir, decodeURIComponent(rel)))
 }
 
 export function extractImportSources(code: string, id: string): ImportSource[] {
