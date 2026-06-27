@@ -71,12 +71,18 @@ function sendJson(res: ServerResponse, status: number, body: unknown) {
 
 export function createStatePlugin(options: ResolvedSlidevOptions): Plugin {
   let db: Database.Database | null = null
+  let dbResolved = false
   let initialized = false
-  async function ensureDb(): Promise<Database.Database> {
-    if (!db) {
-      db = openStateDb(options.userRoot)
+  // Returns null when `better-sqlite3` is unavailable (optionalDependency not built). The
+  // middleware then `next()`s past every `/__slidev/state` route, so the probe 404s and the
+  // client falls back to `LocalStateClient`. `dbResolved` ensures we attempt the (async,
+  // possibly-failing) load exactly once rather than re-warning on every request.
+  async function ensureDb(): Promise<Database.Database | null> {
+    if (!dbResolved) {
+      db = await openStateDb(options.userRoot)
+      dbResolved = true
     }
-    if (!initialized) {
+    if (db && !initialized) {
       await hydrateIfEmpty(db, options.userRoot)
       initialized = true
     }
@@ -121,6 +127,10 @@ export function createStatePlugin(options: ResolvedSlidevOptions): Plugin {
         try {
           const path = url.split('?')[0]
           const handle = await ensureDb()
+          // better-sqlite3 unavailable: skip every state route so the client's probe
+          // 404s and it falls back to LocalStateClient.
+          if (!handle)
+            return next()
 
           // GET /__slidev/state — full snapshot for cold-start hydration
           if (req.method === 'GET' && path === '/__slidev/state') {
@@ -260,6 +270,7 @@ export function createStatePlugin(options: ResolvedSlidevOptions): Plugin {
         subscribers.clear()
         db?.close()
         db = null
+        dbResolved = false
         initialized = false
       })
     },

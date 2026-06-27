@@ -68,7 +68,6 @@
     "@vitejs/plugin-vue": "catalog:prod",
     "@vitejs/plugin-vue-jsx": "catalog:prod",
     "ansis": "catalog:prod",
-    "better-sqlite3": "catalog:prod",
     "chokidar": "catalog:prod",
     "cli-progress": "catalog:prod",
     "connect": "catalog:prod",
@@ -121,6 +120,9 @@
     "vue": "catalog:frontend",
     "yaml": "catalog:prod",
     "yargs": "catalog:prod"
+  },
+  "optionalDependencies": {
+    "better-sqlite3": "catalog:prod"
   },
   "devDependencies": {
     "@hedgedoc/markdown-it-plugins": "catalog:prod",

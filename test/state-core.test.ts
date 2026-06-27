@@ -23,9 +23,14 @@ describe('state/core', () => {
   let dir: string
   let db: Database.Database
 
-  beforeEach(() => {
+  beforeEach(async () => {
     dir = mkdtempSync(join(tmpdir(), 'slidev-state-'))
-    db = openStateDb(dir)
+    // `openStateDb` is async (lazy better-sqlite3 import) and may return null if the
+    // optionalDependency isn't installed; in this repo it always is, so assert non-null.
+    const handle = await openStateDb(dir)
+    if (!handle)
+      throw new Error('better-sqlite3 unavailable in test environment')
+    db = handle
   })
 
   afterEach(() => {
