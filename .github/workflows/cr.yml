@@ -21,7 +21,10 @@ jobs:
 
       - uses: actions/setup-node@v6
         with:
-          node-version: lts/*
+          # Pinned to 22 (matching pages.yml): `better-sqlite3` has no prebuilt
+          # binary for newer `lts/*` Nodes, so install falls back to a source
+          # compile that hangs the runner.
+          node-version: 22
 
       - run: npm i -g @antfu/ni
       - run: nci
