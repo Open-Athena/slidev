@@ -262,6 +262,12 @@ context('v-drag', () => {
     //          snap-mover at dragPos 100,100,100,80  (center x0=150, y0=140)
     beforeEach(() => {
       goPage(18)
+      // Wait until both elements have had their `dragPos` applied (`data-drag-positioned`)
+      // before any test reads `getBoundingClientRect()`. On a cold CI load the snapshot
+      // state hydrates after first paint, so reading a rect too early gives the element's
+      // un-positioned flow location and the drag lands nowhere near the snap target.
+      cy.get('[data-testid="snap-target"]').should('have.attr', 'data-drag-positioned')
+      cy.get('[data-testid="snap-mover"]').should('have.attr', 'data-drag-positioned')
     })
 
     it('initial layout: two boxes at distinct positions', () => {
