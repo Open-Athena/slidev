@@ -560,6 +560,16 @@
               "description": "Absolute URL where the deck is hosted (e.g. `https://slides.example.com`).",
               "markdownDescription": "Absolute URL where the deck is hosted (e.g. `https://slides.example.com`)."
             },
+            "canonicalForm": {
+              "type": "string",
+              "enum": [
+                "n",
+                "n-slug",
+                "slug"
+              ],
+              "description": "Canonical URL form for per-slide share links.\n\n- `'n-slug'` (default): `/3-install` — slide number + slug for ordering + semantics.\n- `'n'`: `/3` — slidev's original convention; slug surfaces only in QR / share UI.\n- `'slug'`: `/install` — renumber-resistant; loses ordering signal in the URL.\n\nAll three URL forms keep resolving regardless of this setting (the build emits `dist/<n>.html`, `dist/<n>-<slug>.html`, and `dist/<slug>.html`); this only changes which one ends up in `<link rel=canonical>`, `og:url`, the URL bar after in-deck nav, and the `y` yank.",
+              "markdownDescription": "Canonical URL form for per-slide share links.\n\n- `'n-slug'` (default): `/3-install` — slide number + slug for ordering + semantics.\n- `'n'`: `/3` — slidev's original convention; slug surfaces only in QR / share UI.\n- `'slug'`: `/install` — renumber-resistant; loses ordering signal in the URL.\n\nAll three URL forms keep resolving regardless of this setting (the build emits\n`dist/<n>.html`, `dist/<n>-<slug>.html`, and `dist/<slug>.html`); this only\nchanges which one ends up in `<link rel=canonical>`, `og:url`, the URL bar after\nin-deck nav, and the `y` yank."
+            },
             "ogImage": {
               "type": "object",
               "properties": {
