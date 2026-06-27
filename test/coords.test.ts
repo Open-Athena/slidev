@@ -24,7 +24,9 @@ describe('coords', () => {
 
   describe('getCoordsFilePath', () => {
     it('joins userRoot with slides.coords.yaml', () => {
-      expect(getCoordsFilePath('/foo/bar')).toBe(`/foo/bar/${COORDS_FILENAME}`)
+      // Use `join` (not a hard-coded `/`) so the expectation matches the platform
+      // separator — `getCoordsFilePath` is a filesystem path, so it's `\` on Windows.
+      expect(getCoordsFilePath('/foo/bar')).toBe(join('/foo/bar', COORDS_FILENAME))
     })
   })
 
