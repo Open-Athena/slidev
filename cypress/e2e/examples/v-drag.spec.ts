@@ -284,8 +284,11 @@ context('v-drag', () => {
           .trigger('pointerdown', { button: 0, pointerId: 1, buttons: 1, force: true })
 
         // Move near the target - should trigger snap guides. `pointerId` must match the
-        // pointerdown or the body-drag handler drops the move.
+        // pointerdown or the body-drag handler drops the move. Send it twice so the snap
+        // reliably recomputes at the final position even if one synthetic event is dropped
+        // under CI timing.
         cy.document()
+          .trigger('pointermove', { clientX: nearTargetX, clientY: nearTargetY, buttons: 1, pointerId: 1 })
           .trigger('pointermove', { clientX: nearTargetX, clientY: nearTargetY, buttons: 1, pointerId: 1 })
 
         cy.wait(100)
@@ -345,6 +348,7 @@ context('v-drag', () => {
           .trigger('pointerdown', { button: 0, pointerId: 1, buttons: 1, force: true })
 
         cy.document()
+          .trigger('pointermove', { clientX: centerX, clientY: centerY, buttons: 1, pointerId: 1 })
           .trigger('pointermove', { clientX: centerX, clientY: centerY, buttons: 1, pointerId: 1 })
 
         cy.wait(100)

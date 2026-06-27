@@ -1,3 +1,11 @@
+---
+# This fork defaults slide URLs to the `n-slug` canonical form (e.g. `/5-page-5`).
+# The upstream nav specs in `basic.spec.ts` assert plain `/5`-style URLs, so pin this
+# fixture deck to the `n` form.
+publish:
+  canonicalForm: n
+---
+
 # Page 1
 
 Hello World
