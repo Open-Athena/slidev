@@ -74,9 +74,10 @@ context('v-drag', () => {
         cy.get('[data-testid="box1"]')
           .trigger('pointerdown', { button: 0, pointerId: 1, buttons: 1, force: true })
 
-        // Move pointer (events go to document after pointerdown)
-        cy.document().trigger('pointermove', { clientX: 400, clientY: 400, buttons: 1 })
-        cy.document().trigger('pointerup')
+        // Move pointer (events go to document after pointerdown). `pointerId` MUST match
+        // the pointerdown's — the body-drag handler ignores moves with a different id.
+        cy.document().trigger('pointermove', { clientX: 400, clientY: 400, buttons: 1, pointerId: 1 })
+        cy.document().trigger('pointerup', { pointerId: 1 })
 
         cy.wait(200)
 
@@ -91,59 +92,65 @@ context('v-drag', () => {
     })
   })
 
-  describe('z-order', () => {
+  describe('z-order (keyboard)', () => {
     beforeEach(() => {
       goPage(15) // v-drag Z-Order Tests page
     })
 
-    it('z-order buttons are visible when element is selected', () => {
-      // Click to select stack-a
-      cy.get('[data-testid="stack-a"]').click()
+    // Z-order has no on-canvas buttons — it's driven by Cmd/Ctrl+Arrow shortcuts,
+    // handled by DragControl's window-level capture-phase `onZOrderKeyDown` listener
+    // (Cmd+Up = forward, Cmd+Down = backward, add Shift for to-front/to-back). Dispatch
+    // straight to `window` so the capture listener fires.
+    function pressZOrder(key: 'ArrowUp' | 'ArrowDown', shift = false) {
+      cy.window().then((win) => {
+        win.dispatchEvent(new win.KeyboardEvent('keydown', {
+          key,
+          metaKey: true,
+          shiftKey: shift,
+          bubbles: true,
+          cancelable: true,
+        }))
+      })
+    }
+
+    it('cmd+ArrowUp brings the selected element forward (raises z-index)', () => {
+      cy.get('[data-testid="stack-a"]').click() // z:100, below b(101) and c(102)
       cy.wait(200)
-
-      // Z-order buttons should be visible
-      cy.get('#drag-control-container button[title*="forward"]').should('exist')
-      cy.get('#drag-control-container button[title*="backward"]').should('exist')
-    })
-
-    it('bring forward increases z-index', () => {
-      // Click to select stack-a (initial z-index: 100)
-      cy.get('[data-testid="stack-a"]').click()
-      cy.wait(200)
-
-      // Get initial z-index
       cy.get('[data-testid="stack-a"]').then(($el) => {
         const initialZIndex = Number.parseInt($el.css('z-index'))
-
-        // Click bring forward button
-        cy.get('#drag-control-container button[title*="forward"]').first().click()
+        pressZOrder('ArrowUp')
         cy.wait(200)
-
-        // z-index should have increased
         cy.get('[data-testid="stack-a"]').should(($el2) => {
-          const newZIndex = Number.parseInt($el2.css('z-index'))
-          expect(newZIndex).to.be.greaterThan(initialZIndex)
+          expect(Number.parseInt($el2.css('z-index'))).to.be.greaterThan(initialZIndex)
         })
       })
     })
 
-    it('send backward decreases z-index', () => {
-      // Click to select stack-c (initial z-index: 102)
-      cy.get('[data-testid="stack-c"]').click()
+    it('cmd+ArrowDown sends the selected element backward (lowers z-index)', () => {
+      cy.get('[data-testid="stack-c"]').click() // z:102, above a(100) and b(101)
       cy.wait(200)
-
-      // Get initial z-index
       cy.get('[data-testid="stack-c"]').then(($el) => {
         const initialZIndex = Number.parseInt($el.css('z-index'))
-
-        // Click send backward button
-        cy.get('#drag-control-container button[title*="backward"]').first().click()
+        pressZOrder('ArrowDown')
         cy.wait(200)
-
-        // z-index should have decreased
         cy.get('[data-testid="stack-c"]').should(($el2) => {
-          const newZIndex = Number.parseInt($el2.css('z-index'))
-          expect(newZIndex).to.be.lessThan(initialZIndex)
+          expect(Number.parseInt($el2.css('z-index'))).to.be.lessThan(initialZIndex)
+        })
+      })
+    })
+
+    it('cmd+Shift+ArrowUp brings the element above all its siblings', () => {
+      cy.get('[data-testid="stack-a"]').click() // starts lowest at z:100
+      cy.wait(200)
+      pressZOrder('ArrowUp', true)
+      cy.wait(200)
+      cy.get('[data-testid="stack-a"]').then(($a) => {
+        const za = Number.parseInt($a.css('z-index'))
+        cy.get('[data-testid="stack-b"]').should(($b) => {
+          expect(za).to.be.greaterThan(Number.parseInt($b.css('z-index')))
+        })
+        cy.get('[data-testid="stack-c"]').should(($c) => {
+          expect(za).to.be.greaterThan(Number.parseInt($c.css('z-index')))
         })
       })
     })
@@ -193,13 +200,38 @@ context('v-drag', () => {
       cy.get('#drag-control-container div[style*="cursor"]').should('have.length.at.least', 4)
     })
 
-    it('reset aspect ratio button is visible', () => {
-      // Click on box1 to select it
+    it('reset aspect ratio button appears only after a free corner resize', () => {
       cy.get('[data-testid="box1"]').click()
       cy.wait(200)
 
-      // Reset aspect ratio button should be visible
+      // Fresh selection: AR unchanged, so the reset-AR button is absent (it's `v-if`d on
+      // `hasAspectRatioChanged`).
+      cy.get('#drag-control-container button[title="Reset aspect ratio"]').should('not.exist')
+
+      // Free-drag a corner handle to skew the aspect ratio. The corner handlers live on the
+      // handle element (which re-renders as the box resizes), need `buttons: 1` on the
+      // pointerdown to arm `currentDrag`, and a matching `pointerId`. Re-query the handle for
+      // each event so a re-render between events can't leave us dispatching to a stale node,
+      // and send two moves with different x/y ratios to guarantee the AR actually changes.
+      const handle = '#drag-control-container div[style*="nwse-resize"]'
+      cy.get(handle).first().then(($h) => {
+        const r = $h[0].getBoundingClientRect()
+        const cx = r.left + r.width / 2
+        const cy2 = r.top + r.height / 2
+        cy.get(handle).first().trigger('pointerdown', { button: 0, buttons: 1, pointerId: 1, clientX: cx, clientY: cy2, force: true })
+        cy.get(handle).first().trigger('pointermove', { button: 0, buttons: 1, pointerId: 1, clientX: cx + 120, clientY: cy2 + 120, force: true })
+        cy.get(handle).first().trigger('pointermove', { button: 0, buttons: 1, pointerId: 1, clientX: cx + 160, clientY: cy2 + 30, force: true })
+        cy.get(handle).first().trigger('pointerup', { pointerId: 1, force: true })
+      })
+      cy.wait(200)
+
+      // AR now differs from the original → the reset button is shown.
       cy.get('#drag-control-container button[title="Reset aspect ratio"]').should('exist')
+
+      // Clicking it restores the original AR, so the button hides again.
+      cy.get('#drag-control-container button[title="Reset aspect ratio"]').click()
+      cy.wait(200)
+      cy.get('#drag-control-container button[title="Reset aspect ratio"]').should('not.exist')
     })
   })
 
@@ -251,9 +283,10 @@ context('v-drag', () => {
         cy.get('[data-testid="snap-mover"]')
           .trigger('pointerdown', { button: 0, pointerId: 1, buttons: 1, force: true })
 
-        // Move near the target - should trigger snap guides
+        // Move near the target - should trigger snap guides. `pointerId` must match the
+        // pointerdown or the body-drag handler drops the move.
         cy.document()
-          .trigger('pointermove', { clientX: nearTargetX, clientY: nearTargetY, buttons: 1 })
+          .trigger('pointermove', { clientX: nearTargetX, clientY: nearTargetY, buttons: 1, pointerId: 1 })
 
         cy.wait(100)
 
@@ -261,7 +294,7 @@ context('v-drag', () => {
         cy.get('.snap-guide').should('have.length.at.least', 1)
         cy.screenshot('snap-guides-visible')
 
-        cy.document().trigger('pointerup')
+        cy.document().trigger('pointerup', { pointerId: 1 })
         cy.wait(100)
 
         // Snap guides should disappear after drag ends
@@ -278,12 +311,15 @@ context('v-drag', () => {
         cy.get('[data-testid="snap-mover"]')
           .trigger('pointerdown', { button: 0, pointerId: 1, buttons: 1, force: true })
 
-        // Move near target with Meta key held - should NOT snap
+        // Move near target with Meta key held - should NOT snap (Meta disables snapping).
+        // `pointerId` must match the pointerdown so the move actually drives the drag —
+        // otherwise this would pass vacuously (no drag at all → no guides).
         cy.document()
           .trigger('pointermove', {
             clientX: nearTargetX,
             clientY: nearTargetY,
             buttons: 1,
+            pointerId: 1,
             metaKey: true,
           })
 
@@ -293,7 +329,7 @@ context('v-drag', () => {
         cy.get('.snap-guide').should('not.exist')
         cy.screenshot('snap-meta-no-guides')
 
-        cy.document().trigger('pointerup')
+        cy.document().trigger('pointerup', { pointerId: 1 })
       })
     })
 
@@ -309,13 +345,13 @@ context('v-drag', () => {
           .trigger('pointerdown', { button: 0, pointerId: 1, buttons: 1, force: true })
 
         cy.document()
-          .trigger('pointermove', { clientX: centerX, clientY: centerY, buttons: 1 })
+          .trigger('pointermove', { clientX: centerX, clientY: centerY, buttons: 1, pointerId: 1 })
 
         cy.wait(100)
         cy.get('.snap-guide').should('have.length.at.least', 1)
         cy.screenshot('snap-to-slide-center')
 
-        cy.document().trigger('pointerup')
+        cy.document().trigger('pointerup', { pointerId: 1 })
       })
     })
   })
