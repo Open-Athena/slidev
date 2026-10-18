@@ -318,9 +318,10 @@ context('Basic', () => {
   })
 
   it('annotated code block in v-click', () => {
-    goPage(17)
+    // Upstream's page 17, shifted +5 by the fork's v-drag pages (see above)
+    goPage(22)
 
-    const wrapper = '#slideshow .slidev-page-17 .cy-code-in-vclick .slidev-code-wrapper'
+    const wrapper = '#slideshow .slidev-page-22 .cy-code-in-vclick .slidev-code-wrapper'
 
     cy.get(wrapper).should('have.class', 'slidev-vclick-hidden')
 

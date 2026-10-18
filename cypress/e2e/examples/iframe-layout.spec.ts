@@ -1,9 +1,10 @@
 context('Iframe layout', () => {
+  // Upstream's page 18, shifted +5 by the fork's v-drag pages (see `basic.spec.ts`)
   // #2281: the iframe should lay out and rasterize at its real on-screen
   // size, so embedded canvas-based pages are not bitmap-upscaled and blurred
   it('rasterizes at the on-screen size when the slide is scaled up', () => {
     cy.viewport(1960, 1104) // 2x the default 980x552 slide size
-    cy.visit('/18')
+    cy.visit('/23')
     cy.get('#slide-content iframe').should(($frame) => {
       const el = $frame[0]
       const rect = el.getBoundingClientRect()
@@ -14,7 +15,7 @@ context('Iframe layout', () => {
 
   it('keeps the design-size layout when the slide is scaled down', () => {
     cy.viewport(490, 276) // 0.5x the default 980x552 slide size
-    cy.visit('/18')
+    cy.visit('/23')
     cy.get('#slide-content iframe').should(($frame) => {
       const el = $frame[0]
       const rect = el.getBoundingClientRect()
