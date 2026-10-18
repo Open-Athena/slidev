@@ -1,27 +1,154 @@
 ---
-# try also 'default' to start simple
 theme: seriph
-# random image from a curated Unsplash collection by Anthony
-# like them? see https://unsplash.com/collections/94734566/slidev
-background: https://cover.sli.dev
-# some information about your slides (markdown enabled)
-title: Welcome to Slidev
+# Pin dark; the default `auto` (= follow system) renders the OG image in light
+# mode because headless Chrome has no media-preference set during the build's
+# Playwright export.
+colorSchema: dark
+title: Open-Athena/slidev
+description: A fork of sli.dev that adds direct manipulation — click any image to drag, resize, rotate, reorder, or crop, with snap-to-alignment, undo/redo, and multi-tab live edits.
 info: |
-  ## Slidev Starter Template
-  Presentation slides for developers.
-
-  Learn more at [Sli.dev](https://sli.dev)
-# apply UnoCSS classes to the current slide
-class: text-center
-# https://sli.dev/features/drawing
+  ## Open-Athena/slidev
+  A fork of sli.dev that adds direct manipulation: click + drag, snap, crop, undo, multi-tab live edits.
+  Source: https://github.com/Open-Athena/slidev
+layout: default
 drawings:
   persist: false
-# slide transition: https://sli.dev/guide/animations.html#slide-transitions
 transition: slide-left
-# enable Comark Syntax: https://comark.dev/syntax/markdown
 comark: true
-# duration of the presentation
 duration: 35min
+# make markdown images draggable by default (fork feature)
+draggableImages: true
+# Allow text selection. v-drag pointerdown handlers call ev.preventDefault, so
+# selection won't start on drag-handle gestures.
+selectable: true
+# per-slide OG metadata + share previews — see specs/done/per-slide-og.md
+publish:
+  baseUrl: https://slidev.oa.dev
+  # 'n-slug' (default): /3-install · 'n': /3 · 'slug': /install. All three URL
+  # forms keep resolving regardless; this only sets which one ends up in
+  # <link rel=canonical>, og:url, and the URL bar after in-deck nav.
+  canonicalForm: n-slug
+# Deck-level QR overlay (per-slide override via `qr:` in any slide's frontmatter,
+# `qr: false` disables on that slide; `skipSlides` is the escape hatch for slide
+# 1, whose frontmatter is this headmatter and can't carry its own `qr` value).
+# QR target defaults to `/n` for the shortest URL → fewest modules → chunkier
+# scannable pixels; `uppercase: true` switches the encoder to alphanumeric mode
+# (5.5 bits/char vs 8) for an extra version-drop on alphanumeric URLs.
+qr:
+  position: br
+  showText: true
+  uppercase: true
+  skipSlides: [1]
+# Deck-level OG (for shares of the bare https://slidev.oa.dev/ URL — per-slide URLs
+# get their own preview via `dist/_og/<n>-<slug>.html`). Reuses the auto-rendered
+# slide-1 image as the deck thumbnail.
+seoMeta:
+  ogTitle: Open-Athena/slidev
+  ogDescription: A fork of sli.dev that adds direct manipulation — click any image to drag, resize, rotate, reorder, or crop, with snap-to-alignment, undo/redo, and multi-tab live edits.
+  ogImage: https://slidev.oa.dev/_og/1-open-athena-slidev.jpg
+  ogUrl: https://slidev.oa.dev/
+  twitterCard: summary_large_image
+  twitterTitle: Open-Athena/slidev
+  twitterDescription: A fork of sli.dev that adds direct manipulation — click any image to drag, resize, rotate, reorder, or crop, with snap-to-alignment, undo/redo, and multi-tab live edits.
+  twitterImage: https://slidev.oa.dev/_og/1-open-athena-slidev.jpg
+  twitterUrl: https://slidev.oa.dev/
+---
+
+<div class="flex items-center gap-3 !mb-4">
+  <h1 class="!text-3xl !mt-0 !mb-0 font-mono">Open&#8209;Athena<span class="opacity-50">/</span>slidev</h1>
+  <a href="https://github.com/Open-Athena/slidev" target="_blank" title="github.com/Open-Athena/slidev" class="opacity-70 hover:opacity-100 transition-opacity !no-underline">
+    <div class="i-carbon:logo-github text-3xl" />
+  </a>
+</div>
+
+A fork of <a href="https://sli.dev" target="_blank" class="font-semibold underline underline-offset-4 decoration-current/40 hover:decoration-current">sli.dev</a> that adds <span class="font-semibold">direct manipulation</span> — click any image to **drag**, **resize**, **rotate**, or **reorder** it; **double-click** to **crop**. Try it ↓
+
+<img v-drag="'feat-rotate'" src="/feature-rotate.svg">
+<img v-drag="'feat-drag'" src="/feature-drag.svg">
+<img v-drag="'feat-crop'" src="/feature-crop.svg">
+<img v-drag="'feat-crop-2'" src="/feature-crop-2.svg">
+<img v-drag="'feat-reorder-1'" src="/feature-reorder.svg">
+<img v-drag="'feat-reorder-2'" src="/feature-reorder-2.svg">
+<img v-drag="'feat-resize'" src="/feature-resize.svg">
+<img v-drag="'feat-resize-locked'" src="/feature-resize-locked.svg" data-lock-ar="1.7143">
+
+<div class="abs-b mb-3 w-full text-center text-xs opacity-70 font-sans flex flex-col items-center gap-1">
+  <div>
+    Every edit is tracked &mdash; <Kbd keys="⌘Z" /> / <Kbd keys="⇧⌘Z" /> to undo/redo, or open the <strong>Version History</strong> drawer (toolbar, lower-right) to inspect and restore any change.
+  </div>
+  <div class="opacity-80">
+    Reorder: <Kbd keys="⌘↑" /> / <Kbd keys="⌘↓" /> forward/back &nbsp;·&nbsp; <Kbd keys="⇧⌘↑" /> / <Kbd keys="⇧⌘↓" /> to-front/back
+  </div>
+</div>
+
+<!--
+This deck is upstream slidev's starter, with the OA fork's direct-manipulation features layered in.
+Press space / → to advance.
+-->
+
+---
+layout: default
+---
+
+# Embeds
+
+Tweets, YouTube videos, and Bluesky posts — all draggable, resizable, and rotatable. Each slide also auto-gets a **QR** (lower-right) linking to its canonical URL — handy for an audience that wants to scan-and-share without finding the deck URL.
+
+<Tweet id="1390115482657726468" />
+
+<Youtube id="luoMHjh-XcQ" />
+
+<BlueSky uri="https://bsky.app/profile/sli.dev/post/3lgwg2vy44s2q" />
+
+---
+
+# Install
+
+SHA-pinned preview packages via [`pkg.pr.new`](https://pkg.pr.new) — works with `npm` / `pnpm` / `yarn`:
+
+```bash
+# latest main:
+SHA=__OA_SHA__
+npm install https://pkg.pr.new/Open-Athena/slidev/@slidev/{cli,client,parser}@$SHA
+```
+
+<script setup lang="ts">
+import { nextTick, onMounted } from 'vue'
+
+// __OA_SHA__ in the fenced block above is a placeholder. Shiki emits its own
+// spans before Vue compiles the slide, so we swap the text post-mount instead
+// of via interpolation. Keeps the copy button + Shiki highlighting intact.
+const sha = (import.meta.env.VITE_GIT_SHA as string | undefined)?.slice(0, 7) || 'main'
+
+onMounted(async () => {
+  await nextTick()
+  document.querySelectorAll('code').forEach((code) => {
+    code.querySelectorAll('span').forEach((span) => {
+      if (span.textContent === '__OA_SHA__') {
+        span.textContent = sha
+        span.style.color = '#d59f00'
+        span.style.fontWeight = '600'
+      }
+    })
+  })
+})
+</script>
+
+<div class="text-sm opacity-70 mt-4">
+
+All three are required — the cli pulls its sibling pkgs at upstream versions otherwise. Themes (incl. `@slidev/theme-seriph`) keep working — fork packages keep their `@slidev/*` names.
+
+</div>
+
+---
+layout: center
+class: text-center
+---
+
+# &lt;/fork&gt; &lt;upstream&gt; →
+
+upstream sli.dev deck follows…
+
 ---
 
 # Welcome to Slidev
@@ -45,9 +172,9 @@ Presentation slides for developers
 The last comment block of each slide will be treated as slide notes. It will be visible and editable in Presenter Mode along with the slide. [Read more in the docs](https://sli.dev/guide/syntax.html#notes)
 -->
 
+
 ---
-transition: fade-out
----
+
 
 # What is Slidev?
 
@@ -286,7 +413,7 @@ Check out [the guides](https://sli.dev/builtin/components.html) for more.
 <Tweet id="1390115482657726468" />
 ```
 
-<Tweet id="1390115482657726468" scale="0.65" />
+<Tweet id="1390115482657726468" />
 
 </div>
 </div>

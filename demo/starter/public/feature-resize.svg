@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 140" preserveAspectRatio="none">
+  <rect width="240" height="140" rx="20" fill="#f59e0b"/>
+  <text x="120" y="68" text-anchor="middle" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="30" font-weight="700" fill="white">resize me</text>
+  <text x="120" y="100" text-anchor="middle" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="14" font-weight="500" fill="white" opacity="0.85">(any direction / stretch)</text>
+</svg>

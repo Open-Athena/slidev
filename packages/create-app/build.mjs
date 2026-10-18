@@ -15,6 +15,17 @@ const needCopyFiles = {
   'slides.md': '../../../demo/starter/slides.md',
   'pages/imported-slides.md': '../../../demo/starter/pages/imported-slides.md',
   'snippets/external.ts': '../../../demo/starter/snippets/external.ts',
+  // Static SVG assets referenced by `slides.md` (e.g. `<img src="/feature-rotate.svg">`).
+  // Live in `demo/starter/public/`; need to land at `template/public/` so a scaffolded
+  // project can build the demo without "Could not resolve" errors.
+  'public/feature-rotate.svg': '../../../demo/starter/public/feature-rotate.svg',
+  'public/feature-drag.svg': '../../../demo/starter/public/feature-drag.svg',
+  'public/feature-crop.svg': '../../../demo/starter/public/feature-crop.svg',
+  'public/feature-crop-2.svg': '../../../demo/starter/public/feature-crop-2.svg',
+  'public/feature-reorder.svg': '../../../demo/starter/public/feature-reorder.svg',
+  'public/feature-reorder-2.svg': '../../../demo/starter/public/feature-reorder-2.svg',
+  'public/feature-resize.svg': '../../../demo/starter/public/feature-resize.svg',
+  'public/feature-resize-locked.svg': '../../../demo/starter/public/feature-resize-locked.svg',
 }
 
 async function main() {

@@ -1,3 +1,65 @@
+<!-- Open-Athena/slidev fork preamble — the original sli.dev README begins after the horizontal rule. -->
+
+<p align="center">
+  <a href="https://slidev.oa.dev" target="_blank">
+    <img src="https://slidev.oa.dev/_og/1-open-athena-slidev.jpg" alt="Open-Athena/slidev — direct manipulation demo" width="720">
+  </a>
+</p>
+
+<h3 align="center">
+  <a href="https://slidev.oa.dev"><code>Open-Athena/slidev</code></a> — a fork of <a href="https://sli.dev">sli.dev</a>
+</h3>
+
+<p align="center">
+  Adds <b>direct manipulation</b> for slide content: click any image to <b>drag</b>, <b>resize</b>, <b>rotate</b>, or <b>reorder</b>; double-click to <b>crop</b>.<br>
+  <a href="https://slidev.oa.dev"><b>Live demo →</b></a> · <a href="https://slidev.oa.dev/_og/">slide gallery</a>
+</p>
+
+### What this fork adds
+
+- 🖱️ **Drag / resize / rotate** any markdown image or embed; positions persist to `slides.coords.yaml`
+- ✂️ **Crop** — double-click an image to enter crop mode
+- 📐 **Snap-to-guides** during drag/resize against other slide elements (hold ⌘ to disable); ⇧ locks AR
+- 📚 **Z-order shortcuts**: ⌘↑/⌘↓ forward/back · ⇧⌘↑/⇧⌘↓ to-front/back
+- ↩️ **Undo / redo** (⌘Z / ⇧⌘Z), with a right-side **version-history drawer** that can restore any prior state
+- 🌐 **Multi-tab live edits** — changes in one browser tab propagate to others via SSE
+- 🖼️ **Draggable embeds**: `<Tweet>`, `<Youtube>`, `<BlueSky>` — see [slide 2](https://slidev.oa.dev/2)
+- 🔍 **Pinch-zoom & pan** in slide view (trackpad / touch)
+- 📤 **Per-slide OG cards** built into `slidev build` + a [thumbnail gallery](https://slidev.oa.dev/_og/)
+
+<p align="center">
+  <a href="https://slidev.oa.dev/2" target="_blank">
+    <img src="https://slidev.oa.dev/_og/2-embeds.jpg" alt="Draggable Tweet, YouTube, and Bluesky embeds" width="640">
+  </a>
+</p>
+
+State persists to **`<userRoot>/.slidev/state.db`** (SQLite, dev-server only — powers undo/redo, history, multi-tab sync) and **`<userRoot>/slides.coords.yaml`** (checked-in source of truth; flushed via the toolbar "Commit to YAML" button — orange dot when the DB is ahead). Production builds ship neither — published decks are read-only static HTML/JS.
+
+### Installing this fork
+
+Not published to npm — installs go through [`pkg.pr.new`], which auto-publishes a SHA-pinned preview of every fork package on each push to `main` (via the [`cr.yml`] workflow). Works with `npm` / `pnpm` / `yarn`, no `pnpm.overrides`, no manual version bumps:
+
+```bash
+# Pin to a specific commit SHA — see CR run summaries for the latest:
+# https://github.com/Open-Athena/slidev/actions/workflows/cr.yml
+SHA=<sha>
+npm install https://pkg.pr.new/Open-Athena/slidev/@slidev/{cli,client,parser}@$SHA
+```
+
+(Brace expansion is bash / zsh; drop the braces and run the three URLs separately in fish / dash.)
+
+All three packages are required: `@slidev/cli` (the build/dev CLI) depends on `@slidev/client` + `@slidev/parser` at exact upstream versions, so installing just the cli would silently pull the other two from upstream npm and lose the fork features. The fork pkgs keep their `@slidev/*` names, so `node_modules/@slidev/{cli,client,parser}` end up wired together correctly and themes (incl. [`oa-slidev-theme`]) keep working without changes.
+
+`@slidev/types` is unchanged in this fork — pull it straight from upstream npm if needed.
+
+[`pkg.pr.new`]: https://pkg.pr.new
+[`cr.yml`]: https://github.com/Open-Athena/slidev/actions/workflows/cr.yml
+[`oa-slidev-theme`]: https://github.com/Open-Athena/oa-slidev-theme
+
+---
+
+<!-- ⬇ Original sli.dev README continues from here. -->
+
 <br>
 <p align="center">
 <a href="https://sli.dev" target="_blank">

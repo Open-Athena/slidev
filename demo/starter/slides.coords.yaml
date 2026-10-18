@@ -1,0 +1,18 @@
+# Slidev drag coords — auto-managed by the dev server.
+# Tracked in git by default; add to .gitignore if you'd rather keep positions personal.
+# Top-level keys are slide numbers (1-based); values are dragId → posStr.
+"1":
+  feat-reorder-2: 503,228,180,105,0,1000
+  feat-crop: 287,172,180,105,0,100,16,16,10,7
+  feat-crop-2: 288,251,180,105,0,100,28,9,28,28
+  feat-drag: 85,325,180,105
+  feat-rotate: 76,174,180,105,-15
+  feat-reorder-1: 483,178,180,105,0,101
+  feat-resize-locked: 696,174,235,137
+  feat-resize: 696,327,264,93
+"2":
+  tweet-1390115482657726468: 53,172,280,305
+  yt-luoMHjh-XcQ: 349,172,300,172
+  bsky-3lgwg2vy44s2q: 667,172,281,172
+"10":
+  tweet-1390115482657726468: 620,110,280,305
