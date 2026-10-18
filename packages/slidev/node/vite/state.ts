@@ -2,6 +2,7 @@ import type { ResolvedSlidevOptions } from '@slidev/types'
 import type Database from 'better-sqlite3'
 import type { ServerResponse } from 'node:http'
 import type { Connect, Plugin } from 'vite'
+import type { Slot } from '../slide-order'
 import type { EditEvent } from '../state/types'
 import { Buffer } from 'node:buffer'
 import {
@@ -11,6 +12,7 @@ import {
   insertEdit,
   listEvents,
   redo,
+  renumberSlides,
   restoreToEvent,
   revertToYaml,
   undo,
@@ -28,7 +30,7 @@ const SSE_HEARTBEAT_MS = 25_000
 // re-fetches state + events — the source is informational.
 interface StateChangeMessage {
   type: 'state-change'
-  source: 'edit' | 'undo' | 'redo' | 'restore' | 'yaml-commit' | 'revert-to-yaml'
+  source: 'edit' | 'undo' | 'redo' | 'restore' | 'yaml-commit' | 'revert-to-yaml' | 'reorder'
   topActiveEventId: number | null
   triggeringEventId?: number | null
 }
@@ -69,6 +71,15 @@ function sendJson(res: ServerResponse, status: number, body: unknown) {
   res.end(JSON.stringify(body))
 }
 
+// Open state plugins by deck root, so the slides loader can renumber slide-keyed state when it
+// reorders or duplicates slides.
+const statePlugins = new Map<string, (order: Slot[]) => Promise<void>>()
+
+/** Renumber the deck's history database after a slide reorder / duplicate; a no-op without one. */
+export async function renumberStateSlides(userRoot: string, order: Slot[]): Promise<void> {
+  await statePlugins.get(userRoot)?.(order)
+}
+
 export function createStatePlugin(options: ResolvedSlidevOptions): Plugin {
   let db: Database.Database | null = null
   let dbResolved = false
@@ -106,6 +117,14 @@ export function createStatePlugin(options: ResolvedSlidevOptions): Plugin {
       }
     }
   }
+
+  statePlugins.set(options.userRoot, async (order) => {
+    const handle = await ensureDb()
+    if (!handle)
+      return
+    renumberSlides(handle, order)
+    broadcast({ type: 'state-change', source: 'reorder', topActiveEventId: getSnapshot(handle).topActiveEventId })
+  })
 
   // Look up the current top active event id without allocating a snapshot. Cheap query.
   function topActiveId(handle: Database.Database): number | null {

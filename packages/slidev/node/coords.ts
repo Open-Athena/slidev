@@ -50,7 +50,7 @@ export function applyCoords(data: SlidevData, coords: CoordsMap): void {
 }
 
 // Atomic-ish full-file rewrite (Node's writeFile is atomic per single write call on most FSes).
-async function writeCoords(userRoot: string, coords: CoordsMap): Promise<void> {
+export async function writeCoords(userRoot: string, coords: CoordsMap): Promise<void> {
   const filepath = getCoordsFilePath(userRoot)
   // Write slides in numeric order for stable diffs.
   const ordered: CoordsMap = {}

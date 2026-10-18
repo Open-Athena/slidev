@@ -3,12 +3,14 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { duplicateOrder, moveOrder } from '../packages/slidev/node/slide-order'
 import {
   getSnapshot,
   hydrateIfEmpty,
   insertEdit,
   listEvents,
   redo,
+  renumberSlides,
   restoreToEvent,
   revertToYaml,
   undo,
@@ -273,6 +275,20 @@ describe('state/core', () => {
       expect(getSnapshot(db).topActiveEventId).toBe(e1.id)
       undo(db)
       expect(getSnapshot(db).topActiveEventId).toBeNull()
+    })
+  })
+
+  describe('renumberSlides', () => {
+    it('moves events and element state with their slide, and copies state (not history) to a duplicate', () => {
+      insertEdit(db, { slideNo: 2, kind: 'move', items: [{ dragId: 'a', before: SNAP_A, after: SNAP_B }] })
+      insertEdit(db, { slideNo: 4, kind: 'move', items: [{ dragId: 'b', before: SNAP_A, after: SNAP_C }] })
+      renumberSlides(db, moveOrder(5, 2, 4))
+      expect(getSnapshot(db).state).toEqual({ 3: { b: SNAP_C }, 4: { a: SNAP_B } })
+      expect(listEvents(db).map(e => [e.slideNo, e.items[0].dragId])).toEqual([[3, 'b'], [4, 'a']])
+
+      renumberSlides(db, duplicateOrder(5, 4, 5))
+      expect(getSnapshot(db).state).toEqual({ 3: { b: SNAP_C }, 4: { a: SNAP_B }, 5: { a: SNAP_B } })
+      expect(listEvents(db).map(e => [e.slideNo, e.items[0].dragId])).toEqual([[3, 'b'], [4, 'a']])
     })
   })
 })

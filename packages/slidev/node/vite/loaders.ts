@@ -1,13 +1,15 @@
 import type { ResolvedSlidevOptions, SlideInfo, SlidePatch, SlidevData, SlidevServerOptions } from '@slidev/types'
 import type { ModuleNode, Plugin, Rolldown, ViteDevServer } from 'vite'
+import type { Slot } from '../slide-order'
 import type { VirtualModuleContext } from '../virtual/types'
 import { notNullish, range } from '@antfu/utils'
 import * as parser from '@slidev/parser/fs'
 import equal from 'fast-deep-equal'
 import MarkdownExit from 'markdown-exit'
 import YAML from 'yaml'
-import { saveCoordsForSlide } from '../coords'
+import { loadCoords, saveCoordsForSlide, writeCoords } from '../coords'
 import { createDataUtils } from '../options'
+import { duplicateOrder, moveOrder, reorderCoords } from '../slide-order'
 import MarkdownItKatex from '../syntax/katex'
 import markdownItLink from '../syntax/link'
 import { applyNotesAutoRuby, createMakeAbsoluteImportGlob, getBodyJson, updateFrontmatterPatch } from '../utils'
@@ -18,6 +20,7 @@ import { templateMonacoTypes } from '../virtual/monaco-types'
 import { templateSlides, VIRTUAL_SLIDE_PREFIX } from '../virtual/slides'
 import { templateTitleRendererMd } from '../virtual/titles'
 import { regexSlideFacadeId, regexSlideReqPath, regexSlideSourceId } from './common'
+import { renumberStateSlides } from './state'
 
 export function createSlidesLoader(
   options: ResolvedSlidevOptions,
@@ -76,6 +79,65 @@ export function createSlidesLoader(
       updateServerWatcher()
 
       server.middlewares.use(async (req, res, next) => {
+        // Reorder / duplicate slides (the overview, in edit mode). Renumbers `slides.coords.yaml`
+        // and the history database before rewriting the markdown, so the reload sees them.
+        if (req.method === 'POST' && req.url === '/__slidev/slides/reorder') {
+          const body = await getBodyJson(req) as { op?: string, from?: number, to?: number }
+          const entry = data.entry
+          const sources = entry.slides
+          const sendError = (status: number, error: string) => {
+            res.statusCode = status
+            res.setHeader('Content-Type', 'application/json')
+            res.end(JSON.stringify({ error }))
+          }
+          // A slide's index in the entry file, or -1 when it's imported (`src:`) from elsewhere.
+          const entryIndex = (no: number) => {
+            const slide = data.slides[no - 1]
+            return slide && !slide.importChain?.length ? sources.indexOf(slide.source) : -1
+          }
+          const count = data.slides.length
+          const from = Number(body.from)
+          const to = Number(body.to)
+          let order: Slot[]
+          try {
+            if (body.op === 'move')
+              order = moveOrder(count, from, to)
+            else if (body.op === 'duplicate')
+              order = duplicateOrder(count, from, to)
+            else
+              return sendError(400, 'op must be `move` or `duplicate`')
+          }
+          catch (err) {
+            return sendError(400, (err as Error).message)
+          }
+          // The slides involved must sit next to each other in the entry file: imported slides
+          // and disabled ones (in the file, but not the deck) in between can't be reordered.
+          const span = body.op === 'move'
+            ? Array.from({ length: Math.abs(to - from) + 1 }, (_, k) => Math.min(from, to) + k)
+            : [from, Math.min(to, count)]
+          const spanIndices = span.map(entryIndex)
+          if (spanIndices.includes(-1) || (body.op === 'move' && spanIndices.some((e, k) => e !== spanIndices[0] + k)))
+            return sendError(409, 'Only slides written in the main markdown file, with no imported (`src:`) or disabled slides between them, can be reordered')
+          const next = [...sources]
+          if (body.op === 'move') {
+            const [moved] = next.splice(entryIndex(from), 1)
+            next.splice(entryIndex(to), 0, moved)
+          }
+          else {
+            next.splice(to <= count ? entryIndex(to) : entryIndex(count) + 1, 0, { ...sources[entryIndex(from)] })
+          }
+          const coords = await loadCoords(options.userRoot)
+          if (Object.keys(coords).length)
+            await writeCoords(options.userRoot, reorderCoords(coords, order))
+          await renumberStateSlides(options.userRoot, order)
+          entry.slides = next
+          entry.slides.forEach((s, i) => s.index = i)
+          await parser.save(entry)
+          res.setHeader('Content-Type', 'application/json')
+          res.end(JSON.stringify({ order }))
+          return
+        }
+
         const match = req.url?.match(regexSlideReqPath)
         if (!match)
           return next()

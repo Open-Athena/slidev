@@ -1,5 +1,6 @@
 import type Database from 'better-sqlite3'
 import type { CoordsMap } from '../coords'
+import type { Slot } from '../slide-order'
 import type {
   AllElementState,
   CommitResult,
@@ -10,6 +11,7 @@ import type {
   StateSnapshot,
 } from './types'
 import { loadCoords, saveCoordsForSlide } from '../coords'
+import { renumbering } from '../slide-order'
 
 interface EventRow {
   id: number
@@ -484,4 +486,34 @@ export function listEvents(
   const limit = Math.min(Math.max(opts.limit ?? 100, 1), 1000)
   const rows = db.prepare(`SELECT * FROM events ${whereSql} ORDER BY id DESC LIMIT ?`).all(...params, limit) as EventRow[]
   return rows.map(rowToEvent)
+}
+
+/**
+ * Renumber slide-keyed state after slides are reordered or duplicated (see `slide-order.ts`):
+ * events and element state follow their slide to its new number, and a copy gets its original's
+ * element state (but none of its history).
+ */
+export function renumberSlides(db: Database.Database, order: Slot[]): void {
+  const map = renumbering(order)
+  const tx = db.transaction(() => {
+    const events = db.prepare('SELECT id, slide_no FROM events').all() as Array<{ id: number, slide_no: number }>
+    const setEventSlide = db.prepare('UPDATE events SET slide_no = ? WHERE id = ?')
+    for (const e of events)
+      setEventSlide.run(map.get(e.slide_no) ?? e.slide_no, e.id)
+
+    const rows = db.prepare('SELECT slide_no, drag_id, state, updated_at, source_event_id FROM element_state').all() as Array<{
+      slide_no: number
+      drag_id: string
+      state: string
+      updated_at: number
+      source_event_id: number | null
+    }>
+    db.prepare('DELETE FROM element_state').run()
+    const insert = db.prepare('INSERT INTO element_state(slide_no, drag_id, state, updated_at, source_event_id) VALUES (?, ?, ?, ?, ?)')
+    order.forEach((slot, i) => {
+      for (const r of rows.filter(r => r.slide_no === slot.from))
+        insert.run(i + 1, r.drag_id, r.state, r.updated_at, slot.copy ? null : r.source_event_id)
+    })
+  })
+  tx()
 }
