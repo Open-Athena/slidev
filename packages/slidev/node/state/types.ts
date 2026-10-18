@@ -1,7 +1,7 @@
 // Shared shapes between dev-server state module and the client. Keep in sync with
 // `packages/client/composables/useDragHistory.ts`.
 
-export type EditKind = 'move' | 'resize' | 'rotate' | 'crop' | 'zorder' | 'restore' | 'hydrate' | 'delete'
+export type EditKind = 'move' | 'resize' | 'rotate' | 'crop' | 'zorder' | 'restore' | 'hydrate' | 'delete' | 'text'
 
 /**
  * Source-line splice metadata for `delete` events. The server records the
@@ -12,7 +12,10 @@ export type EditKind = 'move' | 'resize' | 'rotate' | 'crop' | 'zorder' | 'resto
  */
 export interface DeleteSourceContext {
   lineRange: [start: number, end: number]
+  /** `delete`: the removed lines. `text`: the lines before the edit. */
   lines: string[]
+  /** `text` only: the lines after the edit (what undo swaps back for `lines`). */
+  after?: string[]
 }
 
 export interface ElementSnapshot {

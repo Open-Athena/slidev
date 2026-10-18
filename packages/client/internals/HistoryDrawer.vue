@@ -76,11 +76,19 @@ const KIND_ICON: Record<string, string> = {
   crop: 'i-carbon:crop',
   zorder: 'i-carbon:layers',
   delete: 'i-carbon:trash-can',
+  text: 'i-carbon:text-font',
   restore: 'i-carbon:reset',
   hydrate: 'i-carbon:db2-database',
 }
 
-function summarize(items: EditEvent['items']): string {
+function summarize(e: EditEvent): string {
+  // Text edits: the new text (escaped, since callers render this as HTML).
+  if (e.kind === 'text') {
+    const after = (e.source?.after ?? []).join(' ').trim()
+    const short = after.length > 60 ? `${after.slice(0, 57)}…` : after
+    return `“${short.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/`/g, '&#96;')}”`
+  }
+  const items = e.items
   if (items.length === 1)
     return `\`${items[0].dragId}\``
   return `${items.length} elements`
@@ -310,7 +318,7 @@ function groupRestoreTarget(g: EventGroup): number {
                   <span>{{ g.events[0].kind }}</span>
                   <span class="opacity-60"> · slide {{ g.events[0].slideNo }}</span>
                 </div>
-                <div class="text-xs opacity-70 truncate" v-html="summarize(g.events[0].items).replace(/`([^`]+)`/g, '<code class=&quot;font-mono&quot;>$1</code>')" />
+                <div class="text-xs opacity-70 truncate" v-html="summarize(g.events[0]).replace(/`([^`]+)`/g, '<code class=&quot;font-mono&quot;>$1</code>')" />
               </div>
               <div class="text-xs opacity-50 shrink-0">
                 {{ relTime(g.events[0].ts) }}
@@ -365,7 +373,7 @@ function groupRestoreTarget(g: EventGroup): number {
                   <span class="opacity-60"> × {{ g.events.length }}</span>
                   <span class="opacity-60"> · slide {{ g.events[0].slideNo }}</span>
                 </div>
-                <div class="text-xs opacity-70 truncate" v-html="summarize(g.events[0].items).replace(/`([^`]+)`/g, '<code class=&quot;font-mono&quot;>$1</code>')" />
+                <div class="text-xs opacity-70 truncate" v-html="summarize(g.events[0]).replace(/`([^`]+)`/g, '<code class=&quot;font-mono&quot;>$1</code>')" />
               </div>
               <div class="text-xs opacity-50 shrink-0">
                 {{ relTime(g.events[0].ts) }}

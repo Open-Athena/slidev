@@ -113,11 +113,12 @@ if (__SLIDEV_FEATURE_RECORD__)
         <div class="i-carbon:apps" />
       </IconButton>
       <IconButton
-        :title="editMode ? 'Stop editing (e)' : 'Edit: move, resize and crop elements (e)'"
+        :title="editMode ? 'Stop editing (e)' : 'Edit: move, resize, crop; double-click text to edit it (e)'"
         :class="editMode ? 'text-primary' : ''"
         @click="editMode = !editMode"
       >
-        <div class="i-carbon:edit" />
+        <!-- Not `carbon:edit`: that pencil is the side editor's button. -->
+        <div class="i-carbon:pen" />
       </IconButton>
       <template v-if="editMode">
         <IconButton :class="{ disabled: !historyCanUndo }" :title="undoTitle" @click="historyUndo()">

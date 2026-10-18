@@ -16,6 +16,7 @@ import MarkdownItStyleScoped from './scoped'
 import MarkdownItShiki from './shiki'
 import MarkdownItSlotSugar from './slot-sugar'
 import MarkdownItSnippet from './snippet'
+import MarkdownItSourceLines from './source-lines'
 
 export async function useMarkdownItPlugins(
   md: MarkdownExit,
@@ -37,6 +38,9 @@ export async function useMarkdownItPlugins(
     md.use(MarkdownItKatex, katexOptions)
   md.use(MarkdownItDraggableImage, markdownTransformMap, { enabled: config.draggableImages, tags: config.draggableImageTags })
   md.use(MarkdownItVDrag, markdownTransformMap)
+  // Source line ranges on text blocks, for in-app text editing (dev + editor only).
+  if (options.mode === 'dev' && config.editor !== false)
+    md.use(MarkdownItSourceLines, markdownTransformMap)
   md.use(MarkdownItSlotSugar)
   if (config.comark || config.mdc)
     md.use(MarkdownItComark)

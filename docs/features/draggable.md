@@ -10,7 +10,7 @@ Draggable elements give you the ability to move, resize, rotate, and crop elemen
 
 ## Edit Mode
 
-Editing is off by default, so clicks during a talk (or on a published deck) can't select or move anything, and links and embeds inside draggable elements stay clickable. Press `e`, or click the pencil in the navigation bar, to toggle it. The setting is remembered per browser and synced across tabs, so the presenter and audience windows agree. Undo / redo (`⌘Z` / `⌘⇧Z`), image insert (`i`), paste and file drop only work in edit mode.
+Editing is off by default, so clicks during a talk (or on a published deck) can't select or move anything, and links and embeds inside draggable elements stay clickable. Press `e`, or click the <carbon-pen class="inline-icon-btn"/> pen in the navigation bar, to toggle it. Text is editable in edit mode too (see [In-App Text Editing](./text-editing)). The setting is remembered per browser and synced across tabs, so the presenter and audience windows agree. Undo / redo (`⌘Z` / `⌘⇧Z`), image insert (`i`), paste and file drop only work in edit mode.
 
 ## Auto-Draggable Images
 

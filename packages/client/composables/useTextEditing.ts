@@ -1,0 +1,318 @@
+import type { LineRange } from './text-edit'
+import { onMounted, onUnmounted, watch } from 'vue'
+import { editMode } from '../state'
+import {
+  blockSourceText,
+  cellSourceText,
+  looksLikeSameBlock,
+  MD_ATTR,
+  MD_CELL_ATTR,
+  parseLineRange,
+  replaceBlockText,
+  replaceTableCell,
+  serializeInline,
+} from './text-edit'
+import { pushTextEdit } from './useDragHistory'
+import { clearSelection } from './useMultiSelect'
+
+// In-app text editing (dev only). In edit mode, double-click a heading, paragraph, list item or
+// table cell to edit it:
+// - in place, as rich text (⌘B / ⌘I), when its markdown round-trips through the rendered DOM;
+// - otherwise, or with ⌥ held, as raw markdown in a box over the block.
+// Enter saves (Shift+Enter: new line), Esc cancels, clicking away saves. The edit is written to
+// the block's source lines (from the `data-slidev-md` attributes `node/syntax/source-lines.ts`
+// adds) and recorded as a `text` history event, so ⌘Z undoes it.
+
+interface Target {
+  el: HTMLElement
+  slideNo: number
+  range: LineRange
+  cell: number | null
+}
+
+interface Session {
+  finish: (commit: boolean) => Promise<void>
+}
+
+let session: Session | null = null
+
+function findTarget(ev: MouseEvent): Target | null {
+  const target = ev.target as HTMLElement | null
+  const el = target?.closest<HTMLElement>(`[${MD_ATTR}]`)
+  if (!el || !el.closest('#slide-content'))
+    return null
+  // A double-click on an image (or other draggable) inside the block is for crop / interact.
+  const drag = target!.closest('[data-drag-id]')
+  if (drag && el.contains(drag))
+    return null
+  const range = parseLineRange(el.getAttribute(MD_ATTR))
+  const slideNo = Number(el.closest('.slidev-page')?.className.match(/slidev-page-(\d+)/)?.[1])
+  if (!range || !slideNo)
+    return null
+  const cellAttr = el.getAttribute(MD_CELL_ATTR)
+  return { el, slideNo, range, cell: cellAttr == null ? null : Number(cellAttr) }
+}
+
+async function fetchContent(slideNo: number): Promise<string> {
+  const res = await fetch(`/__slidev/slides/${slideNo}.json`)
+  if (!res.ok)
+    throw new Error(`Failed to fetch slide ${slideNo} (${res.status})`)
+  return (await res.json() as { content: string }).content
+}
+
+function sourceTextOf(t: Target, content: string): string {
+  return t.cell == null ? blockSourceText(content, t.range) : cellSourceText(content, t.range[0], t.cell)
+}
+
+// A block's inline content as markdown, minus the whitespace around it (a tight list item's
+// text node ends with the newline before its nested list).
+function serializeBlock(el: HTMLElement): string | null {
+  return serializeInline(el)?.trim() ?? null
+}
+
+async function save(t: Target, content: string, newText: string): Promise<void> {
+  const next = t.cell == null
+    ? replaceBlockText(content, t.range, newText)
+    : replaceTableCell(content, t.range[0], t.cell, newText)
+  if (next === content)
+    return
+  const [start, end] = t.range
+  const delta = next.split('\n').length - content.split('\n').length
+  const before = content.split('\n').slice(start, end)
+  const after = next.split('\n').slice(start, end + delta)
+  const res = await fetch(`/__slidev/slides/${t.slideNo}.json`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+    body: JSON.stringify({ content: next, skipHmr: false }),
+  })
+  if (!res.ok)
+    throw new Error(`Failed to patch slide ${t.slideNo} (${res.status})`)
+  await pushTextEdit(t.slideNo, { lineRange: [start, end], lines: before, after })
+}
+
+// Decide what a blur means. Clicking elsewhere, moving focus to another element, or leaving the
+// window keeps the edit. A bare programmatic blur is an Esc from a keyboard extension (Vimium
+// blurs the focused field on Esc before the page ever sees the key), so it cancels.
+function watchBlurIntent(editor: HTMLElement): { keepOnBlur: (ev: FocusEvent) => boolean, stop: () => void } {
+  let pointerDownOutside = false
+  const onPointerdown = (ev: PointerEvent) => {
+    if (!editor.contains(ev.target as Node))
+      pointerDownOutside = true
+  }
+  document.addEventListener('pointerdown', onPointerdown, true)
+  return {
+    keepOnBlur: ev => pointerDownOutside || ev.relatedTarget != null || !document.hasFocus(),
+    stop: () => document.removeEventListener('pointerdown', onPointerdown, true),
+  }
+}
+
+function flashError(el: HTMLElement) {
+  el.dataset.slidevTextError = ''
+  setTimeout(() => delete el.dataset.slidevTextError, 1200)
+}
+
+// Snapshot of the block's DOM, so cancelling (or saving, before HMR re-renders the slide) puts
+// back the exact nodes Vue holds references to, not equivalent copies.
+function snapshotDom(el: HTMLElement): () => void {
+  const children = Array.from(el.childNodes)
+  const texts: Array<[Text, string]> = []
+  const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT)
+  for (let n = walker.nextNode(); n; n = walker.nextNode())
+    texts.push([n as Text, (n as Text).data])
+  return () => {
+    el.replaceChildren(...children)
+    for (const [node, data] of texts)
+      node.data = data
+  }
+}
+
+function startRich(t: Target, content: string, sourceText: string) {
+  const { el } = t
+  const restore = snapshotDom(el)
+  // List items: only the item's own text is editable, not its nested list.
+  const locked = Array.from(el.querySelectorAll<HTMLElement>(':scope > ul, :scope > ol, :scope > input'))
+  for (const child of locked)
+    child.contentEditable = 'false'
+  el.contentEditable = 'true'
+  el.dataset.slidevTextEditing = ''
+  el.focus()
+
+  function onKeydown(ev: KeyboardEvent) {
+    if (ev.isComposing)
+      return
+    if (ev.key === 'Escape') {
+      ev.preventDefault()
+      void finish(false)
+    }
+    else if (ev.key === 'Enter' && !ev.shiftKey) {
+      ev.preventDefault()
+      void finish(true)
+    }
+  }
+  // Pasted HTML would bring markup markdown can't hold; paste as plain text.
+  function onPaste(ev: ClipboardEvent) {
+    ev.preventDefault()
+    document.execCommand('insertText', false, ev.clipboardData?.getData('text/plain') ?? '')
+  }
+  const blurIntent = watchBlurIntent(el)
+  function onBlur(ev: FocusEvent) {
+    void finish(blurIntent.keepOnBlur(ev))
+  }
+  el.addEventListener('keydown', onKeydown)
+  el.addEventListener('paste', onPaste)
+  el.addEventListener('blur', onBlur)
+
+  let done = false
+  async function finish(commit: boolean) {
+    if (done)
+      return
+    done = true
+    session = null
+    el.removeEventListener('keydown', onKeydown)
+    el.removeEventListener('paste', onPaste)
+    el.removeEventListener('blur', onBlur)
+    blurIntent.stop()
+    const newText = commit ? serializeBlock(el) : null
+    el.removeAttribute('contenteditable')
+    delete el.dataset.slidevTextEditing
+    for (const child of locked)
+      child.removeAttribute('contenteditable')
+    restore()
+    if (!commit)
+      return
+    if (newText === null) {
+      console.warn('[Slidev] Text edit discarded: the edited text has formatting markdown can\'t hold')
+      flashError(el)
+      return
+    }
+    try {
+      if (newText !== sourceText)
+        await save(t, content, newText)
+    }
+    catch (err) {
+      console.error('[Slidev] Saving text edit failed:', err)
+      flashError(el)
+    }
+  }
+  session = { finish }
+}
+
+function startRaw(t: Target, content: string, sourceText: string) {
+  const { el } = t
+  const rect = el.getBoundingClientRect()
+  const scale = el.offsetWidth ? rect.width / el.offsetWidth : 1
+  const style = getComputedStyle(el)
+  const singleLine = t.cell != null || /^H[1-6]$/.test(el.tagName)
+
+  const box = document.createElement('textarea')
+  box.className = 'slidev-text-raw-editor'
+  box.value = sourceText
+  box.spellcheck = false
+  Object.assign(box.style, {
+    left: `${rect.left}px`,
+    top: `${rect.top}px`,
+    width: `${Math.max(rect.width, 240)}px`,
+    fontSize: `${Number.parseFloat(style.fontSize) * scale * 0.8}px`,
+  })
+  document.body.appendChild(box)
+  const fit = () => {
+    box.style.height = 'auto'
+    box.style.height = `${Math.max(box.scrollHeight, rect.height)}px`
+  }
+  fit()
+  box.addEventListener('input', fit)
+  box.focus()
+  box.setSelectionRange(box.value.length, box.value.length)
+  el.dataset.slidevTextEditing = ''
+
+  function onKeydown(ev: KeyboardEvent) {
+    ev.stopPropagation()
+    if (ev.isComposing)
+      return
+    if (ev.key === 'Escape') {
+      ev.preventDefault()
+      void finish(false)
+    }
+    else if (ev.key === 'Enter' && (!ev.shiftKey || singleLine)) {
+      ev.preventDefault()
+      void finish(true)
+    }
+  }
+  const blurIntent = watchBlurIntent(box)
+  function onBlur(ev: FocusEvent) {
+    void finish(blurIntent.keepOnBlur(ev))
+  }
+  box.addEventListener('keydown', onKeydown)
+  box.addEventListener('blur', onBlur)
+
+  let done = false
+  async function finish(commit: boolean) {
+    if (done)
+      return
+    done = true
+    session = null
+    box.removeEventListener('blur', onBlur)
+    blurIntent.stop()
+    const newText = box.value
+    box.remove()
+    delete el.dataset.slidevTextEditing
+    if (!commit || newText === sourceText)
+      return
+    try {
+      await save(t, content, newText)
+    }
+    catch (err) {
+      console.error('[Slidev] Saving text edit failed:', err)
+      flashError(el)
+    }
+  }
+  session = { finish }
+}
+
+async function onDblclick(ev: MouseEvent) {
+  if (!editMode.value || session)
+    return
+  const t = findTarget(ev)
+  if (!t)
+    return
+  ev.preventDefault()
+  ev.stopPropagation()
+  clearSelection()
+  const raw = ev.altKey
+  try {
+    const content = await fetchContent(t.slideNo)
+    const sourceText = sourceTextOf(t, content)
+    if (!looksLikeSameBlock(t.el.textContent ?? '', sourceText)) {
+      console.warn('[Slidev] Text edit refused: the block doesn\'t match its source lines', t.range, sourceText)
+      flashError(t.el)
+      return
+    }
+    if (!raw && serializeBlock(t.el) === sourceText)
+      startRich(t, content, sourceText)
+    else
+      startRaw(t, content, sourceText)
+  }
+  catch (err) {
+    console.error('[Slidev] Starting text edit failed:', err)
+    flashError(t.el)
+  }
+}
+
+export function useTextEditing() {
+  onMounted(() => {
+    // Capture phase, so a double-click on text inside a draggable box edits the text rather
+    // than entering the box's crop / interact mode.
+    document.addEventListener('dblclick', onDblclick, true)
+  })
+  onUnmounted(() => {
+    document.removeEventListener('dblclick', onDblclick, true)
+    void session?.finish(false)
+  })
+  // Editable blocks get a hover hint while editing (see `styles/index.css`); leaving edit mode
+  // saves any edit in progress.
+  watch(editMode, (on) => {
+    document.documentElement.classList.toggle('slidev-edit-mode', on)
+    if (!on)
+      void session?.finish(true)
+  }, { immediate: true })
+}

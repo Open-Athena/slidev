@@ -1,0 +1,99 @@
+export {}
+
+const BASE = 'http://localhost:3041'
+const SLIDE = 25
+
+// In-app text editing writes to the fixture deck's (tracked) `slides.md`; every test puts the
+// slide's original source back afterwards.
+context('text editing', () => {
+  let original: string
+
+  function source(): Cypress.Chainable<string> {
+    return cy.request(`${BASE}/__slidev/slides/${SLIDE}.json`)
+      .then(({ body }) => (typeof body === 'string' ? JSON.parse(body) : body).content as string)
+  }
+
+  function expectSource(expected: string) {
+    // Saving is async (fetch + POST + history event); poll until it lands.
+    cy.wrap(null).should(() => {
+      return fetch(`${BASE}/__slidev/slides/${SLIDE}.json`)
+        .then(r => r.json())
+        .then(({ content }) => expect(content).to.eq(expected))
+    })
+  }
+
+  function visit(editing = true) {
+    cy.visit(`${BASE}/${SLIDE}`, {
+      onBeforeLoad: win => win.localStorage.setItem('slidev-edit-mode', String(editing)),
+    })
+    cy.get('#slide-content').should($s => expect($s[0].getBoundingClientRect().width).to.be.greaterThan(100))
+    cy.contains('li', 'first item').should('have.attr', 'data-slidev-md')
+  }
+
+  function startEditing(selector: string, text: string, alt = false) {
+    cy.contains(selector, text).dblclick({ altKey: alt })
+  }
+
+  before(() => {
+    source().then(s => original = s)
+  })
+
+  afterEach(() => {
+    cy.request('POST', `${BASE}/__slidev/slides/${SLIDE}.json`, { content: original, skipHmr: false })
+  })
+
+  it('does nothing outside edit mode', () => {
+    visit(false)
+    startEditing('li', 'first item')
+    cy.contains('li', 'first item').should('not.have.attr', 'contenteditable')
+    cy.get('.slidev-text-raw-editor').should('not.exist')
+  })
+
+  it('edits a list item in place and writes its source line', () => {
+    visit()
+    startEditing('li', 'first item')
+    cy.focused().should('have.attr', 'contenteditable', 'true').type('{moveToEnd} edited{enter}')
+    source().then(() => expectSource(original.replace('- first item\n', '- first item edited\n')))
+    cy.contains('li', 'first item edited').should('not.have.attr', 'contenteditable')
+  })
+
+  it('keeps inline formatting when editing rich text', () => {
+    visit()
+    startEditing('p', 'text to edit')
+    cy.focused().should('have.attr', 'contenteditable', 'true').type('{moveToEnd} Done.{enter}')
+    expectSource(original.replace('Some **bold** text to edit.\n', 'Some **bold** text to edit. Done.\n'))
+  })
+
+  it('esc cancels, leaving source and DOM untouched', () => {
+    visit()
+    startEditing('p', 'text to edit')
+    cy.focused().should('have.attr', 'contenteditable', 'true').type('{moveToEnd} zzz{esc}')
+    cy.contains('p', 'text to edit').should('not.contain.text', 'zzz')
+    cy.contains('p', 'text to edit').should('not.have.attr', 'contenteditable')
+    expectSource(original)
+  })
+
+  it('edits a table cell, escaping pipes', () => {
+    visit()
+    startEditing('td', 'one')
+    cy.focused().should('have.attr', 'contenteditable', 'true').type('{moveToEnd} | 1{enter}')
+    expectSource(original.replace('| a | one |', '| a | one \\| 1 |'))
+  })
+
+  it('⌥ + double-click edits the raw markdown', () => {
+    visit()
+    startEditing('p', 'text to edit', true)
+    cy.get('.slidev-text-raw-editor').should('have.value', 'Some **bold** text to edit.').type('{selectall}New *text*{enter}')
+    cy.get('.slidev-text-raw-editor').should('not.exist')
+    expectSource(original.replace('Some **bold** text to edit.\n', 'New *text*\n'))
+  })
+
+  it('⌘Z undoes a text edit', () => {
+    visit()
+    startEditing('li', 'second item')
+    cy.focused().should('have.attr', 'contenteditable', 'true').type('{moveToEnd}!{enter}')
+    expectSource(original.replace('- second item\n', '- second item!\n'))
+    cy.get('body').type('{cmd}z')
+    expectSource(original)
+  })
+})

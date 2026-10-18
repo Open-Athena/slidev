@@ -377,3 +377,17 @@ letterboxed by `object-fit: contain`. Page 24 is last so earlier specs' page num
     <img v-drag.flow="'flow-b'" data-testid="flow-b" src="/wide.svg" style="width: 100%; height: 200px; object-fit: contain">
   </div>
 </div>
+
+---
+
+# Page 25
+
+Some **bold** text to edit.
+
+- first item
+- second item
+  - nested item
+
+| Key | Value |
+|---|---|
+| a | one |

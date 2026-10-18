@@ -9,6 +9,7 @@ import type {
 import { computed, ref } from 'vue'
 import { findLineRun } from './delete-source'
 import { getStateClient } from './state-client'
+import { spliceLines } from './text-edit'
 import { useNav } from './useNav'
 
 // Re-export the canonical types so existing consumers (HistoryDrawer.vue, etc.) keep
@@ -25,13 +26,15 @@ export type {
 // kinds — restore/hydrate are internal-only and produced by the client backends, never
 // pushed by UI code. Keeps our public API expressive while letting the IStateClient layer
 // handle every kind uniformly.
-export type EditKind = 'move' | 'resize' | 'rotate' | 'crop' | 'zorder' | 'delete'
+export type EditKind = 'move' | 'resize' | 'rotate' | 'crop' | 'zorder' | 'delete' | 'text'
 
 // Source-line splice context carried on `delete` events so undo can re-insert what the
 // delete removed (and redo can re-remove it). Mirrors `DeleteSourceContext` in state-client.
 export interface DeleteSource {
   lineRange: [number, number]
   lines: string[]
+  /** `text` events: the lines after the edit; `lines` holds the lines before it. */
+  after?: string[]
 }
 
 export interface RegisteredState {
@@ -306,6 +309,32 @@ async function applyDeleteSplice(slideNo: number, source: DeleteSource, mode: 'i
     throw new Error(`Failed to patch slide ${slideNo} (${post.status})`)
 }
 
+// In-app text edit: the slide source has already been patched; record the before / after lines
+// so undo / redo can swap them (matched by content, since line numbers drift).
+export async function pushTextEdit(slideNo: number, source: Required<DeleteSource>): Promise<void> {
+  await postEdit(slideNo, 'text', [], source)
+}
+
+async function applyTextSplice(slideNo: number, source: DeleteSource, direction: 'undo' | 'redo'): Promise<void> {
+  const res = await fetch(`/__slidev/slides/${slideNo}.json`)
+  if (!res.ok)
+    throw new Error(`Failed to fetch slide ${slideNo} (${res.status})`)
+  const { content } = await res.json() as { content: string }
+  const [from, to] = direction === 'undo' ? [source.after ?? [], source.lines] : [source.lines, source.after ?? []]
+  const next = spliceLines(content, from, to, source.lineRange[0])
+  if (next === null) {
+    console.warn(`[Slidev] Can't ${direction} text edit on slide ${slideNo}: the edited lines are no longer in the source`)
+    return
+  }
+  const post = await fetch(`/__slidev/slides/${slideNo}.json`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+    body: JSON.stringify({ content: next, skipHmr: false }),
+  })
+  if (!post.ok)
+    throw new Error(`Failed to patch slide ${slideNo} (${post.status})`)
+}
+
 export async function pushGroupEdit(slideNo: number, kind: EditKind, items: Array<{ dragId: string, before: ElementSnapshot, after: ElementSnapshot }>): Promise<void> {
   if (items.length === 0)
     return
@@ -445,6 +474,8 @@ export async function undo(): Promise<void> {
   // the restored snapshot from `historyInitialState`.
   if (result.event.kind === 'delete' && result.event.source)
     await applyDeleteSplice(result.event.slideNo, result.event.source, 'insert')
+  if (result.event.kind === 'text' && result.event.source)
+    await applyTextSplice(result.event.slideNo, result.event.source, 'undo')
   topActiveEventId.value = result.topActiveEventId
   await fetchTopEvents()
   bumpEventStream()
@@ -464,6 +495,8 @@ export async function redo(): Promise<void> {
   // dropped `element_state`; we just need the source to match.
   if (result.event.kind === 'delete' && result.event.source)
     await applyDeleteSplice(result.event.slideNo, result.event.source, 'remove')
+  if (result.event.kind === 'text' && result.event.source)
+    await applyTextSplice(result.event.slideNo, result.event.source, 'redo')
   topActiveEventId.value = result.topActiveEventId
   await fetchTopEvents()
   bumpEventStream()
@@ -579,6 +612,7 @@ const KIND_LABEL: Record<string, string> = {
   crop: 'crop',
   zorder: 'z-order change',
   delete: 'delete',
+  text: 'text edit',
   hydrate: 'hydrate',
   restore: 'restore',
 }
@@ -587,8 +621,10 @@ export function describeEntry(entry: Event | null): string {
   if (!entry)
     return ''
   const what = KIND_LABEL[entry.kind] ?? entry.kind
-  const target = entry.items.length === 1
-    ? `\`${entry.items[0].dragId}\``
-    : `${entry.items.length} elements`
+  const target = entry.kind === 'text'
+    ? `lines ${entry.source?.lineRange.map(n => n + 1).join('–') ?? '?'}`
+    : entry.items.length === 1
+      ? `\`${entry.items[0].dragId}\``
+      : `${entry.items.length} elements`
   return `${what} of ${target} on slide ${entry.slideNo}`
 }

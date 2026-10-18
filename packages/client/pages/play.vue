@@ -8,6 +8,7 @@ import { useNav } from '../composables/useNav'
 import { usePasteImage } from '../composables/usePasteImage'
 import { usePinchZoomPan } from '../composables/usePinchZoomPan'
 import { useSwipeControls } from '../composables/useSwipeControls'
+import { useTextEditing } from '../composables/useTextEditing'
 import { useWakeLock } from '../composables/useWakeLock'
 import Controls from '../internals/Controls.vue'
 import LaserPointer from '../internals/LaserPointer.vue'
@@ -47,6 +48,8 @@ usePinchZoomPan(root)
 useSwipeControls(root)
 registerShortcuts()
 const { dropActive: fileDropActive, inFlight: fileDropInFlight } = useFileDrop()
+if (__DEV__ && __SLIDEV_FEATURE_EDITOR__)
+  useTextEditing()
 usePasteImage()
 if (__SLIDEV_FEATURE_WAKE_LOCK__)
   useWakeLock()

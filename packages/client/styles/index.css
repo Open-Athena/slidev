@@ -201,3 +201,36 @@ html {
 [data-drag-editing][data-drag-interact] iframe {
   pointer-events: auto !important;
 }
+
+/* In-app text editing (dev, edit mode): hover hint on editable blocks, outline while editing. */
+.slidev-edit-mode #slide-content [data-slidev-md]:hover {
+  outline: 1px dashed rgba(59, 130, 246, 0.5);
+  outline-offset: 2px;
+  cursor: text;
+}
+[data-slidev-text-editing] {
+  outline: 2px solid rgb(59, 130, 246) !important;
+  outline-offset: 2px;
+  cursor: text;
+}
+[data-slidev-text-error] {
+  outline: 2px solid rgb(239, 68, 68) !important;
+  outline-offset: 2px;
+}
+.slidev-text-raw-editor {
+  position: fixed;
+  z-index: 1000;
+  padding: 6px 8px;
+  border: 2px solid rgb(59, 130, 246);
+  border-radius: 4px;
+  background: white;
+  color: #1f2937;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  line-height: 1.4;
+  resize: none;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
+}
+.dark .slidev-text-raw-editor {
+  background: #1f2937;
+  color: #f3f4f6;
+}
