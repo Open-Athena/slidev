@@ -1,6 +1,6 @@
 {
   "name": "@slidev/parser",
-  "version": "52.17.0",
+  "version": "52.18.0",
   "description": "Markdown parser for Slidev",
   "author": "Anthony Fu <anthonyfu117@hotmail.com>",
   "license": "MIT",
@@ -36,6 +36,7 @@
   "dependencies": {
     "@antfu/utils": "catalog:frontend",
     "@slidev/types": "workspace:*",
+    "pathe": "catalog:prod",
     "yaml": "catalog:prod"
   },
   "devDependencies": {

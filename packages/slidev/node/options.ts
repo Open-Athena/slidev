@@ -1,8 +1,8 @@
 import type { ResolvedSlidevOptions, ResolvedSlidevUtils, SlidevData, SlidevEntryOptions } from '@slidev/types'
-import path from 'node:path'
 import { objectMap, uniq } from '@antfu/utils'
 import fg from 'fast-glob'
 import { createDebug } from 'obug'
+import path from 'pathe'
 import pm from 'picomatch'
 import { applyCoords, loadCoords } from './coords'
 import { resolveAddons } from './integrations/addons'
@@ -23,18 +23,44 @@ export async function resolveOptions(
 ): Promise<ResolvedSlidevOptions> {
   const entry = await resolveEntry(entryOptions.entry)
   const rootsInfo = await getRoots(entry)
-  const loaded = await parser.load({ userRoot: rootsInfo.userRoot, roots: [rootsInfo.userRoot] }, entry, undefined, mode)
+  const initialLoaded = await parser.load(
+    {
+      userRoot: rootsInfo.userRoot,
+      roots: [rootsInfo.userRoot],
+      allowedRoots: uniq([rootsInfo.userWorkspaceRoot, rootsInfo.userRoot]),
+    },
+    entry,
+    undefined,
+    mode,
+  )
 
   // Load theme data first, because it may affect the config
-  let themeRaw = entryOptions.theme || loaded.headmatter.theme as string | null | undefined
+  let themeRaw = entryOptions.theme || initialLoaded.headmatter.theme as string | null | undefined
   themeRaw = themeRaw === null ? 'none' : (themeRaw || 'default')
   const [theme, themeRoot] = await resolveTheme(themeRaw, entry)
   const themeRoots = themeRoot ? [themeRoot] : []
   const themeMeta = themeRoot ? await getThemeMeta(theme, themeRoot) : undefined
 
-  const config = parser.resolveConfig(loaded.headmatter, themeMeta, entryOptions.entry)
-  const addonRoots = await resolveAddons(config.addons)
+  const initialConfig = parser.resolveConfig(initialLoaded.headmatter, themeMeta, entryOptions.entry)
+  const addonRoots = await resolveAddons(initialConfig.addons)
   const roots = uniq([...themeRoots, ...addonRoots, rootsInfo.userRoot])
+  const loaded = await parser.load(
+    {
+      userRoot: rootsInfo.userRoot,
+      roots,
+      allowedRoots: uniq([rootsInfo.userWorkspaceRoot, ...roots]),
+    },
+    entry,
+    undefined,
+    mode,
+  )
+  const config = parser.resolveConfig(loaded.headmatter, themeMeta, entryOptions.entry)
+
+  // These fields selected the roots used for the final load. Keep the
+  // returned config aligned with the graph that was actually loaded if a
+  // preparser changes them.
+  config.theme = themeRaw
+  config.addons = initialConfig.addons
 
   if (entryOptions.download)
     config.download ||= entryOptions.download

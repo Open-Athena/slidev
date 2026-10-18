@@ -1,10 +1,10 @@
 import type { ResolvedSlidevOptions } from '@slidev/types'
 import type { Plugin, UserConfig } from 'vite'
-import { join } from 'node:path'
 import process from 'node:process'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { slash, uniq } from '@antfu/utils'
 import { createResolve } from 'mlly'
+import { join } from 'pathe'
 import { mergeConfig } from 'vite'
 import { isInstalledGlobally, resolveImportPath, toAtFS } from '../resolver'
 

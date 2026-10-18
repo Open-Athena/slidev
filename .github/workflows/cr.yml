@@ -19,12 +19,15 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v6
 
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
       - uses: actions/setup-node@v6
         with:
-          # Pinned to 22 (matching pages.yml): `better-sqlite3` has no prebuilt
-          # binary for newer `lts/*` Nodes, so install falls back to a source
-          # compile that hangs the runner.
+          # Pinned to 22: `better-sqlite3` has no prebuilt binary for newer `lts/*`,
+          # and its source build hangs install.
           node-version: 22
+          cache: pnpm
 
       - run: npm i -g @antfu/ni
       - run: nci

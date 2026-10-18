@@ -15,7 +15,9 @@ export default defineConfig({
     defaultCommandTimeout: 8000,
     retries: { runMode: 2, openMode: 0 },
     setupNodeEvents(on) {
-      on('after:run', () => stopBasePathServer())
+      on('after:run', async () => {
+        await stopBasePathServer()
+      })
       on('task', {
         startBasePathServer,
         stopBasePathServer,

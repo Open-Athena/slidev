@@ -25,11 +25,16 @@ jobs:
 
       - uses: actions/checkout@v6
 
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
       - name: Use Node.js
         uses: actions/setup-node@v6
         with:
-          # See cr.yml: pin 22, `better-sqlite3` install hangs on newer `lts/*`.
+          # Pinned to 22: `better-sqlite3` has no prebuilt binary for newer `lts/*`,
+          # and its source build hangs install.
           node-version: 22
+          cache: pnpm
 
       - name: Setup
         run: npm i -g @antfu/ni
@@ -69,16 +74,19 @@ jobs:
 
       - uses: actions/checkout@v6
 
+      - name: Setup PNPM
+        uses: pnpm/action-setup@v4
+
       - name: Use Node.js 22
         uses: actions/setup-node@v6
         with:
+          # Pinned to 22: `better-sqlite3` has no prebuilt binary for newer `lts/*`,
+          # and its source build hangs install.
           node-version: 22
+          cache: pnpm
 
       - name: Setup
         run: npm i -g @antfu/ni
-
-      - name: Setup PNPM
-        uses: pnpm/action-setup@v4
 
       # pnpm v11 stores globally-installed binaries in `$PNPM_HOME/bin` instead
       # of directly in `$PNPM_HOME`; without this, `pnpm i -g` aborts with

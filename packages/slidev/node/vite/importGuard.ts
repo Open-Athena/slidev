@@ -1,7 +1,7 @@
 import type { Plugin, ResolvedConfig } from 'vite'
 import { existsSync, realpathSync } from 'node:fs'
-import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+import path from 'pathe'
 import { parseSync } from 'vite'
 import { templateLegacyTitles } from '../virtual/deprecated'
 import { templateTitleRendererMd } from '../virtual/titles'
@@ -35,12 +35,11 @@ export function createSlideImportGuardPlugin(): Plugin {
 
       const importer = filePathFromId(id) ?? id
       await Promise.all(extractImportSources(code, id).map(async ({ value, start }) => {
-        // Public-dir assets are referenced with a root-absolute URL (e.g.
-        // `<img src="/foo.svg">` compiles to `import _ from '/foo.svg'`). Vite serves
-        // them from `publicDir` and resolves the leading `/` to the filesystem root, so
-        // they'd otherwise be flagged as outside fs.allow. They're explicitly-served
-        // static files, not arbitrary fs reads — exempt them.
-        if (isPublicAsset(value, config.publicDir))
+        // Public-directory assets are referenced by root-absolute URL (`/foo.png`)
+        // and served by Vite's public-dir middleware, not module-resolved. Such a
+        // URL is a Vite URL, not a filesystem-absolute path, so exempt it from the
+        // fs.allow check when it maps to an existing file under `config.publicDir`.
+        if (isPublicAsset(value, config))
           return
 
         const resolved = await this.resolve(value, importer, { skipSelf: true })
@@ -90,15 +89,22 @@ export function isAllowedFile(filePath: string, allowRoots: string[]) {
   return allowRoots.some(root => isFileInRoot(root, filePath))
 }
 
-// A root-absolute import (`/foo.svg`) that maps to an existing file under Vite's
-// `publicDir`. These are served statically by Vite and are safe to import from slides.
-export function isPublicAsset(value: string, publicDir: string | false | undefined): boolean {
-  if (!value.startsWith('/') || value.startsWith('/@') || !publicDir)
+/**
+ * Whether a static import `value` is a public-directory asset, i.e. a
+ * root-absolute Vite URL (`/foo.png`) that maps to an existing file under
+ * `config.publicDir`. The Vue SFC compiler turns `<img src="/foo.png">` into a
+ * static `import`, but public assets are served by URL rather than
+ * module-resolved, so `/foo.png` is a Vite URL — not a filesystem-absolute path
+ * — and must be exempted from the `server.fs.allow` check.
+ */
+export function isPublicAsset(value: string, config: Pick<ResolvedConfig, 'publicDir'>): boolean {
+  // `publicDir` is `''` when disabled (`publicDir: false`). Vite treats `/@fs/`,
+  // `/@id/`, … as internal URLs, never public assets, so leave those alone.
+  if (!config.publicDir || !value.startsWith('/') || value.startsWith('/@'))
     return false
-  const rel = cleanUrl(value).slice(1)
-  if (!rel)
-    return false
-  return existsSync(path.join(publicDir, decodeURIComponent(rel)))
+  const publicDir = normalizeFsPath(config.publicDir)
+  const publicPath = normalizeFsPath(path.join(publicDir, cleanUrl(value).slice(1)))
+  return isFileInRoot(publicDir, publicPath) && existsSync(publicPath)
 }
 
 export function extractImportSources(code: string, id: string): ImportSource[] {

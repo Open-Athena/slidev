@@ -3,6 +3,7 @@
  */
 // #region Functions
 export function injectPreparserExtensionLoader(_) {}
+export function isPathInsideRoots(_, _) {}
 export async function load(_, _, _, _) {}
 export async function save(_) {}
 // #endregion
