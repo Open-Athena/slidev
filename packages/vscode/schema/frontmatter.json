@@ -101,6 +101,31 @@
           "description": "Create a route alias that can be used in the URL or with the `<Link>` component",
           "markdownDescription": "Create a route alias that can be used in the URL or with the `<Link>` component"
         },
+        "slug": {
+          "type": "string",
+          "description": "URL-safe slug used in per-slide OG / share URLs (e.g. `/<n>-<slug>.html`).\n\nDefaults to `routeAlias` if set, else a slugified `title` / first `h1`, else `slide-<n>`.",
+          "markdownDescription": "URL-safe slug used in per-slide OG / share URLs (e.g. `/<n>-<slug>.html`).\n\nDefaults to `routeAlias` if set, else a slugified `title` / first `h1`,\nelse `slide-<n>`."
+        },
+        "description": {
+          "type": "string",
+          "description": "Per-slide OG description. If absent, the first paragraph of the slide is used.",
+          "markdownDescription": "Per-slide OG description. If absent, the first paragraph of the slide is used."
+        },
+        "ogImage": {
+          "type": "string",
+          "description": "Per-slide OG image. If unset, an image is auto-rendered at `slidev build` time via the existing PNG export pipeline. Path is relative to the deck root.",
+          "markdownDescription": "Per-slide OG image. If unset, an image is auto-rendered at `slidev build` time\nvia the existing PNG export pipeline. Path is relative to the deck root."
+        },
+        "caption": {
+          "type": "string",
+          "description": "Optional caption used by future thread-publishing tools (BlueSky, Mastodon). Harmless to set today; not used by the build itself.",
+          "markdownDescription": "Optional caption used by future thread-publishing tools (BlueSky, Mastodon).\nHarmless to set today; not used by the build itself."
+        },
+        "skipOg": {
+          "type": "boolean",
+          "description": "Skip this slide from OG-shell + image generation (and from social threads).",
+          "markdownDescription": "Skip this slide from OG-shell + image generation (and from social threads)."
+        },
         "zoom": {
           "type": "number",
           "description": "Custom zoom level for the slide",

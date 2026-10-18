@@ -3,14 +3,65 @@ import { tryOnMounted } from '@vueuse/core'
 import { computed, watch } from 'vue'
 import { slides } from '#slidev/slides'
 import { useSlideContext } from '../context'
+import { configs } from '../env'
 import { getSlideRoutePath } from './slidePath'
 
 export { slides }
 
-export function getSlide(no: number | string) {
-  return slides.value.find(
-    s => (s.no === +no || s.meta.slide?.frontmatter.routeAlias === no),
+// Slug derivation mirrors `og.ts:pickSlug` (server side) so canonical URLs match
+// the pre-rendered `dist/<n>-<slug>.html` shells. Kept tiny so client + server
+// stay in sync without an extra shared module — if the server-side rule changes,
+// this needs to follow.
+const SLUG_PUNCT_RE = /[^\w\s-]+/g
+const SLUG_SPACE_RE = /[\s_-]+/g
+const SLUG_TRIM_RE = /^-+|-+$/g
+
+export function slugify(s: string | undefined | null): string {
+  return (s ?? '')
+    .normalize('NFKD')
+    .replace(/\p{M}/gu, '')
+    .toLowerCase()
+    .replace(SLUG_PUNCT_RE, ' ')
+    .replace(SLUG_SPACE_RE, '-')
+    .replace(SLUG_TRIM_RE, '')
+    .slice(0, 80)
+}
+
+export function slugForSlide(route: SlideRoute | undefined | null): string {
+  if (!route)
+    return ''
+  const fm = route.meta.slide?.frontmatter ?? {}
+  const title = route.meta.slide?.title
+  return (
+    (typeof fm.slug === 'string' && slugify(fm.slug))
+    || (typeof fm.routeAlias === 'string' && slugify(fm.routeAlias))
+    || (typeof fm.title === 'string' && slugify(fm.title))
+    || (typeof title === 'string' && slugify(title))
+    || ''
   )
+}
+
+export function getSlide(noOrSlug: number | string) {
+  const target = String(noOrSlug)
+  return slides.value.find((s) => {
+    if (s.no === +noOrSlug)
+      return true
+    if (s.meta.slide?.frontmatter.routeAlias === noOrSlug)
+      return true
+    return slugForSlide(s) === target
+  })
+}
+
+// Mirrors `og.ts:canonicalPathFor` (server side) so the URL bar after in-deck
+// nav stays in sync with the canonical form stamped into `<link rel=canonical>`
+// at build time.
+function canonicalPathFor(no: number, slug: string, form: 'n' | 'n-slug' | 'slug'): string {
+  switch (form) {
+    case 'n': return String(no)
+    case 'slug': return slug || String(no)
+    case 'n-slug':
+    default: return slug ? `${no}-${slug}` : String(no)
+  }
 }
 
 export function getSlidePath(
@@ -20,7 +71,16 @@ export function getSlidePath(
 ) {
   if (typeof route === 'number' || typeof route === 'string')
     route = getSlide(route)!
-  return getSlideRoutePath(route, presenter, exporting)
+  // `routeAlias` is the legacy upstream knob (kept working for compatibility);
+  // presenter / export routes use the alias verbatim, but the public slide URL
+  // follows `publish.canonicalForm` (default `n-slug`) so shared links stay
+  // readable + per-slide OG pre-renders resolve cleanly. Paths are relative to the
+  // router base (upstream #2630); callers building absolute URLs add `BASE_URL`.
+  if (presenter || exporting || route.meta.slide?.frontmatter.routeAlias)
+    return getSlideRoutePath(route, presenter, exporting)
+  const form = (configs.publish as any)?.canonicalForm
+  const resolved: 'n' | 'n-slug' | 'slug' = (form === 'n' || form === 'slug') ? form : 'n-slug'
+  return `/${canonicalPathFor(route.no, slugForSlide(route), resolved)}`
 }
 
 export function useIsSlideActive() {

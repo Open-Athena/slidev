@@ -125,12 +125,22 @@ export async function build(
     }
   }
 
-  // copy index.html to 404.html for GitHub Pages
+  // Copy index.html to 404.html for GitHub Pages. GH Pages serves 404.html for
+  // any path it can't find on disk — for slidev that includes every deep link
+  // (`/1`, `/2`, …) since the SPA doesn't pre-render per-slide HTML files. The
+  // SPA bootstraps from this 404.html copy, reads `location.pathname`, and
+  // routes to the right page (or to its own `404.vue` for genuinely-bad
+  // paths — see `/:no(\\d+)` constraint in `setup/routes.ts`).
   await fs.copyFile(resolve(outDir, 'index.html'), resolve(outDir, '404.html'))
   // _redirects for SPA
   const redirectsPath = resolve(outDir, '_redirects')
   if (!existsSync(redirectsPath))
     await fs.writeFile(redirectsPath, `${config.base}*    ${config.base}index.html   200\n`, 'utf-8')
+
+  // Per-slide OG shells + images. Skipped when `publish.baseUrl` isn't configured.
+  // See specs/bluesky-slide-threads.md (Phase 1).
+  const { generateOgShells } = await import('./og')
+  await generateOgShells(options, args, outDir, config)
 
   if ([true, 'true', 'auto'].includes(options.data.config.download)) {
     const { exportSlides, getExportOptions } = await import('./export')

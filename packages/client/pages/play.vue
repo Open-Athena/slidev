@@ -13,6 +13,7 @@ import NavControls from '../internals/NavControls.vue'
 import PresenterMouse from '../internals/PresenterMouse.vue'
 import SlideContainer from '../internals/SlideContainer.vue'
 import SlidesShow from '../internals/SlidesShow.vue'
+import SlugChip from '../internals/SlugChip.vue'
 import { onContextMenu } from '../logic/contextMenu'
 import { registerShortcuts } from '../logic/shortcuts'
 import { editorHeight, editorWidth, isEditorVertical, isScreenVertical, showEditor, viewerCssFilter, viewerCssFilterDefaults } from '../state'
@@ -103,6 +104,7 @@ const contentStyle = computed(() => {
         <LaserPointer />
       </template>
       <template #controls>
+        <SlugChip />
         <div
           v-if="!isPrintMode"
           class="absolute bottom-0 left-0 transition duration-300 opacity-0 hover:opacity-100 focus-within:opacity-100 focus-visible:opacity-100"

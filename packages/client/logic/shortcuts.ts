@@ -5,11 +5,13 @@ import { onKeyStroke } from '@vueuse/core'
 import { and, not } from '@vueuse/math'
 import { watch } from 'vue'
 import { useNav } from '../composables/useNav'
+import { configs } from '../env'
+import { getSlidePath } from '../logic/slides'
 import setupShortcuts from '../setup/shortcuts'
 import { fullscreen, isInputting, isOnFocus, magicKeys, shortcutsEnabled, shortcutsLocked } from '../state'
 
 export function registerShortcuts() {
-  const { isPrintMode } = useNav()
+  const { isPrintMode, currentSlideRoute } = useNav()
   const enabled = and(not(isInputting), not(isOnFocus), not(isPrintMode), shortcutsEnabled, not(shortcutsLocked))
 
   const allShortcuts = setupShortcuts()
@@ -23,6 +25,20 @@ export function registerShortcuts() {
   })
 
   strokeShortcut('f', () => fullscreen.toggle())
+  // `y` = yank: copy current slide's canonical share URL to clipboard. Uses the
+  // deck's `publish.baseUrl` when set (production share URL); falls back to
+  // `location.origin` so it still works locally / when baseUrl isn't configured.
+  strokeShortcut('y', () => {
+    const route = currentSlideRoute.value
+    if (!route)
+      return
+    const path = getSlidePath(route, false, false)
+    const base = (configs.publish as any)?.baseUrl?.replace?.(/\/+$/, '') ?? (typeof location !== 'undefined' ? location.origin + import.meta.env.BASE_URL.replace(/\/+$/, '') : '')
+    const url = `${base}${path}`
+    if (typeof navigator !== 'undefined' && navigator.clipboard) {
+      void navigator.clipboard.writeText(url)
+    }
+  })
 
   function shortcut(key: string | Ref<boolean>, fn: Fn, autoRepeat = false) {
     if (typeof key === 'string')
