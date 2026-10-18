@@ -2,6 +2,8 @@
 
 This document outlines current limitations and future improvements for how `dragPos` (image/element positions) are persisted.
 
+**Status: superseded.** The separate positions file shipped as `slides.coords.yaml` (Stage 1 of `specs/deck-state-storage.md`), and the event log, undo and multi-tab sync followed in Stage 3 there. Multi-writer editing is tracked in that spec too.
+
 ## Current Behavior
 
 - `dragPos` stored in each slide's frontmatter within `slides.md`
