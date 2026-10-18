@@ -1,3 +1,11 @@
+---
+# This fork defaults slide URLs to the `n-slug` canonical form (e.g. `/5-page-5`).
+# The upstream nav specs in `basic.spec.ts` assert plain `/5`-style URLs, so pin this
+# fixture deck to the `n` form.
+publish:
+  canonicalForm: n
+---
+
 # Page 1
 
 Hello World
@@ -179,8 +187,132 @@ Left
 </div>
 
 ---
+dragPos:
+  box1: 100,100,100,100
+  box2: 250,100,150,100
+  box3: 450,100,100,150
+  box4: 100,300,200,80
+---
 
-# Page 14
+# Page 14 - v-drag Resize & Position Tests
+
+<div v-drag="'box1'" class="cy-drag-box bg-red-500" data-testid="box1">100x100</div>
+<div v-drag="'box2'" class="cy-drag-box bg-blue-500" data-testid="box2">150x100</div>
+<div v-drag="'box3'" class="cy-drag-box bg-green-500" data-testid="box3">100x150</div>
+<div v-drag="'box4'" class="cy-drag-box bg-yellow-500" data-testid="box4">200x80</div>
+
+<style>
+.cy-drag-box {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  font-weight: bold;
+  border-radius: 4px;
+}
+</style>
+
+---
+dragPos:
+  stack-a: 100,200,150,150,0,100
+  stack-b: 300,200,150,150,0,101
+  stack-c: 500,200,150,150,0,102
+---
+
+# Page 15 - v-drag Z-Order Tests
+
+Click boxes to select, use toolbar buttons to change z-order
+
+<div v-drag="'stack-a'" class="cy-stack-box bg-red-500" data-testid="stack-a">A (z:100)</div>
+<div v-drag="'stack-b'" class="cy-stack-box bg-blue-500" data-testid="stack-b">B (z:101)</div>
+<div v-drag="'stack-c'" class="cy-stack-box bg-green-500" data-testid="stack-c">C (z:102)</div>
+
+<style>
+.cy-stack-box {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  font-weight: bold;
+  font-size: 24px;
+  border-radius: 8px;
+  border: 3px solid white;
+}
+</style>
+
+---
+dragPos:
+  link-box: 300,200,200,100
+---
+
+# Page 16 - v-drag Link Detection Test
+
+<a href="https://example.com" data-testid="link-wrapper">
+  <div v-drag="'link-box'" class="cy-link-box bg-purple-500" data-testid="link-box">
+    Linked Element
+  </div>
+</a>
+
+<style>
+.cy-link-box {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  font-weight: bold;
+  border-radius: 8px;
+}
+</style>
+
+---
+dragPos:
+  click-outside-box: 400,300,150,100
+---
+
+# Page 17 - v-drag Click Outside Test
+
+Click the box to select, then click elsewhere to deselect
+
+<div v-drag="'click-outside-box'" class="cy-outside-box bg-orange-500" data-testid="click-outside-box">
+  Click Me
+</div>
+
+<style>
+.cy-outside-box {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  font-weight: bold;
+  border-radius: 8px;
+}
+</style>
+
+---
+dragPos:
+  snap-target: 480,270,120,80
+  snap-mover: 100,100,100,80
+---
+
+# Page 18 - v-drag Snap Alignment Tests
+
+<div v-drag="'snap-target'" class="cy-snap-box bg-teal-500" data-testid="snap-target">Target</div>
+<div v-drag="'snap-mover'" class="cy-snap-box bg-pink-500" data-testid="snap-mover">Mover</div>
+
+<style>
+.cy-snap-box {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  font-weight: bold;
+  border-radius: 8px;
+}
+</style>
+
+---
+
+# Page 19
 
 <div class="cy-animation-presets">
   <div v-click.fade.up>fade-up</div>
@@ -192,7 +324,7 @@ Left
 clickAnimation: fade down
 ---
 
-# Page 15
+# Page 20
 
 <div class="cy-animation-frontmatter">
   <div v-click>from-frontmatter</div>
@@ -202,7 +334,7 @@ clickAnimation: fade down
 clickAnimation: foo
 ---
 
-# Page 16
+# Page 21
 
 <div class="cy-animation-hierarchy">
   <div v-click>frontmatter-invalid-foo</div>

@@ -10,6 +10,7 @@
     "build": "turbo run build --filter=\"./packages/*\"",
     "ci:publish": "zx scripts/publish.mjs",
     "cy": "cypress open",
+    "cy:e2e": "bash cypress/run-e2e.sh",
     "cy:fixture": "pnpm -C cypress/fixtures/basic run dev",
     "demo:build": "zx ./scripts/demo.mjs",
     "demo:composable-vue": "pnpm -C demo/composable-vue run dev",

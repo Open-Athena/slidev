@@ -258,44 +258,46 @@ context('Basic', () => {
       .should('have.text', 'AEFZ')
   })
 
+  // The fork inserted its v-drag test pages at slides 14-18 (see `v-drag.spec.ts`),
+  // shifting these upstream click-animation pages from 14/15/16 to 19/20/21.
   it('click animation presets', () => {
-    goPage(14)
+    goPage(19)
 
     // Check animation classes are set on mount
-    cy.get('#slideshow .slidev-page-14 .cy-animation-presets .slidev-vclick-target').eq(0).should('have.class', 'slidev-vclick-anim-fade').and('have.class', 'slidev-vclick-anim-up')
-    cy.get('#slideshow .slidev-page-14 .cy-animation-presets .slidev-vclick-target').eq(1).should('have.class', 'slidev-vclick-anim-scale')
-    cy.get('#slideshow .slidev-page-14 .cy-animation-presets .slidev-vclick-target').eq(2).should('have.class', 'slidev-vclick-anim-none')
+    cy.get('#slideshow .slidev-page-19 .cy-animation-presets .slidev-vclick-target').eq(0).should('have.class', 'slidev-vclick-anim-fade').and('have.class', 'slidev-vclick-anim-up')
+    cy.get('#slideshow .slidev-page-19 .cy-animation-presets .slidev-vclick-target').eq(1).should('have.class', 'slidev-vclick-anim-scale')
+    cy.get('#slideshow .slidev-page-19 .cy-animation-presets .slidev-vclick-target').eq(2).should('have.class', 'slidev-vclick-anim-none')
 
     // After clicks, elements become visible
     cy.rightArrow()
-    cy.get('#slideshow .slidev-page-14 .cy-animation-presets .slidev-vclick-target:not(.slidev-vclick-hidden)')
+    cy.get('#slideshow .slidev-page-19 .cy-animation-presets .slidev-vclick-target:not(.slidev-vclick-hidden)')
       .should('have.text', 'fade-up')
 
     cy.rightArrow()
-    cy.get('#slideshow .slidev-page-14 .cy-animation-presets .slidev-vclick-target:not(.slidev-vclick-hidden)')
+    cy.get('#slideshow .slidev-page-19 .cy-animation-presets .slidev-vclick-target:not(.slidev-vclick-hidden)')
       .should('have.length', 2)
 
     cy.rightArrow()
-    cy.get('#slideshow .slidev-page-14 .cy-animation-presets .slidev-vclick-target:not(.slidev-vclick-hidden)')
+    cy.get('#slideshow .slidev-page-19 .cy-animation-presets .slidev-vclick-target:not(.slidev-vclick-hidden)')
       .should('have.length', 3)
   })
 
   it('click animation from frontmatter', () => {
-    goPage(15)
+    goPage(20)
 
-    cy.get('#slideshow .slidev-page-15 .cy-animation-frontmatter .slidev-vclick-target')
+    cy.get('#slideshow .slidev-page-20 .cy-animation-frontmatter .slidev-vclick-target')
       .should('have.class', 'slidev-vclick-anim-fade')
       .and('have.class', 'slidev-vclick-anim-down')
 
     cy.rightArrow()
-    cy.get('#slideshow .slidev-page-15 .cy-animation-frontmatter .slidev-vclick-target:not(.slidev-vclick-hidden)')
+    cy.get('#slideshow .slidev-page-20 .cy-animation-frontmatter .slidev-vclick-target:not(.slidev-vclick-hidden)')
       .should('have.text', 'from-frontmatter')
   })
 
   it('click animation hierarchy and override', () => {
-    goPage(16)
+    goPage(21)
 
-    const targets = '#slideshow .slidev-page-16 .cy-animation-hierarchy .slidev-vclick-target'
+    const targets = '#slideshow .slidev-page-21 .cy-animation-hierarchy .slidev-vclick-target'
 
     // custom frontmatter still gets reflected for elements without modifiers
     cy.get(targets).eq(0).should('have.class', 'slidev-vclick-anim-foo')
@@ -316,9 +318,10 @@ context('Basic', () => {
   })
 
   it('annotated code block in v-click', () => {
-    goPage(17)
+    // Upstream's page 17, shifted +5 by the fork's v-drag pages (see above)
+    goPage(22)
 
-    const wrapper = '#slideshow .slidev-page-17 .cy-code-in-vclick .slidev-code-wrapper'
+    const wrapper = '#slideshow .slidev-page-22 .cy-code-in-vclick .slidev-code-wrapper'
 
     cy.get(wrapper).should('have.class', 'slidev-vclick-hidden')
 
