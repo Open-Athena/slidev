@@ -370,8 +370,8 @@ cli.command(
     })
     .option('router-mode', {
       type: 'string',
-      choices: ['hash', 'history'],
-      describe: 'override routerMode in the built output (hash for subdirectory deploys like GitHub Pages)',
+      choices: ['hash', 'history', 'memory'],
+      describe: 'override routerMode in the built output (hash for subdirectory deploys like GitHub Pages; memory keeps the slide number out of the URL, for kiosk/follower decks)',
     })
     .option('inspect', {
       default: false,
@@ -385,7 +385,7 @@ cli.command(
     const { build } = await import('./commands/build')
 
     for (const entryFile of entry as unknown as string[]) {
-      const options = await resolveOptions({ entry: entryFile, theme, inspect, download, base, withoutNotes, routerMode: routerMode as 'hash' | 'history' | undefined }, 'build')
+      const options = await resolveOptions({ entry: entryFile, theme, inspect, download, base, withoutNotes, routerMode: routerMode as 'hash' | 'history' | 'memory' | undefined }, 'build')
 
       printInfo(options)
       await build(
@@ -414,6 +414,18 @@ cli.command(
       parser.prettify(md)
       await parser.save(md)
     }
+  },
+)
+
+cli.command(
+  'mcp [entry]',
+  'Start an MCP (Model Context Protocol) server over stdio for AI agents to inspect and edit the slides',
+  args => commonOptions(args)
+    .strict()
+    .help(),
+  async ({ entry }) => {
+    const { startMcpStdioServer } = await import('./mcp/stdio')
+    await startMcpStdioServer(await resolveEntry(entry))
   },
 )
 
@@ -716,6 +728,8 @@ function printInfo(
     console.log(`${dim('  slides overview ')}    > ${blue(`${baseUrl}${overviewPath}`)}`)
     if (options.utils.define.__SLIDEV_FEATURE_BROWSER_EXPORTER__)
       console.log(`${dim('  export slides')}       > ${blue(`${baseUrl}/export/`)}`)
+    if (options.mode === 'dev' && options.data.config.mcp !== false)
+      console.log(`${dim('  mcp server (ai)')}     > ${blue(`http://localhost:${bold(port)}/__mcp`)}`)
     if (options.inspect)
       console.log(`${dim('  vite inspector')}      > ${yellow(`${baseUrl}/__inspect/`)}`)
 

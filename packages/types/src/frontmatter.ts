@@ -100,9 +100,13 @@ export interface HeadmatterConfig extends TransitionOptions {
   /**
    * Router mode for vue-router
    *
+   * - `history`: the slide number is reflected in the URL path
+   * - `hash`: hash-based routing, for static hosts or subdirectory deploys
+   * - `memory`: routing is kept in memory, so the URL never reflects the slide number and cannot be used to navigate — useful for kiosk or externally driven "follower" decks (deep-links, `/presenter`, `/overview` and export-by-URL are unavailable)
+   *
    * @default 'history'
    */
-  routerMode?: 'hash' | 'history'
+  routerMode?: 'hash' | 'history' | 'memory'
   /**
    * Aspect ratio for slides
    * should be like `16/9` or `1:1`
@@ -217,6 +221,13 @@ export interface HeadmatterConfig extends TransitionOptions {
    */
   editor?: boolean
   /**
+   * Enable the MCP (Model Context Protocol) server endpoint on the dev server,
+   * allowing AI agents to inspect and edit the slides
+   *
+   * @default true
+   */
+  mcp?: boolean
+  /**
    * Enable context menu
    *
    * @default true
@@ -226,6 +237,12 @@ export interface HeadmatterConfig extends TransitionOptions {
    * Enable wake lock
    */
   wakeLock?: boolean | 'dev' | 'build'
+  /**
+   * Enable PWA support: a service worker precaches all deck assets on first
+   * load so a served deck works fully offline afterward. Heavy; opt-in.
+   * @default false
+   */
+  pwa?: boolean | 'dev' | 'build'
   /**
    * Force the filename used when exporting the presentation.
    * The extension, e.g. .pdf, gets automatically added.

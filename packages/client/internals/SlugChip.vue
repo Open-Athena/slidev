@@ -20,7 +20,7 @@ const path = computed(() => {
 
 const absoluteUrl = computed(() => {
   const base = ((configs.publish as any)?.baseUrl as string | undefined)?.replace(/\/+$/, '')
-    ?? (typeof location !== 'undefined' ? location.origin : '')
+    ?? (typeof location !== 'undefined' ? location.origin + import.meta.env.BASE_URL.replace(/\/+$/, '') : '')
   return `${base}${path.value}`
 })
 

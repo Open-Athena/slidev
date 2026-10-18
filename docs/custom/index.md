@@ -64,9 +64,12 @@ record: dev
 contextMenu: true
 # enable wake lock, can be boolean, 'dev' or 'build'
 wakeLock: true
+# enable PWA support to precache assets for offline use, can be boolean, 'dev' or 'build'
+# Learn more: https://sli.dev/features/pwa.html
+pwa: false
 # take snapshot for each slide in the overview
 overviewSnapshots: false
-# router mode for vue-router, can be "history" or "hash"
+# router mode for vue-router, can be "history", "hash", or "memory"
 routerMode: history
 
 # force color schema for the slides, can be 'auto', 'light', or 'dark'

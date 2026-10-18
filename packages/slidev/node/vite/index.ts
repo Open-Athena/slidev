@@ -13,9 +13,11 @@ import { createInspectPlugin } from './inspect'
 import { createLayoutWrapperPlugin } from './layoutWrapper'
 import { createSlidesLoader } from './loaders'
 import { createMarkdownPlugin } from './markdown'
+import { createMcpPlugin } from './mcp'
 import { createMonacoTypesLoader } from './monacoTypes'
 import { createMonacoWriterPlugin } from './monacoWrite'
 import { createPatchMonacoSourceMapPlugin } from './patchMonacoSourceMap'
+import { createPWAPlugin } from './pwa'
 import { createRemoteAssetsPlugin } from './remoteAssets'
 import { createServerRefPlugin } from './serverRef'
 import { createStatePlugin } from './state'
@@ -38,6 +40,7 @@ export function ViteSlidevPlugin(
   return Promise.all([
     createSlidesLoader(options, serverOptions),
     ...(devStatic ? [] : [createUploadPlugin(options), createStatePlugin(options)]),
+    createMcpPlugin(options),
     createMarkdownPlugin(options, pluginOptions),
     createLayoutWrapperPlugin(options),
     createContextInjectionPlugin(),
@@ -56,6 +59,7 @@ export function ViteSlidevPlugin(
     createStaticCopyPlugin(options, pluginOptions),
     createInspectPlugin(options, pluginOptions),
     createPatchMonacoSourceMapPlugin(),
+    createPWAPlugin(options),
 
     setupVitePlugins(options),
   ])

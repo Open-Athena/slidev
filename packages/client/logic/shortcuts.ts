@@ -37,7 +37,7 @@ export function registerShortcuts() {
     if (!route)
       return
     const path = getSlidePath(route, false, false)
-    const base = (configs.publish as any)?.baseUrl?.replace?.(/\/+$/, '') ?? (typeof location !== 'undefined' ? location.origin : '')
+    const base = (configs.publish as any)?.baseUrl?.replace?.(/\/+$/, '') ?? (typeof location !== 'undefined' ? location.origin + import.meta.env.BASE_URL.replace(/\/+$/, '') : '')
     const url = `${base}${path}`
     if (typeof navigator !== 'undefined' && navigator.clipboard) {
       void navigator.clipboard.writeText(url)

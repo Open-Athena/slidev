@@ -1,4 +1,5 @@
 import { defineConfig } from 'cypress'
+import { startBasePathServer, stopBasePathServer } from './cypress/basePathServer'
 
 export default defineConfig({
   e2e: {
@@ -13,5 +14,12 @@ export default defineConfig({
     // flakes without re-chasing each one.
     defaultCommandTimeout: 8000,
     retries: { runMode: 2, openMode: 0 },
+    setupNodeEvents(on) {
+      on('after:run', () => stopBasePathServer())
+      on('task', {
+        startBasePathServer,
+        stopBasePathServer,
+      })
+    },
   },
 })

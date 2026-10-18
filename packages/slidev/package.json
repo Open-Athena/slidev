@@ -1,7 +1,7 @@
 {
   "name": "@slidev/cli",
   "type": "module",
-  "version": "52.16.0",
+  "version": "52.17.0",
   "description": "Presentation slides for developers",
   "author": "Anthony Fu <anthonyfu117@hotmail.com>",
   "license": "MIT",
@@ -56,6 +56,7 @@
     "@iconify-json/ph": "catalog:icons",
     "@iconify-json/svg-spinners": "catalog:icons",
     "@lillallol/outline-pdf": "catalog:prod",
+    "@modelcontextprotocol/sdk": "catalog:prod",
     "@shikijs/magic-move": "catalog:frontend",
     "@shikijs/markdown-it": "catalog:frontend",
     "@shikijs/twoslash": "catalog:prod",
@@ -113,13 +114,15 @@
     "uqr": "catalog:prod",
     "vite": "catalog:prod",
     "vite-plugin-inspect": "catalog:prod",
+    "vite-plugin-pwa": "catalog:prod",
     "vite-plugin-remote-assets": "catalog:prod",
     "vite-plugin-static-copy": "catalog:prod",
     "vite-plugin-vue-server-ref": "catalog:prod",
     "vitefu": "catalog:dev",
     "vue": "catalog:frontend",
     "yaml": "catalog:prod",
-    "yargs": "catalog:prod"
+    "yargs": "catalog:prod",
+    "zod": "catalog:prod"
   },
   "optionalDependencies": {
     "better-sqlite3": "catalog:prod"

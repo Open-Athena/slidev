@@ -4,6 +4,7 @@ import { computed, watch } from 'vue'
 import { slides } from '#slidev/slides'
 import { useSlideContext } from '../context'
 import { configs } from '../env'
+import { getSlideRoutePath } from './slidePath'
 
 export { slides }
 
@@ -73,20 +74,13 @@ export function getSlidePath(
   // `routeAlias` is the legacy upstream knob (kept working for compatibility);
   // presenter / export routes use the alias verbatim, but the public slide URL
   // follows `publish.canonicalForm` (default `n-slug`) so shared links stay
-  // readable + per-slide OG pre-renders resolve cleanly. All paths are prefixed
-  // with `BASE_URL` (upstream #2562) so monorepo sub-directory deployments work;
-  // `BASE_URL` always ends with `/`, so the default base (`/`) is a no-op.
-  const base = import.meta.env.BASE_URL
-  const alias = route.meta.slide?.frontmatter.routeAlias
-  if (presenter)
-    return `${base}presenter/${alias ?? route.no}`
-  if (exporting)
-    return `${base}export/${alias ?? route.no}`
-  if (alias)
-    return `${base}${alias}`
+  // readable + per-slide OG pre-renders resolve cleanly. Paths are relative to the
+  // router base (upstream #2630); callers building absolute URLs add `BASE_URL`.
+  if (presenter || exporting || route.meta.slide?.frontmatter.routeAlias)
+    return getSlideRoutePath(route, presenter, exporting)
   const form = (configs.publish as any)?.canonicalForm
   const resolved: 'n' | 'n-slug' | 'slug' = (form === 'n' || form === 'slug') ? form : 'n-slug'
-  return `${base}${canonicalPathFor(route.no, slugForSlide(route), resolved)}`
+  return `/${canonicalPathFor(route.no, slugForSlide(route), resolved)}`
 }
 
 export function useIsSlideActive() {
