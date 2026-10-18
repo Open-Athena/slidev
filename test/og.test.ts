@@ -3,6 +3,7 @@ import {
   canonicalPathFor,
   firstParagraph,
   htmlEscape,
+  injectPerSlideMeta,
   joinUrl,
   pickSlug,
   pickTitle,
@@ -229,5 +230,73 @@ describe('joinUrl', () => {
 
   it('handles empty path', () => {
     expect(joinUrl('https://x.com', '')).toBe('https://x.com/')
+  })
+})
+
+describe('injectPerSlideMeta', () => {
+  const info = {
+    no: 2,
+    slug: 'install',
+    title: 'Install',
+    description: 'How to install $x',
+    canonical: 'https://deck.dev/2-install',
+    imageUrl: 'https://deck.dev/_og/2-install.jpg',
+    overrideSrc: null,
+    imageFilename: '2-install.jpg',
+    htmlFilename: '2-install.html',
+    contentHash: 'h',
+  }
+  const head = (html: string) => html.split('\n').filter(l => /<(?:title|meta|link)/.test(l))
+
+  it('adds the share-card tags a deck without `seoMeta` lacks', () => {
+    const shell = '<html><head>\n<title>Deck</title>\n<meta property="og:title" content="Deck">\n</head><body></body></html>'
+    expect(head(injectPerSlideMeta(shell, info))).toEqual([
+      '<title>Install</title>',
+      '<meta property="og:title" content="Install">',
+      '<meta name="description" content="How to install $x">',
+      '<meta property="og:type" content="website">',
+      '<meta property="og:description" content="How to install $x">',
+      '<meta property="og:image" content="https://deck.dev/_og/2-install.jpg">',
+      '<meta property="og:url" content="https://deck.dev/2-install">',
+      '<meta name="twitter:card" content="summary_large_image">',
+      '<meta name="twitter:title" content="Install">',
+      '<meta name="twitter:description" content="How to install $x">',
+      '<meta name="twitter:image" content="https://deck.dev/_og/2-install.jpg">',
+      '<link rel="canonical" href="https://deck.dev/2-install">',
+    ])
+  })
+
+  it('rewrites the tags a deck sets, in either attribute form, without duplicating them', () => {
+    const shell = [
+      '<html><head>',
+      '<title>Deck</title>',
+      '<meta name="description" content="Deck">',
+      '<meta property="og:type" content="website">',
+      '<meta property="og:title" content="Deck">',
+      '<meta property="og:description" content="Deck">',
+      '<meta property="og:image" content="https://deck.dev/_og/1-deck.jpg">',
+      '<meta property="og:url" content="https://deck.dev/">',
+      '<meta property="twitter:card" content="summary_large_image">',
+      '<meta property="twitter:title" content="Deck">',
+      '<meta content="Deck" property="twitter:description">',
+      '<meta property="twitter:image" content="https://deck.dev/_og/1-deck.jpg">',
+      '<meta property="twitter:url" content="https://deck.dev/">',
+      '</head><body></body></html>',
+    ].join('\n')
+    expect(head(injectPerSlideMeta(shell, info))).toEqual([
+      '<title>Install</title>',
+      '<meta name="description" content="How to install $x">',
+      '<meta property="og:type" content="website">',
+      '<meta property="og:title" content="Install">',
+      '<meta property="og:description" content="How to install $x">',
+      '<meta property="og:image" content="https://deck.dev/_og/2-install.jpg">',
+      '<meta property="og:url" content="https://deck.dev/2-install">',
+      '<meta property="twitter:card" content="summary_large_image">',
+      '<meta property="twitter:title" content="Install">',
+      '<meta content="How to install $x" property="twitter:description">',
+      '<meta property="twitter:image" content="https://deck.dev/_og/2-install.jpg">',
+      '<meta property="twitter:url" content="https://deck.dev/2-install">',
+      '<link rel="canonical" href="https://deck.dev/2-install">',
+    ])
   })
 })

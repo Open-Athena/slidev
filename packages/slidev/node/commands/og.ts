@@ -358,7 +358,13 @@ export async function generateOgShells(
   }
   const ogCfg = cfg.publish?.ogImage ?? {}
   const size: [number, number] = Array.isArray(ogCfg.size) && ogCfg.size.length === 2 ? ogCfg.size : DEFAULT_OG_SIZE
-  const format: 'png' | 'jpg' = ogCfg.format === 'png' ? 'png' : DEFAULT_OG_FORMAT
+  let format: 'png' | 'jpg' = ogCfg.format === 'png' ? 'png' : DEFAULT_OG_FORMAT
+  // JPEG cards need `sharp` (an optional dependency). Without it, write the whole run as PNG,
+  // with `.png` names and URLs, rather than PNG bytes under a `.jpg` name.
+  if (format === 'jpg' && !(await loadSharp())) {
+    console.warn('[Slidev] OG: `sharp` isn\'t installed, so share cards are written as PNG')
+    format = 'png'
+  }
   const quality: number = typeof ogCfg.quality === 'number' ? ogCfg.quality : DEFAULT_OG_QUALITY
 
   const deckTitle: string = cfg.title ?? 'Slidev'
@@ -385,8 +391,10 @@ export async function generateOgShells(
   // embeds that can't (or don't) emit a `data-waitfor` signal.
   const wait: number = typeof ogCfg.wait === 'number' ? ogCfg.wait : 0
 
-  // Render-key: changes to size/format/wait invalidate the entire cache.
-  const renderKey = `${size[0]}x${size[1]}.${format}.w${wait}`
+  // Render-key: changes to size/format/wait invalidate the entire cache. `sharp` marks JPEGs
+  // encoded by sharp, so `.jpg` cache entries written as PNG bytes (before the PNG fallback
+  // switched the format) get re-rendered.
+  const renderKey = `${size[0]}x${size[1]}.${format}${format === 'jpg' ? '.sharp' : ''}.w${wait}`
 
   // Plan each slide first (cheap) so the rest of the function can iterate over a uniform list.
   const plans: SlideOgInfo[] = []
@@ -397,6 +405,10 @@ export async function generateOgShells(
       continue
     plans.push(planSlide(slide, i + 1, deckTitle, baseUrl, appBase, format, renderKey, canonicalForm))
   }
+  // Slides without a description of their own (frontmatter, or a first paragraph) use the deck's.
+  const deckDescription = stripMd(String(cfg.seoMeta?.ogDescription ?? cfg.info ?? '')).trim()
+  for (const p of plans)
+    p.description ||= deckDescription
 
   // Decide which slides need image generation. Three buckets:
   //   - explicit override (`frontmatter.ogImage: ./foo.png`) → just copy from userRoot
@@ -486,10 +498,9 @@ export async function generateOgShells(
         const dst = resolve(ogDir, p.imageFilename)
         const cache = cachePath(p)
         if (format === 'jpg') {
-          // We requested PNG from exportSlides above; transcode to JPG via sharp if available.
-          // Sharp is a transitive dep of common slidev plugins but not a direct one — fall
-          // back to copying the PNG (and re-stamping the extension) if sharp isn't there.
-          await transcodeOrCopy(src, cache, quality)
+          // We requested PNG from exportSlides above; transcode to JPG (`sharp` is present, or
+          // `format` would have fallen back to PNG).
+          await transcodeToJpg(src, cache, quality)
         }
         else {
           await fs.copyFile(src, cache)
@@ -562,18 +573,23 @@ function escapeRegex(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }
 
-// Rewrite a single `<meta {attr}="{key}" content="...">` value in-place. Tolerant
-// of attribute-order variants (`attr` and `content` may appear in either order
-// in source HTML); returns the input unchanged when no matching tag is found.
-function replaceMeta(html: string, attr: 'name' | 'property', key: string, value: string): string {
+// Set a `<meta {attr}="{key}" content="...">` value: rewritten in place when the tag exists
+// (under either `name` or `property`, attribute order either way, since the deck-level shell
+// writes `property="twitter:..."`), else added before `</head>`.
+export function setMeta(html: string, attr: 'name' | 'property', key: string, value: string): string {
   const v = htmlEscape(value)
-  // attr-first: <meta name="x" content="y">
-  const re1 = new RegExp(`(<meta\\s+${attr}="${escapeRegex(key)}"\\s+content=")[^"]*(")`)
-  if (re1.test(html))
-    return html.replace(re1, `$1${v}$2`)
-  // content-first: <meta content="y" name="x">
-  const re2 = new RegExp(`(<meta\\s+content=")[^"]*("\\s+${attr}="${escapeRegex(key)}")`)
-  return html.replace(re2, `$1${v}$2`)
+  const k = escapeRegex(key)
+  for (const a of [attr, attr === 'name' ? 'property' : 'name']) {
+    // attr-first: <meta name="x" content="y">
+    const re1 = new RegExp(`(<meta\\s+${a}="${k}"\\s+content=")[^"]*(")`)
+    if (re1.test(html))
+      return html.replace(re1, (_, open: string, close: string) => open + v + close)
+    // content-first: <meta content="y" name="x">
+    const re2 = new RegExp(`(<meta\\s+content=")[^"]*("\\s+${a}="${k}")`)
+    if (re2.test(html))
+      return html.replace(re2, (_, open: string, close: string) => open + v + close)
+  }
+  return html.replace(/<\/head>/, () => `<meta ${attr}="${key}" content="${v}">\n</head>`)
 }
 
 // Build a per-slide variant of the SPA shell, mutating only the head meta —
@@ -581,7 +597,7 @@ function replaceMeta(html: string, attr: 'name' | 'property', key: string, value
 // per-slide share cards to scrapers (browsers boot the SPA from this shell
 // exactly as from `index.html`/`404.html`). Idempotent: if the deck-level shell
 // already has a meta we'd inject, we replace its value; otherwise we append.
-function injectPerSlideMeta(shell: string, info: SlideOgInfo): string {
+export function injectPerSlideMeta(shell: string, info: SlideOgInfo): string {
   let html = shell
   const t = info.title
   const d = info.description
@@ -589,21 +605,19 @@ function injectPerSlideMeta(shell: string, info: SlideOgInfo): string {
   const img = info.imageUrl
 
   html = html.replace(/<title>[^<]*<\/title>/, `<title>${htmlEscape(t)}</title>`)
-  html = replaceMeta(html, 'name', 'description', d)
-  html = replaceMeta(html, 'property', 'og:title', t)
-  html = replaceMeta(html, 'property', 'og:description', d)
-  html = replaceMeta(html, 'property', 'og:image', img)
-  html = replaceMeta(html, 'property', 'og:url', u)
-  // Vite's deck-level shell uses `property="twitter:..."`; the `_og/*.html` shells
-  // use `name="twitter:..."`. Try both so we cover whatever the source emits.
-  html = replaceMeta(html, 'property', 'twitter:title', t)
-  html = replaceMeta(html, 'property', 'twitter:description', d)
-  html = replaceMeta(html, 'property', 'twitter:image', img)
-  html = replaceMeta(html, 'property', 'twitter:url', u)
-  html = replaceMeta(html, 'name', 'twitter:title', t)
-  html = replaceMeta(html, 'name', 'twitter:description', d)
-  html = replaceMeta(html, 'name', 'twitter:image', img)
-  html = replaceMeta(html, 'name', 'twitter:url', u)
+  html = setMeta(html, 'name', 'description', d)
+  html = setMeta(html, 'property', 'og:type', 'website')
+  html = setMeta(html, 'property', 'og:title', t)
+  html = setMeta(html, 'property', 'og:description', d)
+  html = setMeta(html, 'property', 'og:image', img)
+  html = setMeta(html, 'property', 'og:url', u)
+  html = setMeta(html, 'name', 'twitter:card', 'summary_large_image')
+  html = setMeta(html, 'name', 'twitter:title', t)
+  html = setMeta(html, 'name', 'twitter:description', d)
+  html = setMeta(html, 'name', 'twitter:image', img)
+  // Not a standard tag, so only kept current when the deck sets it.
+  if (/(?:name|property)="twitter:url"/.test(html))
+    html = setMeta(html, 'name', 'twitter:url', u)
 
   // Canonical link: replace if present, else inject before </head>.
   if (/<link\s+rel="canonical"/.test(html)) {
@@ -616,15 +630,18 @@ function injectPerSlideMeta(shell: string, info: SlideOgInfo): string {
   return html
 }
 
-async function transcodeOrCopy(srcPng: string, dstJpg: string, quality: number): Promise<void> {
-  try {
-    // @ts-expect-error — `sharp` is an optional peer; resolved at runtime if installed.
-    const { default: sharp } = await import('sharp')
-    await sharp(srcPng).jpeg({ quality, mozjpeg: true }).toFile(dstJpg)
-  }
-  catch {
-    // Fallback: keep the PNG bytes but rename to .jpg so URL/filename stays consistent.
-    // OG scrapers parse magic bytes, not extensions, so this still previews correctly.
-    await fs.copyFile(srcPng, dstJpg)
-  }
+let sharpModule: Promise<any> | undefined
+
+/** `sharp`, or `null` when it isn't installed (it's an optional dependency). */
+function loadSharp(): Promise<any> {
+  // @ts-expect-error — `sharp` is optional; resolved at runtime if installed.
+  sharpModule ??= import('sharp').then(m => m.default, () => null)
+  return sharpModule
+}
+
+async function transcodeToJpg(srcPng: string, dstJpg: string, quality: number): Promise<void> {
+  const sharp = await loadSharp()
+  if (!sharp)
+    throw new Error('`sharp` is required for JPEG share cards')
+  await sharp(srcPng).jpeg({ quality, mozjpeg: true }).toFile(dstJpg)
 }

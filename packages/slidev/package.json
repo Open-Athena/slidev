@@ -130,7 +130,8 @@
     "zod": "catalog:prod"
   },
   "optionalDependencies": {
-    "better-sqlite3": "catalog:prod"
+    "better-sqlite3": "catalog:prod",
+    "sharp": "catalog:prod"
   },
   "devDependencies": {
     "@hedgedoc/markdown-it-plugins": "catalog:prod",
