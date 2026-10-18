@@ -1,15 +1,13 @@
 <script setup lang="ts">
 /* eslint-disable vue/no-mutating-props -- Computed setters intentionally wrap parent refs for two-way binding */
-import type { Pausable } from '@vueuse/core'
 import type { DragElementState } from '../composables/useDragElements'
 import { clamp } from '@antfu/utils'
-import { useIntervalFn } from '@vueuse/core'
 import { computed, inject, onMounted, onUnmounted, ref, watchEffect } from 'vue'
 import { findSnap, getDragElementsForPage, getSnapTargets } from '../composables/useDragElements'
 import { useSlideBounds } from '../composables/useSlideBounds'
 import { injectionSlideScale } from '../constants'
 import { slideHeight, slideWidth } from '../env'
-import { magicKeys } from '../state'
+import { isInputting, magicKeys } from '../state'
 
 const props = defineProps<{ data: DragElementState }>()
 
@@ -193,6 +191,10 @@ let lastCornerMove: {
   metaKey: boolean
 } | null = null
 
+// Widest the element may get during this resize: its slot's width in flow layout (so enlarging
+// an image in a column doesn't widen the column at its neighbor's expense), else unbounded.
+let maxWidth = Number.POSITIVE_INFINITY
+
 function onPointerdown(ev: PointerEvent) {
   if (ev.buttons !== 1)
     return
@@ -202,6 +204,7 @@ function onPointerdown(ev: PointerEvent) {
 
   // Save snapshot for undo before any manipulation
   props.data.saveSnapshot('resize')
+  maxWidth = props.data.flowSlotWidth()
 
   const el = ev.target as HTMLElement
   const elBounds = el.getBoundingClientRect()
@@ -336,12 +339,12 @@ function applyCornerResize(isLeft: boolean, isTop: boolean, clientX: number, cli
   const wMin = Math.max(minSize.value, minSize.value * (lockAR || 1))
   function getSize(w1: number, h1: number) {
     if (lockAR) {
-      const w = Math.max(w1, h1 * lockAR, wMin)
+      const w = Math.min(Math.max(w1, h1 * lockAR, wMin), Math.max(maxWidth, wMin))
       const h = w / lockAR
       return { w, h }
     }
     else {
-      return { w: Math.max(w1, minSize.value), h: Math.max(h1, minSize.value) }
+      return { w: Math.min(Math.max(w1, minSize.value), Math.max(maxWidth, minSize.value)), h: Math.max(h1, minSize.value) }
     }
   }
 
@@ -465,7 +468,7 @@ function getBorderProps(dir: 'l' | 'r' | 't' | 'b') {
       if (dir === 'l') {
         const rx = (rtx + rbx) / 2
         const ry = (rty + rby) / 2
-        width.value = Math.max((rx - x) * rotateCos.value + (ry - y) * rotateSin.value, minSize.value)
+        width.value = Math.min(Math.max((rx - x) * rotateCos.value + (ry - y) * rotateSin.value, minSize.value), Math.max(maxWidth, minSize.value))
         // Snap the moving left edge midpoint
         let mx = rx - width.value * rotateCos.value
         let my = ry - width.value * rotateSin.value
@@ -473,14 +476,14 @@ function getBorderProps(dir: 'l' | 'r' | 't' | 'b') {
         mx = snapped.x
         my = snapped.y
         props.data.activeSnapLines.value = { x: snapped.linesX, y: snapped.linesY }
-        width.value = Math.max((rx - mx) * rotateCos.value + (ry - my) * rotateSin.value, minSize.value)
+        width.value = Math.min(Math.max((rx - mx) * rotateCos.value + (ry - my) * rotateSin.value, minSize.value), Math.max(maxWidth, minSize.value))
         x0.value = rx - width.value * rotateCos.value / 2
         y0.value = ry - width.value * rotateSin.value / 2
       }
       else if (dir === 'r') {
         const lx = (ltx + lbx) / 2
         const ly = (lty + lby) / 2
-        width.value = Math.max((x - lx) * rotateCos.value + (y - ly) * rotateSin.value, minSize.value)
+        width.value = Math.min(Math.max((x - lx) * rotateCos.value + (y - ly) * rotateSin.value, minSize.value), Math.max(maxWidth, minSize.value))
         // Snap the moving right edge midpoint
         let mx = lx + width.value * rotateCos.value
         let my = ly + width.value * rotateSin.value
@@ -488,7 +491,7 @@ function getBorderProps(dir: 'l' | 'r' | 't' | 'b') {
         mx = snapped.x
         my = snapped.y
         props.data.activeSnapLines.value = { x: snapped.linesX, y: snapped.linesY }
-        width.value = Math.max((mx - lx) * rotateCos.value + (my - ly) * rotateSin.value, minSize.value)
+        width.value = Math.min(Math.max((mx - lx) * rotateCos.value + (my - ly) * rotateSin.value, minSize.value), Math.max(maxWidth, minSize.value))
         x0.value = lx + width.value * rotateCos.value / 2
         y0.value = ly + width.value * rotateSin.value / 2
       }
@@ -658,46 +661,41 @@ function getRotateProps() {
   }
 }
 
-const moveInterval = 20
-const intervalFnOptions = {
-  immediate: false,
-  immediateCallback: false,
+// Arrow keys nudge the selected element by whole slide px: 1, or 10 with Shift. Each key press
+// (including auto-repeat) is one discrete step from the element's rounded position, so opposite
+// nudges cancel exactly and the written position is byte-identical. Nudges in quick succession
+// coalesce into one history entry (the history's commit debounce). Captured at the window so
+// Shift+Arrow doesn't also change slides; Cmd/Ctrl/Alt+Arrow are left to other shortcuts
+// (z-order, below).
+const NUDGE_KEYS: Record<string, [number, number]> = {
+  ArrowLeft: [-1, 0],
+  ArrowRight: [1, 0],
+  ArrowUp: [0, -1],
+  ArrowDown: [0, 1],
 }
-const moveLeft = useIntervalFn(() => {
-  if (boundingRight.value <= minRemain)
-    return
-  x0.value--
-}, moveInterval, intervalFnOptions)
-const moveRight = useIntervalFn(() => {
-  if (boundingLeft.value >= slideWidth.value - minRemain)
-    return
-  x0.value++
-}, moveInterval, intervalFnOptions)
-const moveUp = useIntervalFn(() => {
-  if (boundingBottom.value <= minRemain)
-    return
-  y0.value--
-}, moveInterval, intervalFnOptions)
-const moveDown = useIntervalFn(() => {
-  if (boundingTop.value >= slideHeight.value - minRemain)
-    return
-  y0.value++
-}, moveInterval, intervalFnOptions)
 
-watchEffect(() => {
-  // Suppress arrow-key nudge when a modifier is held, so Cmd/Shift+Arrow can be used
-  // for other shortcuts (z-order change below) without also translating the element.
-  const hasModifier = !!(magicKeys.meta?.value || magicKeys.ctrl?.value || magicKeys.shift?.value || magicKeys.alt?.value)
-  function shortcut(key: string, fn: Pausable) {
-    if (magicKeys[key].value && !hasModifier)
-      fn.resume()
-    else fn.pause()
-  }
-  shortcut('left', moveLeft)
-  shortcut('right', moveRight)
-  shortcut('up', moveUp)
-  shortcut('down', moveDown)
-})
+function onNudgeKeydown(e: KeyboardEvent) {
+  const dir = NUDGE_KEYS[e.key]
+  if (!dir || e.metaKey || e.ctrlKey || e.altKey || isInputting.value || isCropping.value || !Number.isFinite(x0.value))
+    return
+  e.preventDefault()
+  e.stopImmediatePropagation()
+  const step = e.shiftKey ? 10 : 1
+  const [dx, dy] = dir
+  // Keep at least `minRemain` px of the element on the slide.
+  if ((dx < 0 && boundingRight.value <= minRemain) || (dx > 0 && boundingLeft.value >= slideWidth.value - minRemain))
+    return
+  if ((dy < 0 && boundingBottom.value <= minRemain) || (dy > 0 && boundingTop.value >= slideHeight.value - minRemain))
+    return
+  props.data.saveSnapshot('move')
+  if (dx)
+    x0.value = Math.round(x0.value - width.value / 2) + dx * step + width.value / 2
+  if (dy)
+    y0.value = Math.round(y0.value - height.value / 2) + dy * step + height.value / 2
+}
+
+onMounted(() => window.addEventListener('keydown', onNudgeKeydown, true))
+onUnmounted(() => window.removeEventListener('keydown', onNudgeKeydown, true))
 
 function openLink() {
   if (associatedLink.value)
@@ -756,12 +754,8 @@ function sendToBack() {
 // keyboard handler is needed here.
 
 // Z-order keyboard shortcuts: Meta/Ctrl + Arrow for forward/back one step,
-// add Shift for to-front/to-back. We attach a plain `keydown` capture-phase
-// listener so we can `stopImmediatePropagation` and block other handlers
-// (like the `magicKeys`-driven nudge above, which observes reactive state
-// rather than the event — preventDefault on the event doesn't stop it, but
-// stopImmediatePropagation here runs before VueUse's own keydown listener
-// has a chance to update `magicKeys`, preventing the nudge from triggering).
+// add Shift for to-front/to-back. A capture-phase `keydown` listener, so
+// `stopImmediatePropagation` keeps slide navigation from also seeing the key.
 function onZOrderKeyDown(e: KeyboardEvent) {
   if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown')
     return

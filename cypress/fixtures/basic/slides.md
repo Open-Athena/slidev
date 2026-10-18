@@ -412,3 +412,12 @@ Right column
 <div>Left cell</div>
 <div>Right cell</div>
 </div>
+
+---
+
+# Page 28
+
+<div class="grid gap-4" style="grid-template-columns: 1fr 1fr" data-testid="clamp-grid">
+<div data-testid="clamp-left">Text in the left column, which an image enlarged in the right column must not squeeze.</div>
+<div><img v-drag.flow="'colimg'" src="/wide.svg" style="width: 160px" data-testid="clamp-img"></div>
+</div>

@@ -8,6 +8,7 @@ import type {
 } from './state-client'
 import { computed, ref } from 'vue'
 import { findLineRun } from './delete-source'
+import { showNotice } from './notice'
 import { getStateClient } from './state-client'
 import { spliceLines } from './text-edit'
 import { useNav } from './useNav'
@@ -158,6 +159,7 @@ export function hydrateFromServer(): Promise<void> {
 // `after` is captured at commit time (live state).
 interface PendingEdit {
   slideNo: number
+  dragId: string
   kind: ClientEditKind
   before: ElementSnapshot
   capture: () => ElementSnapshot
@@ -240,6 +242,7 @@ export function beginEdit(state: RegisteredState, kind: EditKind): void {
     return // keep the original `before`; just merge into ongoing edit
   pendingByKey.set(k, {
     slideNo: state.page.value,
+    dragId: state.dragId,
     kind,
     before: state.capture(),
     capture: state.capture,
@@ -257,13 +260,30 @@ export function bumpEditCommit(state: RegisteredState): void {
 }
 
 export async function commitEdit(state: RegisteredState): Promise<void> {
-  const k = regKey(state.page.value, state.dragId)
-  const pending = pendingByKey.get(k)
-  if (!pending)
-    return
-  clearPending(pending.slideNo, state.dragId)
+  const pending = pendingByKey.get(regKey(state.page.value, state.dragId))
+  if (pending)
+    await commitPending(pending)
+}
+
+let inFlightCommits: Promise<void>[] = []
+
+async function commitPending(pending: PendingEdit): Promise<void> {
+  clearPending(pending.slideNo, pending.dragId)
   const after = pending.capture()
-  await postEdit(pending.slideNo, pending.kind, [{ dragId: state.dragId, before: pending.before, after }])
+  const commit = postEdit(pending.slideNo, pending.kind, [{ dragId: pending.dragId, before: pending.before, after }])
+  inFlightCommits.push(commit)
+  try {
+    await commit
+  }
+  finally {
+    inFlightCommits = inFlightCommits.filter(c => c !== commit)
+  }
+}
+
+// Commit debounced edits now, and wait for commits already on their way, so an undo / redo right
+// after an edit (e.g. ⌘Z within the debounce of an arrow-key nudge) acts on that edit.
+async function flushPendingEdits(): Promise<void> {
+  await Promise.all([...[...pendingByKey.values()].map(commitPending), ...inFlightCommits])
 }
 
 export function discardEdit(state: RegisteredState): void {
@@ -491,9 +511,25 @@ function applyAffected(items: Array<{ slideNo: number, dragId: string, state: El
   }
 }
 
+// Undo / redo of an edit on another slide takes a second press: the first only says where the
+// edit is, so ⌘Z never jumps to another slide unannounced.
+let armed: { eventId: number, until: number } | null = null
+
+function confirmOtherSlide(target: Event, action: 'undo' | 'redo'): boolean {
+  const { currentSlideNo } = useNav()
+  if (target.slideNo === currentSlideNo.value || (armed?.eventId === target.id && Date.now() < armed.until)) {
+    armed = null
+    return true
+  }
+  armed = { eventId: target.id, until: Date.now() + 4000 }
+  showNotice(`The ${action === 'undo' ? 'latest' : 'next'} edit to ${action} is on slide ${target.slideNo} (${describeEntry(target)}). ${action === 'undo' ? '⌘Z' : '⇧⌘Z'} again to go there and ${action} it.`)
+  return false
+}
+
 export async function undo(): Promise<void> {
+  await flushPendingEdits()
   const target = topActiveEvent.value
-  if (!target)
+  if (!target || !confirmOtherSlide(target, 'undo'))
     return
   await ensureSlide(target.slideNo)
   const client = await getStateClient()
@@ -515,8 +551,9 @@ export async function undo(): Promise<void> {
 }
 
 export async function redo(): Promise<void> {
+  await flushPendingEdits()
   const target = topRedoableEvent.value
-  if (!target)
+  if (!target || !confirmOtherSlide(target, 'redo'))
     return
   await ensureSlide(target.slideNo)
   const client = await getStateClient()

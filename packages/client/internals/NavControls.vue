@@ -59,13 +59,15 @@ const redoTitle = computed(() => historyCanRedo.value
   ? `Redo ${describeEntry(topRedoEntry.value)} (⇧⌘Z)`
   : 'Nothing to redo')
 
+// History events since the last YAML commit. Positions live in `.slidev/state.db` until committed
+// (text and column edits write the slide's markdown directly, but count here too).
+const pendingCount = computed(() => Math.max(0, (topActiveEventId.value ?? 0) - (lastYamlCommitEventId.value ?? 0)))
+
 const commitTitle = computed(() => {
   if (!historyIsDirty.value)
     return `slides.coords.yaml is up to date${lastYamlCommitEventId.value ? ` (event ${lastYamlCommitEventId.value})` : ''}`
-  const top = topActiveEventId.value ?? 0
-  const last = lastYamlCommitEventId.value ?? 0
-  const n = Math.max(0, top - last)
-  return `Commit ${n} pending edit${n === 1 ? '' : 's'} to slides.coords.yaml`
+  const n = pendingCount.value
+  return `${n} edit${n === 1 ? '' : 's'} not yet in slides.coords.yaml: click to commit (positions are kept in .slidev/state.db until then)`
 })
 
 async function onCommitClick() {
@@ -137,8 +139,10 @@ if (__SLIDEV_FEATURE_RECORD__)
           <div class="i-carbon:save" />
           <div
             v-if="historyIsDirty"
-            class="absolute top-0.5 right-0.5 w-1.5 h-1.5 rounded-full bg-orange-500"
-          />
+            class="absolute top-0 right-0 min-w-3.5 h-3.5 px-0.5 rounded-full bg-orange-500 text-white text-[9px] leading-3.5 font-bold text-center"
+          >
+            {{ pendingCount > 99 ? '99+' : pendingCount }}
+          </div>
         </IconButton>
         <IconButton
           v-if="__DEV__ && __SLIDEV_FEATURE_EDITOR__"

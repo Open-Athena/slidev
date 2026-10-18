@@ -286,6 +286,11 @@ export function useDragElement(directive: DirectiveBinding | null, posRaw?: stri
         // layout origin absorbs the shift, so the element doesn't move.
         baseStyle.marginLeft = 0
         baseStyle.marginRight = 0
+        // An image with a percentage max-width contributes nothing to its grid track's min-content
+        // width, so enlarging it can't widen its column at a neighbor's expense. Resizes are
+        // clamped to the slot (`flowSlotWidth`), so this only bites for sizes stored before that.
+        if (container.value?.tagName === 'IMG')
+          baseStyle.maxWidth = '100%'
       }
     }
     else if (flowRequested) {
@@ -434,6 +439,19 @@ export function useDragElement(directive: DirectiveBinding | null, posRaw?: stri
     watchStopHandles,
     activeSnapLines,
     positioned: computed((): boolean => Number.isFinite(x0.value)),
+    /**
+     * Flow layout: the content width (slide px) of the slot the element sits in, which resizes
+     * clamp to so an enlarged element doesn't widen its grid column / squeeze its neighbors.
+     * `Infinity` when not in flow layout, rotated, or the slot has no block width.
+     */
+    flowSlotWidth(): number {
+      const parent = container.value?.parentElement
+      if (!flowLayout.value || rotate.value % 360 !== 0 || !parent)
+        return Number.POSITIVE_INFINITY
+      const style = getComputedStyle(parent)
+      const content = parent.clientWidth - Number.parseFloat(style.paddingLeft) - Number.parseFloat(style.paddingRight)
+      return content > 0 ? content / zoom.value : Number.POSITIVE_INFINITY
+    },
     dragging: computed((): boolean => isSelected(state)),
     // Snap alignment: compute snapped position and update guide lines
     // x/y are proposed x0/y0 (full element center); snap uses visible (cropped) bounds
@@ -623,6 +641,20 @@ export function useDragElement(directive: DirectiveBinding | null, posRaw?: stri
         y0.value = box.top + box.height / 2
         width.value = box.width
         height.value = box.height
+      }
+      else {
+        // A flow image stored wider than its slot (sized before resizes were clamped) renders
+        // capped at the slot (`max-width: 100%`); fit the stored size to it, keeping its left
+        // edge and aspect ratio, so the selection matches what's shown.
+        const slot = state.flowSlotWidth()
+        if (container.value?.tagName === 'IMG' && width.value > slot + 0.5) {
+          state.saveSnapshot('resize')
+          const k = slot / width.value
+          x0.value -= (width.value - slot) / 2
+          y0.value -= height.value * (1 - k) / 2
+          width.value = slot
+          height.value *= k
+        }
       }
       selectElement(state)
     },

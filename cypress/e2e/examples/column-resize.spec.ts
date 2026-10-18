@@ -1,4 +1,4 @@
-export {}
+import { expectEventually } from '../../poll'
 
 const BASE = 'http://localhost:3041'
 const LAYOUT_SLIDE = 26
@@ -20,12 +20,16 @@ context('column resizing', () => {
   }
 
   // Saving is async (fetch + POST + history event); poll until it lands.
-  function expectSlide(no: number, check: (s: SlideJson) => void) {
-    cy.wrap(null).should(() => {
-      return fetch(`${BASE}/__slidev/slides/${no}.json`)
-        .then(r => r.json())
-        .then(check)
-    })
+  function expectCols(expected: string | undefined) {
+    expectEventually(`${BASE}/__slidev/slides/${LAYOUT_SLIDE}.json`, (s: SlideJson) => s.frontmatter.cols, expected)
+  }
+  function expectHtml(expected: string) {
+    expectEventually(`${BASE}/__slidev/slides/${HTML_SLIDE}.json`, (s: SlideJson) => s.content, expected)
+  }
+
+  // Slide 27's source after its first column is widened by 20% (`1fr 1fr` → `1.5fr 1fr`).
+  function resized(): string {
+    return originalHtml.replace('style="grid-template-columns: 1fr 1fr"', 'style="grid-template-columns: 1.5fr 1fr"')
   }
 
   function visit(no: number, editing = true) {
@@ -83,7 +87,7 @@ context('column resizing', () => {
   it('dragging a layout\'s divider saves `cols` frontmatter, which re-renders the split', () => {
     visit(LAYOUT_SLIDE)
     dragBoundary('.two-columns', 0.2)
-    expectSlide(LAYOUT_SLIDE, s => expect(s.frontmatter.cols).to.eq('60/40'))
+    expectCols('60/40')
     cy.get('.two-columns').should(($g) => {
       const [a, b] = getComputedStyle($g[0]).gridTemplateColumns.split(' ').map(Number.parseFloat)
       expect(Math.round(a / (a + b) * 100)).to.eq(60)
@@ -94,22 +98,19 @@ context('column resizing', () => {
     visit(LAYOUT_SLIDE)
     // ½ → 0.34 of the width (34/66 unsnapped): within the snap distance of ⅓, and of no other ratio.
     dragBoundary('.two-columns', -0.32, false)
-    expectSlide(LAYOUT_SLIDE, s => expect(s.frontmatter.cols).to.eq('33/67'))
+    expectCols('33/67')
   })
 
   it('dragging an HTML grid\'s gap rewrites its inline style', () => {
     visit(HTML_SLIDE)
     dragBoundary('[data-slidev-html].grid', 0.2)
-    expectSlide(HTML_SLIDE, s => expect(s.content).to.eq(originalHtml.replace(
-      'style="grid-template-columns: 1fr 1fr"',
-      'style="grid-template-columns: 1.5fr 1fr"',
-    )))
+    expectHtml(resized())
   })
 
   it('double-clicking the handle resets the split', () => {
     visit(LAYOUT_SLIDE)
     dragBoundary('.two-columns', 0.2)
-    expectSlide(LAYOUT_SLIDE, s => expect(s.frontmatter.cols).to.eq('60/40'))
+    expectCols('60/40')
     cy.get('.two-columns').should(($g) => {
       const [a, b] = getComputedStyle($g[0]).gridTemplateColumns.split(' ').map(Number.parseFloat)
       expect(Math.round(a / (a + b) * 100)).to.eq(60)
@@ -129,14 +130,14 @@ context('column resizing', () => {
         .trigger('pointerup', { pointerId: 1, clientX: x, clientY: y })
       cy.get('.slidev-cols-handle').should('be.visible').dblclick()
     })
-    expectSlide(LAYOUT_SLIDE, s => expect(s.frontmatter.cols).to.eq(undefined))
+    expectCols(undefined)
   })
 
   it('⌘Z undoes a resize, restoring the source exactly', () => {
     visit(HTML_SLIDE)
     dragBoundary('[data-slidev-html].grid', 0.2)
-    expectSlide(HTML_SLIDE, s => expect(s.content).to.not.eq(originalHtml))
+    expectHtml(resized())
     cy.get('body').type('{cmd}z')
-    expectSlide(HTML_SLIDE, s => expect(s.content).to.eq(originalHtml))
+    expectHtml(originalHtml)
   })
 })

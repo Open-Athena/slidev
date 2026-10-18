@@ -1,4 +1,4 @@
-export {}
+import { expectEventually } from '../../poll'
 
 const BASE = 'http://localhost:3041'
 const SLIDE = 25
@@ -13,13 +13,9 @@ context('text editing', () => {
       .then(({ body }) => (typeof body === 'string' ? JSON.parse(body) : body).content as string)
   }
 
+  // Saving is async (fetch + POST + history event); poll until it lands.
   function expectSource(expected: string) {
-    // Saving is async (fetch + POST + history event); poll until it lands.
-    cy.wrap(null).should(() => {
-      return fetch(`${BASE}/__slidev/slides/${SLIDE}.json`)
-        .then(r => r.json())
-        .then(({ content }) => expect(content).to.eq(expected))
-    })
+    expectEventually(`${BASE}/__slidev/slides/${SLIDE}.json`, (s: { content: string }) => s.content, expected)
   }
 
   function visit(editing = true) {
@@ -57,7 +53,7 @@ context('text editing', () => {
     visit()
     startEditing('li', 'first item')
     cy.focused().should('have.attr', 'contenteditable', 'true').type('{moveToEnd} edited{enter}')
-    source().then(() => expectSource(original.replace('- first item\n', '- first item edited\n')))
+    expectSource(original.replace('- first item\n', '- first item edited\n'))
     cy.contains('li', 'first item edited').should('not.have.attr', 'contenteditable')
   })
 

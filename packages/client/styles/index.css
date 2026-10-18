@@ -273,3 +273,20 @@ html {
 .slidev-cols-label:empty {
   display: none;
 }
+
+/* Transient notice (`composables/notice.ts`). */
+.slidev-notice {
+  position: fixed;
+  left: 50%;
+  bottom: 64px;
+  z-index: 1000;
+  transform: translateX(-50%);
+  max-width: min(640px, calc(100vw - 32px));
+  padding: 8px 14px;
+  border-radius: 8px;
+  background: rgb(17 24 39 / 0.92);
+  color: white;
+  font: 13px/1.4 system-ui, sans-serif;
+  box-shadow: 0 4px 14px rgb(0 0 0 / 0.25);
+  pointer-events: none;
+}
