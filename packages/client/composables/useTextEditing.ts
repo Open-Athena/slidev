@@ -37,7 +37,15 @@ interface Session {
 let session: Session | null = null
 
 function findTarget(ev: MouseEvent): Target | null {
-  const target = ev.target as HTMLElement | null
+  let target = ev.target as HTMLElement | null
+  // Between blocks (e.g. the gap between list items) the target is the container, but the browser
+  // still selects the nearest word; edit the block holding that word.
+  if (target && !target.closest(`[${MD_ATTR}]`)) {
+    const caret = document.caretRangeFromPoint?.(ev.clientX, ev.clientY)?.startContainer
+    const caretEl = caret?.nodeType === Node.TEXT_NODE ? caret.parentElement : caret as HTMLElement | undefined
+    if (caretEl && target.contains(caretEl))
+      target = caretEl
+  }
   const el = target?.closest<HTMLElement>(`[${MD_ATTR}]`)
   if (!el || !el.closest('#slide-content'))
     return null

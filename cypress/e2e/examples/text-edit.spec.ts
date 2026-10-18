@@ -61,6 +61,18 @@ context('text editing', () => {
     cy.contains('li', 'first item edited').should('not.have.attr', 'contenteditable')
   })
 
+  it('a double-click between blocks edits the block whose word the browser selects', () => {
+    visit()
+    // Dispatch on the list itself (as a click in the gap between items lands), at the first item's text.
+    cy.contains('li', 'first item').then(($li) => {
+      const li = $li[0].getBoundingClientRect()
+      const ul = $li[0].parentElement!.getBoundingClientRect()
+      cy.wrap($li[0].parentElement!).dblclick(li.left - ul.left + 8, li.top - ul.top + li.height / 2, { force: true })
+    })
+    cy.focused().should('have.attr', 'contenteditable', 'true')
+    cy.focused().should('have.text', 'first item').type('{esc}')
+  })
+
   it('keeps inline formatting when editing rich text', () => {
     visit()
     startEditing('p', 'text to edit')
