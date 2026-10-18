@@ -26,15 +26,24 @@ export type {
 // kinds — restore/hydrate are internal-only and produced by the client backends, never
 // pushed by UI code. Keeps our public API expressive while letting the IStateClient layer
 // handle every kind uniformly.
-export type EditKind = 'move' | 'resize' | 'rotate' | 'crop' | 'zorder' | 'delete' | 'text'
+export type EditKind = 'move' | 'resize' | 'rotate' | 'crop' | 'zorder' | 'delete' | 'text' | 'cols'
 
 // Source-line splice context carried on `delete` events so undo can re-insert what the
 // delete removed (and redo can re-remove it). Mirrors `DeleteSourceContext` in state-client.
 export interface DeleteSource {
   lineRange: [number, number]
   lines: string[]
-  /** `text` events: the lines after the edit; `lines` holds the lines before it. */
+  /** `text` / `cols` events: the lines after the edit; `lines` holds the lines before it. */
   after?: string[]
+  /** `cols` on a theme layout: the frontmatter value changed (`lineRange` / `lines` are then empty). */
+  frontmatter?: FrontmatterChange
+}
+
+export interface FrontmatterChange {
+  key: string
+  /** `null`: the key was absent. */
+  before: unknown
+  after: unknown
 }
 
 export interface RegisteredState {
@@ -311,7 +320,7 @@ async function applyDeleteSplice(slideNo: number, source: DeleteSource, mode: 'i
 
 // In-app text edit: the slide source has already been patched; record the before / after lines
 // so undo / redo can swap them (matched by content, since line numbers drift).
-export async function pushTextEdit(slideNo: number, source: Required<DeleteSource>): Promise<void> {
+export async function pushTextEdit(slideNo: number, source: Required<Omit<DeleteSource, 'frontmatter'>>): Promise<void> {
   await postEdit(slideNo, 'text', [], source)
 }
 
@@ -333,6 +342,30 @@ async function applyTextSplice(slideNo: number, source: DeleteSource, direction:
   })
   if (!post.ok)
     throw new Error(`Failed to patch slide ${slideNo} (${post.status})`)
+}
+
+// Column resize: the slide's markdown (an HTML grid's inline style) or frontmatter (`cols`, for
+// a theme layout) has already been patched; record the change so undo / redo can swap it back.
+export async function pushColsEdit(slideNo: number, source: DeleteSource): Promise<void> {
+  await postEdit(slideNo, 'cols', [], source)
+}
+
+async function applyFrontmatterChange(slideNo: number, change: FrontmatterChange, direction: 'undo' | 'redo'): Promise<void> {
+  const value = direction === 'undo' ? change.before : change.after
+  const post = await fetch(`/__slidev/slides/${slideNo}.json`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+    body: JSON.stringify({ frontmatter: { [change.key]: value ?? null }, skipHmr: false }),
+  })
+  if (!post.ok)
+    throw new Error(`Failed to patch slide ${slideNo} (${post.status})`)
+}
+
+async function applySourceChange(slideNo: number, source: DeleteSource, direction: 'undo' | 'redo'): Promise<void> {
+  if (source.frontmatter)
+    await applyFrontmatterChange(slideNo, source.frontmatter, direction)
+  else
+    await applyTextSplice(slideNo, source, direction)
 }
 
 export async function pushGroupEdit(slideNo: number, kind: EditKind, items: Array<{ dragId: string, before: ElementSnapshot, after: ElementSnapshot }>): Promise<void> {
@@ -474,8 +507,8 @@ export async function undo(): Promise<void> {
   // the restored snapshot from `historyInitialState`.
   if (result.event.kind === 'delete' && result.event.source)
     await applyDeleteSplice(result.event.slideNo, result.event.source, 'insert')
-  if (result.event.kind === 'text' && result.event.source)
-    await applyTextSplice(result.event.slideNo, result.event.source, 'undo')
+  if ((result.event.kind === 'text' || result.event.kind === 'cols') && result.event.source)
+    await applySourceChange(result.event.slideNo, result.event.source, 'undo')
   topActiveEventId.value = result.topActiveEventId
   await fetchTopEvents()
   bumpEventStream()
@@ -495,8 +528,8 @@ export async function redo(): Promise<void> {
   // dropped `element_state`; we just need the source to match.
   if (result.event.kind === 'delete' && result.event.source)
     await applyDeleteSplice(result.event.slideNo, result.event.source, 'remove')
-  if (result.event.kind === 'text' && result.event.source)
-    await applyTextSplice(result.event.slideNo, result.event.source, 'redo')
+  if ((result.event.kind === 'text' || result.event.kind === 'cols') && result.event.source)
+    await applySourceChange(result.event.slideNo, result.event.source, 'redo')
   topActiveEventId.value = result.topActiveEventId
   await fetchTopEvents()
   bumpEventStream()
@@ -613,6 +646,7 @@ const KIND_LABEL: Record<string, string> = {
   zorder: 'z-order change',
   delete: 'delete',
   text: 'text edit',
+  cols: 'column resize',
   hydrate: 'hydrate',
   restore: 'restore',
 }
@@ -621,6 +655,8 @@ export function describeEntry(entry: Event | null): string {
   if (!entry)
     return ''
   const what = KIND_LABEL[entry.kind] ?? entry.kind
+  if (entry.kind === 'cols')
+    return `${what} on slide ${entry.slideNo}`
   const target = entry.kind === 'text'
     ? `lines ${entry.source?.lineRange.map(n => n + 1).join('–') ?? '?'}`
     : entry.items.length === 1

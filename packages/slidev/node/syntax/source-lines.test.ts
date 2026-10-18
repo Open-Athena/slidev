@@ -71,3 +71,29 @@ it('tags the paragraph (and its item) in loose lists', async () => {
     '</ul>',
   ])
 })
+
+it('tags block-level HTML tags with their source line and index on that line', async () => {
+  const src = [
+    'Intro',
+    '',
+    '<div class="grid" style="grid-template-columns: 1fr 2fr">',
+    '<!-- <div> in a comment -->',
+    '<div><section>',
+    '',
+    'Markdown in a cell',
+    '',
+    '</section></div>',
+    '<span>inline</span>',
+    '</div>',
+  ].join('\n')
+  expect((await render(src)).trim().split('\n')).toEqual([
+    '<p data-slidev-md="0,1">Intro</p>',
+    '<div data-slidev-html="2:0" class="grid" style="grid-template-columns: 1fr 2fr">',
+    '<!-- <div> in a comment -->',
+    '<div data-slidev-html="4:0"><section data-slidev-html="4:1">',
+    '<p data-slidev-md="6,7">Markdown in a cell</p>',
+    '</section></div>',
+    '<span>inline</span>',
+    '</div>',
+  ])
+})

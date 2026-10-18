@@ -10,10 +10,45 @@ import { SourceMapConsumer } from 'source-map-js'
 export const SOURCE_LINES_ATTR = 'data-slidev-md'
 /** On table cells: the cell's index within its row (whose line is in `SOURCE_LINES_ATTR`). */
 export const SOURCE_CELL_ATTR = 'data-slidev-md-cell'
+/**
+ * On block-level HTML tags written in the slide's markdown: `<line>:<k>`, the tag being the k-th
+ * such tag starting on that source line. Column resizing uses it to rewrite a grid's inline style.
+ */
+export const SOURCE_HTML_ATTR = 'data-slidev-html'
+
+/** Mirrors `OPEN_TAG_RE` in `client/composables/grid-cols.ts`; comments are matched to skip them. */
+const HTML_TAG_RE = /<!--[\s\S]*?-->|<(div|section|article|aside|figure|main|header|footer|nav|ul|ol)(?=[\s>/])/gi
+
+/** Tag each block-level opening tag in an HTML block with its source position. */
+export function tagHtmlBlock(content: string, lineOf: (offsetLine: number) => number): string {
+  let out = ''
+  let last = 0
+  let offsetLine = 0
+  let scanned = 0
+  let line = -1
+  let k = 0
+  for (const m of content.matchAll(HTML_TAG_RE)) {
+    if (!m[1])
+      continue
+    for (; scanned < m.index; scanned++) {
+      if (content[scanned] === '\n')
+        offsetLine++
+    }
+    const l = lineOf(offsetLine)
+    if (l < 0)
+      continue
+    k = l === line ? k + 1 : 0
+    line = l
+    const at = m.index + m[0].length
+    out += `${content.slice(last, at)} ${SOURCE_HTML_ATTR}="${l}:${k}"`
+    last = at
+  }
+  return out + content.slice(last)
+}
 
 /**
  * Tag editable text blocks (headings, paragraphs, list items, table cells) with their source
- * lines. Only enabled in dev with the editor feature on; builds render unchanged.
+ * lines, and block-level HTML tags with their source position. Only enabled in dev with the editor feature on; builds render unchanged.
  */
 export default function MarkdownItSourceLines(md: MarkdownExit, markdownTransformMap: Map<string, MagicString>) {
   const sourceMapConsumers = new WeakMap<MagicString, SourceMapConsumer>()
@@ -72,6 +107,12 @@ export default function MarkdownItSourceLines(md: MarkdownExit, markdownTransfor
           }
           break
         }
+        case 'html_block':
+          if (token.map) {
+            const start = token.map[0]
+            token.content = tagHtmlBlock(token.content, offsetLine => toOriginal(start + offsetLine))
+          }
+          break
         case 'tr_open':
           rowRange = token.map ? range(token.map) : null
           cellIndex = 0

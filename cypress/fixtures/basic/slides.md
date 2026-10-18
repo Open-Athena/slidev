@@ -391,3 +391,24 @@ Some **bold** text to edit.
 | Key | Value |
 |---|---|
 | a | one |
+
+---
+layout: two-cols
+---
+
+# Page 26
+
+Left column
+
+::right::
+
+Right column
+
+---
+
+# Page 27
+
+<div class="grid gap-4" style="grid-template-columns: 1fr 1fr">
+<div>Left cell</div>
+<div>Right cell</div>
+</div>

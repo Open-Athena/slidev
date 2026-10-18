@@ -5,6 +5,7 @@ import { provideLocal } from '@vueuse/core'
 import { computed, ref, toRef } from 'vue'
 import { SlideBottom, SlideTop } from '#slidev/global-layers'
 import SlideQR from '../builtin/SlideQR.vue'
+import { colsToTemplate } from '../composables/grid-cols'
 import { injectionClicksContext, injectionCurrentPage, injectionFrontmatter, injectionRenderContext, injectionRoute, injectionSlideZoom } from '../constants'
 import { configs } from '../env'
 import { getSlideClass } from '../utils'
@@ -54,9 +55,14 @@ provideLocal(injectionRenderContext, ref(props.renderContext))
 provideLocal(injectionClicksContext, toRef(props, 'clicksContext'))
 provideLocal(injectionSlideZoom, zoom)
 
+// `cols: 40/60` sets the column split of layouts that read `--slidev-cols` (e.g. the theme's
+// `two-cols`: `grid-template-columns: var(--slidev-cols, 1fr 1fr)`). Edit mode resizes it.
+const cols = computed(() => colsToTemplate(props.route.meta?.slide?.frontmatter.cols))
+
 const style = computed<CSSProperties>(() => ({
   'user-select': configs.selectable ? undefined : 'none',
   '--slidev-slide-zoom-scale': zoom.value === 1 ? undefined : zoom.value,
+  '--slidev-cols': cols.value,
 }))
 </script>
 

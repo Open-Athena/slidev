@@ -132,6 +132,21 @@
           "markdownDescription": "Custom zoom level for the slide",
           "default": 1
         },
+        "cols": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "array",
+              "items": {
+                "type": "number"
+              }
+            }
+          ],
+          "description": "Column split for layouts that read `--slidev-cols` (e.g. `40/60`, or `[2, 3]`), as relative widths. Edit mode writes it when you drag a layout's column divider.",
+          "markdownDescription": "Column split for layouts that read `--slidev-cols` (e.g. `40/60`, or `[2, 3]`), as relative\nwidths. Edit mode writes it when you drag a layout's column divider."
+        },
         "clickAnimation": {
           "type": "string",
           "description": "Default click animation for the slide",

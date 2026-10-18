@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { EditEvent } from '../composables/useDragHistory'
 import { computed, ref, watch } from 'vue'
+import { tagGridColumns } from '../composables/grid-cols'
 import {
   eventStreamVersion,
   fetchEvents,
@@ -77,6 +78,7 @@ const KIND_ICON: Record<string, string> = {
   zorder: 'i-carbon:layers',
   delete: 'i-carbon:trash-can',
   text: 'i-carbon:text-font',
+  cols: 'i-carbon:column',
   restore: 'i-carbon:reset',
   hydrate: 'i-carbon:db2-database',
 }
@@ -87,6 +89,12 @@ function summarize(e: EditEvent): string {
     const after = (e.source?.after ?? []).join(' ').trim()
     const short = after.length > 60 ? `${after.slice(0, 57)}…` : after
     return `“${short.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/`/g, '&#96;')}”`
+  }
+  // Column resizes: the new split.
+  if (e.kind === 'cols') {
+    const fm = e.source?.frontmatter
+    const split = fm ? (fm.after == null ? 'default' : String(fm.after)) : tagGridColumns((e.source?.after ?? []).join('\n')) ?? '?'
+    return `columns: ${split.replace(/&/g, '&amp;').replace(/</g, '&lt;')}`
   }
   const items = e.items
   if (items.length === 1)

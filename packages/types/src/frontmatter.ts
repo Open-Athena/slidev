@@ -492,6 +492,11 @@ export interface Frontmatter extends TransitionOptions {
    */
   zoom?: number
   /**
+   * Column split for layouts that read `--slidev-cols` (e.g. `40/60`, or `[2, 3]`), as relative
+   * widths. Edit mode writes it when you drag a layout's column divider.
+   */
+  cols?: string | number[]
+  /**
    * Default click animation for the slide
    */
   clickAnimation?: string

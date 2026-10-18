@@ -16,7 +16,7 @@ export interface ElementSnapshot {
   cropLeft: number
 }
 
-export type EditKind = 'move' | 'resize' | 'rotate' | 'crop' | 'zorder' | 'restore' | 'hydrate' | 'delete' | 'text'
+export type EditKind = 'move' | 'resize' | 'rotate' | 'crop' | 'zorder' | 'restore' | 'hydrate' | 'delete' | 'text' | 'cols'
 
 export interface EditItem {
   dragId: string
@@ -34,8 +34,17 @@ export interface DeleteSourceContext {
   lineRange: [start: number, end: number]
   /** `delete`: the removed lines. `text`: the lines before the edit. */
   lines: string[]
-  /** `text` only: the lines after the edit (what undo swaps back for `lines`). */
+  /** `text` / `cols`: the lines after the edit (what undo swaps back for `lines`). */
   after?: string[]
+  /** `cols` on a theme layout: the frontmatter value changed (`lineRange` / `lines` are then empty). */
+  frontmatter?: FrontmatterChange
+}
+
+export interface FrontmatterChange {
+  key: string
+  /** `null`: the key was absent. */
+  before: unknown
+  after: unknown
 }
 
 export interface EditEvent {
