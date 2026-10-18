@@ -59,6 +59,7 @@ export function getDefaultConfig(): SlidevConfig {
     magicMoveDuration: 800,
     shiki: {},
     preloadImages: true,
+    draggableImages: false,
     clickAnimation: '',
     publish: {},
   }

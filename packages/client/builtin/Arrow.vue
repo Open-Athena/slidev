@@ -23,7 +23,7 @@ defineProps<{
   twoWay?: boolean
 }>()
 
-const emit = defineEmits(['dblclick', 'clickOutside'])
+const emit = defineEmits(['click', 'clickOutside'])
 
 const id = makeId()
 
@@ -46,10 +46,10 @@ onClickOutside(clickArea, () => emit('clickOutside'))
   >
     <defs>
       <marker :id="id" markerWidth="10" refX="9" v-bind="markerAttrs">
-        <polygon points="0 0, 10 3.5, 0 7" :fill="color || 'currentColor'" @dblclick="emit('dblclick')" />
+        <polygon points="0 0, 10 3.5, 0 7" :fill="color || 'currentColor'" @click="emit('click')" />
       </marker>
       <marker v-if="twoWay" :id="`${id}-rev`" markerWidth="20" refX="11" v-bind="markerAttrs">
-        <polygon points="20 0, 10 3.5, 20 7" :fill="color || 'currentColor'" @dblclick="emit('dblclick')" />
+        <polygon points="20 0, 10 3.5, 20 7" :fill="color || 'currentColor'" @click="emit('click')" />
       </marker>
     </defs>
     <line
@@ -58,7 +58,7 @@ onClickOutside(clickArea, () => emit('clickOutside'))
       :stroke-width="width || 2"
       :marker-end="`url(#${id})`"
       :marker-start="twoWay ? `url(#${id}-rev)` : 'none'"
-      @dblclick="emit('dblclick')"
+      @click="emit('click')"
     />
     <line
       ref="clickArea"
@@ -66,7 +66,7 @@ onClickOutside(clickArea, () => emit('clickOutside'))
       stroke="transparent"
       stroke-linecap="round"
       :stroke-width="20"
-      @dblclick="emit('dblclick')"
+      @click="emit('click')"
     />
   </svg>
 </template>

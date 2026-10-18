@@ -6,6 +6,7 @@ import { showInfoDialog, showRecordingDialog } from '../state'
 import ContextMenu from './ContextMenu.vue'
 import Goto from './Goto.vue'
 import InfoDialog from './InfoDialog.vue'
+import InsertImageDialog from './InsertImageDialog.vue'
 import QuickOverview from './QuickOverview.vue'
 
 const { isEmbedded } = useNav()
@@ -26,6 +27,7 @@ if (__SLIDEV_FEATURE_RECORD__) {
   <DrawingControls v-if="DrawingControls" />
   <QuickOverview />
   <Goto />
+  <InsertImageDialog />
   <WebCamera v-if="WebCamera" />
   <RecordingDialog v-if="RecordingDialog" v-model="showRecordingDialog" />
   <InfoDialog v-if="configs.info" v-model="showInfoDialog" />

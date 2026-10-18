@@ -4,12 +4,14 @@ import { recomputeAllPoppers } from 'floating-vue'
 import { computed, shallowRef, TransitionGroup, watchEffect } from 'vue'
 import { GlobalBottom, GlobalTop } from '#slidev/global-layers'
 import { createFixedClicks } from '../composables/useClicks'
+import { getSingleSelected, hasMultipleSelected } from '../composables/useMultiSelect'
 import { useNav } from '../composables/useNav'
 import { usePreloadImages } from '../composables/usePreloadImages'
 import { useViewTransition } from '../composables/useViewTransition'
 import { CLICKS_MAX } from '../constants'
-import { activeDragElement, disableTransition, hmrSkipTransition } from '../state'
+import { disableTransition, hmrSkipTransition } from '../state'
 import DragControl from './DragControl.vue'
+import GroupDragControl from './GroupDragControl.vue'
 import SlideWrapper from './SlideWrapper.vue'
 
 defineProps<{
@@ -99,7 +101,8 @@ function onAfterLeave() {
     </template>
   </component>
 
-  <DragControl v-if="activeDragElement" :data="activeDragElement" />
+  <DragControl v-if="getSingleSelected" :data="getSingleSelected" />
+  <GroupDragControl v-else-if="hasMultipleSelected" />
 
   <!-- Global Top -->
   <GlobalTop />

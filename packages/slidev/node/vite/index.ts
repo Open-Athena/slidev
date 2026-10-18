@@ -1,5 +1,6 @@
 import type { ResolvedSlidevOptions, SlidevPluginOptions, SlidevServerOptions } from '@slidev/types'
 import type { PluginOption } from 'vite'
+import process from 'node:process'
 import setupVitePlugins from '../setups/vite-plugins'
 import { createVueCompilerFlagsPlugin } from './compilerFlagsVue'
 import { createComponentsPlugin } from './components'
@@ -19,8 +20,10 @@ import { createPatchMonacoSourceMapPlugin } from './patchMonacoSourceMap'
 import { createPWAPlugin } from './pwa'
 import { createRemoteAssetsPlugin } from './remoteAssets'
 import { createServerRefPlugin } from './serverRef'
+import { createStatePlugin } from './state'
 import { createStaticCopyPlugin } from './staticCopy'
 import { createUnocssPlugin } from './unocss'
+import { createUploadPlugin } from './upload'
 import { createVuePlugin } from './vue'
 
 export function ViteSlidevPlugin(
@@ -28,8 +31,15 @@ export function ViteSlidevPlugin(
   pluginOptions: SlidevPluginOptions = {},
   serverOptions: SlidevServerOptions = {},
 ): Promise<PluginOption[]> {
+  // Simulate the static-deploy environment while keeping HMR / live source watching.
+  // Skips the dev-only middleware (SQLite-backed state + image upload) so the client's
+  // `/__slidev/state` probe falls through, and it picks `LocalStateClient` exactly as
+  // it would on a true static build. Used by `pnpm -C demo/starter static:dev` to A/B
+  // the local-vs-remote state-client paths on port 3283 with HMR.
+  const devStatic = process.env.SLIDEV_DEV_STATIC === '1'
   return Promise.all([
     createSlidesLoader(options, serverOptions),
+    ...(devStatic ? [] : [createUploadPlugin(options), createStatePlugin(options)]),
     createMcpPlugin(options),
     createMarkdownPlugin(options, pluginOptions),
     createLayoutWrapperPlugin(options),

@@ -1,0 +1,677 @@
+<script setup lang="ts">
+import type { DragElementState } from '../composables/useDragElements'
+import { useIntervalFn } from '@vueuse/core'
+import { computed, inject, ref, watchEffect } from 'vue'
+import { findSnap, getSnapTargets } from '../composables/useDragElements'
+import { pushGroupEdit } from '../composables/useDragHistory'
+import { computeElementOffsets, computeGroupBounds } from '../composables/useGroupBounds'
+import { clearSelection, getSelectedElements, selectionCount } from '../composables/useMultiSelect'
+import { useSlideBounds } from '../composables/useSlideBounds'
+import { injectionSlideScale } from '../constants'
+import { slideHeight, slideWidth } from '../env'
+import { magicKeys } from '../state'
+
+function captureSnap(el: DragElementState) {
+  return {
+    x0: el.x0.value,
+    y0: el.y0.value,
+    width: el.width.value,
+    height: el.height.value,
+    rotate: el.rotate.value,
+    zIndex: el.zIndex.value,
+    cropTop: el.cropTop.value,
+    cropRight: el.cropRight.value,
+    cropBottom: el.cropBottom.value,
+    cropLeft: el.cropLeft.value,
+  }
+}
+
+function captureGroupBefore(states: DragElementState[]) {
+  return states.map(el => ({ dragId: el.dragId, before: captureSnap(el) }))
+}
+
+// Capture both before+after at pointerup time, then push as one atomic group event so a
+// single Cmd+Z reverts the whole gesture.
+function flushGroupEdit(
+  kind: 'move' | 'rotate' | 'resize',
+  slideNo: number,
+  before: ReturnType<typeof captureGroupBefore>,
+  states: DragElementState[],
+) {
+  const items = before.map((it) => {
+    const el = states.find(s => s.dragId === it.dragId)
+    return el ? { dragId: it.dragId, before: it.before, after: captureSnap(el) } : null
+  }).filter(Boolean) as Array<{ dragId: string, before: ReturnType<typeof captureSnap>, after: ReturnType<typeof captureSnap> }>
+  if (items.length > 0)
+    void pushGroupEdit(slideNo, kind, items)
+}
+
+// Reactive props computed from selection
+const selectedElements = computed(() => Array.from(getSelectedElements()))
+const count = selectionCount
+const zoom = computed(() => selectedElements.value[0]?.zoom.value ?? 1)
+
+// Compute group bounds reactively
+const bounds = computed(() => computeGroupBounds(selectedElements.value))
+
+const slideScale = inject(injectionSlideScale, ref(1))
+const scale = computed(() => slideScale.value * zoom.value)
+const { left: slideLeft, top: slideTop } = useSlideBounds()
+
+const ctrlSize = 10
+const minRemain = 10
+
+// Snap-line guides during corner resize. The body-drag handler in `v-drag.ts` writes
+// snap lines onto the clicked element's `activeSnapLines`; corner resize lives here in
+// GroupDragControl and writes onto this local ref. The merged `activeSnapLines` computed
+// (below) renders both.
+const groupResizeSnapLines = ref<{ x: number[], y: number[] }>({ x: [], y: [] })
+
+// Aggregate snap-line guides from the local resize ref plus each selected element's own
+// lines (set by the v-drag directive during a multi-select body drag — that element's
+// `DragControl` isn't mounted while multi-selected, so without this aggregation the
+// red snap guides wouldn't render).
+const activeSnapLines = computed(() => {
+  const x = new Set<number>(groupResizeSnapLines.value.x)
+  const y = new Set<number>(groupResizeSnapLines.value.y)
+  for (const el of selectedElements.value) {
+    for (const lx of el.activeSnapLines.value.x) x.add(lx)
+    for (const ly of el.activeSnapLines.value.y) y.add(ly)
+  }
+  return { x: Array.from(x), y: Array.from(y) }
+})
+
+// Rotation state
+const isRotating = ref(false)
+const rotationStartAngle = ref(0)
+const rotationStartMouseAngle = ref(0)
+const currentRotationAngle = ref(0)
+const rotationPivotX = ref(0)
+const rotationPivotY = ref(0)
+
+let currentDrag: {
+  startMouseX: number
+  startMouseY: number
+  groupCenterX: number
+  groupCenterY: number
+  groupBounds: { minX: number, minY: number, maxX: number, maxY: number, width: number, height: number }
+  elementOffsets: Map<DragElementState, { offsetX: number, offsetY: number }>
+  elementSnapshots: Map<DragElementState, {
+    x0: number
+    y0: number
+    width: number
+    height: number
+    rotate: number
+  }>
+  // Captured at gesture start; used to build the (before, after) atomic event at pointerup.
+  pendingGroupBefore: ReturnType<typeof captureGroupBefore>
+  pendingGroupKind: 'move' | 'rotate' | 'resize'
+  pendingSlideNo: number
+} | null = null
+
+function onPointerdown(ev: PointerEvent) {
+  if (ev.buttons !== 1 || !bounds.value)
+    return
+
+  ev.preventDefault()
+  ev.stopPropagation()
+
+  const slideNo = selectedElements.value[0]?.page.value
+  if (slideNo == null)
+    return
+  // Capture before-snapshots now; the actual atomic group event is pushed at pointerup
+  // with both before+after so the server-side event log is self-contained.
+  const pendingGroupBefore = captureGroupBefore(selectedElements.value)
+
+  const elementSnapshots = new Map<DragElementState, { x0: number, y0: number, width: number, height: number, rotate: number }>()
+  for (const el of selectedElements.value) {
+    elementSnapshots.set(el, {
+      x0: el.x0.value,
+      y0: el.y0.value,
+      width: el.width.value,
+      height: el.height.value,
+      rotate: el.rotate.value,
+    })
+  }
+
+  currentDrag = {
+    startMouseX: ev.clientX,
+    startMouseY: ev.clientY,
+    groupCenterX: bounds.value.centerX,
+    groupCenterY: bounds.value.centerY,
+    groupBounds: {
+      minX: bounds.value.minX,
+      minY: bounds.value.minY,
+      maxX: bounds.value.maxX,
+      maxY: bounds.value.maxY,
+      width: bounds.value.width,
+      height: bounds.value.height,
+    },
+    elementOffsets: computeElementOffsets(selectedElements.value, {
+      x: bounds.value.centerX,
+      y: bounds.value.centerY,
+    }),
+    elementSnapshots,
+    pendingGroupBefore,
+    pendingGroupKind: 'move',
+    pendingSlideNo: slideNo,
+  }
+
+  ;(ev.currentTarget as HTMLElement).setPointerCapture(ev.pointerId)
+}
+
+// Snap the dragged corner `(cornerX, cornerY)` of the group's bounding box to alignment
+// targets (slide edges/center + other elements' edges/centers). For free resize, snap each
+// axis independently. With `lockAR`, snap along the diagonal from the anchor through the
+// corner so the AR constraint isn't broken. Returns the snapped corner plus the guide
+// lines to render.
+function applyGroupCornerSnap(
+  cornerX: number,
+  cornerY: number,
+  anchorX: number,
+  anchorY: number,
+  lockAR: boolean,
+  excludeIds: Set<string>,
+  pageNum: number,
+): { x: number, y: number, linesX: number[], linesY: number[] } {
+  const targets = getSnapTargets(pageNum, excludeIds)
+  if (!lockAR) {
+    const sX = findSnap(cornerX, 0, targets.x)
+    const sY = findSnap(cornerY, 0, targets.y)
+    return { x: sX.value, y: sY.value, linesX: sX.lines, linesY: sY.lines }
+  }
+  // AR-locked: snap projects guide-aligned positions onto the AR-preserving diagonal.
+  const dx = cornerX - anchorX
+  const dy = cornerY - anchorY
+  if (Math.abs(dx) < 0.001 && Math.abs(dy) < 0.001)
+    return { x: cornerX, y: cornerY, linesX: [], linesY: [] }
+  const sX = findSnap(cornerX, 0, targets.x)
+  let xDist = Infinity
+  let xSnX = cornerX
+  let xSnY = cornerY
+  if (sX.lines.length > 0 && Math.abs(dx) > 0.001) {
+    xSnX = sX.value
+    xSnY = anchorY + (xSnX - anchorX) / dx * dy
+    xDist = Math.abs(sX.value - cornerX)
+  }
+  const sY = findSnap(cornerY, 0, targets.y)
+  let yDist = Infinity
+  let ySnX = cornerX
+  let ySnY = cornerY
+  if (sY.lines.length > 0 && Math.abs(dy) > 0.001) {
+    ySnY = sY.value
+    ySnX = anchorX + (ySnY - anchorY) / dy * dx
+    yDist = Math.abs(sY.value - cornerY)
+  }
+  if (xDist < yDist && xDist < Infinity)
+    return { x: xSnX, y: xSnY, linesX: [xSnX], linesY: [] }
+  if (yDist < Infinity)
+    return { x: ySnX, y: ySnY, linesX: [], linesY: [ySnY] }
+  return { x: cornerX, y: cornerY, linesX: [], linesY: [] }
+}
+
+function onPointermoveResize(ev: PointerEvent, isLeft: boolean, isTop: boolean) {
+  if (!currentDrag || ev.buttons !== 1 || !bounds.value)
+    return
+
+  ev.preventDefault()
+  ev.stopPropagation()
+
+  // Calculate scale factor from mouse movement
+  const mouseX = (ev.clientX - slideLeft.value) / scale.value
+  const mouseY = (ev.clientY - slideTop.value) / scale.value
+
+  // Use stored original bounds (not live bounds that change during resize)
+  const origBounds = currentDrag.groupBounds
+
+  // Determine anchor corner (opposite of dragged corner)
+  const anchorX = isLeft ? origBounds.maxX : origBounds.minX
+  const anchorY = isTop ? origBounds.maxY : origBounds.minY
+
+  // Original dimensions from drag start
+  const origWidth = origBounds.width
+  const origHeight = origBounds.height
+
+  // Calculate new dimensions based on mouse position
+  let newWidth = isLeft ? (anchorX - mouseX) : (mouseX - anchorX)
+  let newHeight = isTop ? (anchorY - mouseY) : (mouseY - anchorY)
+
+  // Enforce minimum size
+  const minSize = 40
+  newWidth = Math.max(newWidth, minSize)
+  newHeight = Math.max(newHeight, minSize)
+
+  // With Shift: preserve aspect ratio (per the deck-wide modifier convention).
+  if (ev.shiftKey) {
+    const origRatio = origWidth / origHeight
+    const newRatio = newWidth / newHeight
+    if (newRatio > origRatio) {
+      newWidth = newHeight * origRatio
+    }
+    else {
+      newHeight = newWidth / origRatio
+    }
+  }
+
+  // Snap the dragged corner unless ⌘ is held (per the modifier convention). For AR-locked
+  // (Shift) resize, snap along the AR-preserving diagonal so we don't break the constraint.
+  if (!ev.metaKey) {
+    const slideNo = selectedElements.value[0]?.page.value
+    if (slideNo != null) {
+      const cornerX = isLeft ? (anchorX - newWidth) : (anchorX + newWidth)
+      const cornerY = isTop ? (anchorY - newHeight) : (anchorY + newHeight)
+      const excludeIds = new Set(selectedElements.value.map(s => s.dragId))
+      const snapped = applyGroupCornerSnap(cornerX, cornerY, anchorX, anchorY, ev.shiftKey, excludeIds, slideNo)
+      groupResizeSnapLines.value = { x: snapped.linesX, y: snapped.linesY }
+      newWidth = Math.max(Math.abs(snapped.x - anchorX), minSize)
+      newHeight = Math.max(Math.abs(snapped.y - anchorY), minSize)
+    }
+  }
+  else {
+    groupResizeSnapLines.value = { x: [], y: [] }
+  }
+
+  // Calculate scale factors
+  const scaleX = newWidth / origWidth
+  const scaleY = newHeight / origHeight
+
+  // New group center (accounting for anchor being fixed)
+  const newCenterX = isLeft ? (anchorX - newWidth / 2) : (anchorX + newWidth / 2)
+  const newCenterY = isTop ? (anchorY - newHeight / 2) : (anchorY + newHeight / 2)
+
+  // Apply transformation to each element
+  for (const el of selectedElements.value) {
+    const snapshot = currentDrag.elementSnapshots.get(el)!
+    const offset = currentDrag.elementOffsets.get(el)!
+
+    // Scale position offset from original group center
+    const newOffsetX = offset.offsetX * scaleX
+    const newOffsetY = offset.offsetY * scaleY
+
+    // New element position
+    el.x0.value = newCenterX + newOffsetX
+    el.y0.value = newCenterY + newOffsetY
+
+    // Scale element dimensions (for non-arrow elements)
+    if (!el.isArrow) {
+      el.width.value = snapshot.width * scaleX
+      el.height.value = snapshot.height * scaleY
+    }
+  }
+}
+
+function onPointerup(ev: PointerEvent) {
+  if (!currentDrag)
+    return
+
+  ev.preventDefault()
+  ev.stopPropagation()
+
+  flushGroupEdit(
+    currentDrag.pendingGroupKind,
+    currentDrag.pendingSlideNo,
+    currentDrag.pendingGroupBefore,
+    selectedElements.value,
+  )
+  // Clear any snap-line guides that the body-drag handler left on individual elements
+  // (the v-drag directive's pointerup only clears the primary element's lines), and the
+  // corner-resize ones we wrote locally.
+  for (const el of selectedElements.value)
+    el.clearSnapLines()
+  groupResizeSnapLines.value = { x: [], y: [] }
+  currentDrag = null
+}
+
+const ctrlClasses = `absolute border border-gray bg-gray dark:border-gray-500 dark:bg-gray-800 bg-opacity-30`
+
+function getCornerProps(isLeft: boolean, isTop: boolean) {
+  return {
+    onPointerdown,
+    onPointermove: (ev: PointerEvent) => onPointermoveResize(ev, isLeft, isTop),
+    onPointerup,
+    style: {
+      width: `${ctrlSize}px`,
+      height: `${ctrlSize}px`,
+      margin: `-${ctrlSize / 2}px`,
+      left: isLeft ? '0' : undefined,
+      right: isLeft ? undefined : '0',
+      top: isTop ? '0' : undefined,
+      bottom: isTop ? undefined : '0',
+      cursor: +isLeft + +isTop === 1 ? 'nesw-resize' : 'nwse-resize',
+      pointerEvents: 'auto' as const,
+    },
+    class: ctrlClasses,
+  }
+}
+
+const rotateHandleSize = 18
+const rotateHandleOffset = 32
+
+function getAngleFromPivot(clientX: number, clientY: number, pivotX: number, pivotY: number): number {
+  const mouseX = (clientX - slideLeft.value) / scale.value
+  const mouseY = (clientY - slideTop.value) / scale.value
+  return Math.atan2(mouseX - pivotX, -(mouseY - pivotY)) * 180 / Math.PI
+}
+
+function getRotateProps() {
+  return {
+    onPointerdown: (ev: PointerEvent) => {
+      if (ev.buttons !== 1 || !bounds.value)
+        return
+      ev.preventDefault()
+      ev.stopPropagation()
+
+      const slideNo = selectedElements.value[0]?.page.value
+      if (slideNo == null)
+        return
+      // Capture before; flush as a single (before, after) atomic event at pointerup.
+      const pendingGroupBefore = captureGroupBefore(selectedElements.value)
+
+      const elementSnapshots = new Map<DragElementState, { x0: number, y0: number, width: number, height: number, rotate: number }>()
+      for (const el of selectedElements.value) {
+        elementSnapshots.set(el, {
+          x0: el.x0.value,
+          y0: el.y0.value,
+          width: el.width.value,
+          height: el.height.value,
+          rotate: el.rotate.value,
+        })
+      }
+
+      rotationPivotX.value = bounds.value.centerX
+      rotationPivotY.value = bounds.value.centerY
+      rotationStartAngle.value = 0 // Group starts at 0 rotation
+      currentRotationAngle.value = 0
+      rotationStartMouseAngle.value = getAngleFromPivot(ev.clientX, ev.clientY, rotationPivotX.value, rotationPivotY.value)
+      isRotating.value = true
+
+      currentDrag = {
+        startMouseX: ev.clientX,
+        startMouseY: ev.clientY,
+        groupCenterX: bounds.value.centerX,
+        groupCenterY: bounds.value.centerY,
+        groupBounds: {
+          minX: bounds.value.minX,
+          minY: bounds.value.minY,
+          maxX: bounds.value.maxX,
+          maxY: bounds.value.maxY,
+          width: bounds.value.width,
+          height: bounds.value.height,
+        },
+        elementOffsets: computeElementOffsets(selectedElements.value, {
+          x: bounds.value.centerX,
+          y: bounds.value.centerY,
+        }),
+        elementSnapshots,
+        pendingGroupBefore,
+        pendingGroupKind: 'rotate',
+        pendingSlideNo: slideNo,
+      }
+
+      ;(ev.currentTarget as HTMLElement).setPointerCapture(ev.pointerId)
+    },
+    onPointermove: (ev: PointerEvent) => {
+      if (!currentDrag || ev.buttons !== 1)
+        return
+
+      ev.preventDefault()
+      ev.stopPropagation()
+
+      const currentMouseAngle = getAngleFromPivot(ev.clientX, ev.clientY, rotationPivotX.value, rotationPivotY.value)
+      let delta = currentMouseAngle - rotationStartMouseAngle.value
+
+      // Snap to 15° with Shift
+      if (ev.shiftKey) {
+        delta = Math.round(delta / 15) * 15
+      }
+
+      currentRotationAngle.value = delta
+
+      // Rotate each element around the group center
+      const rad = delta * Math.PI / 180
+      const cos = Math.cos(rad)
+      const sin = Math.sin(rad)
+
+      for (const el of selectedElements.value) {
+        const snapshot = currentDrag.elementSnapshots.get(el)!
+        const offset = currentDrag.elementOffsets.get(el)!
+
+        // Rotate offset around group center
+        const newOffsetX = offset.offsetX * cos - offset.offsetY * sin
+        const newOffsetY = offset.offsetX * sin + offset.offsetY * cos
+
+        el.x0.value = rotationPivotX.value + newOffsetX
+        el.y0.value = rotationPivotY.value + newOffsetY
+
+        // Add rotation delta to each element's individual rotation
+        el.rotate.value = ((snapshot.rotate + delta) % 360 + 360) % 360
+      }
+    },
+    onPointerup: (ev: PointerEvent) => {
+      if (!currentDrag)
+        return
+      ev.preventDefault()
+      ev.stopPropagation()
+      isRotating.value = false
+      flushGroupEdit(
+        currentDrag.pendingGroupKind,
+        currentDrag.pendingSlideNo,
+        currentDrag.pendingGroupBefore,
+        selectedElements.value,
+      )
+      currentDrag = null
+    },
+    style: {
+      position: 'absolute' as const,
+      width: `${rotateHandleSize}px`,
+      height: `${rotateHandleSize}px`,
+      left: '50%',
+      marginLeft: `-${rotateHandleSize / 2}px`,
+      top: `-${rotateHandleOffset}px`,
+      cursor: 'grab',
+      borderRadius: '50%',
+      pointerEvents: 'auto' as const,
+      background: '#fff',
+      border: '2px solid #4285f4',
+      boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+  }
+}
+
+// Arrow key movement
+const moveInterval = 20
+const intervalFnOptions = {
+  immediate: false,
+  immediateCallback: false,
+}
+
+const moveLeft = useIntervalFn(() => {
+  if (!bounds.value || bounds.value.maxX <= minRemain)
+    return
+  for (const el of selectedElements.value)
+    el.x0.value--
+}, moveInterval, intervalFnOptions)
+
+const moveRight = useIntervalFn(() => {
+  if (!bounds.value || bounds.value.minX >= slideWidth.value - minRemain)
+    return
+  for (const el of selectedElements.value)
+    el.x0.value++
+}, moveInterval, intervalFnOptions)
+
+const moveUp = useIntervalFn(() => {
+  if (!bounds.value || bounds.value.maxY <= minRemain)
+    return
+  for (const el of selectedElements.value)
+    el.y0.value--
+}, moveInterval, intervalFnOptions)
+
+const moveDown = useIntervalFn(() => {
+  if (!bounds.value || bounds.value.minY >= slideHeight.value - minRemain)
+    return
+  for (const el of selectedElements.value)
+    el.y0.value++
+}, moveInterval, intervalFnOptions)
+
+watchEffect(() => {
+  function shortcut(key: string, fn: { resume: () => void, pause: () => void }) {
+    if (magicKeys[key].value)
+      fn.resume()
+    else fn.pause()
+  }
+  shortcut('left', moveLeft)
+  shortcut('right', moveRight)
+  shortcut('up', moveUp)
+  shortcut('down', moveDown)
+})
+
+// Undo/redo are wired globally in `logic/shortcuts.ts` and the toolbar in `NavControls.vue`,
+// against the deck-global stack that batches group edits as one atomic entry.
+
+// Escape to deselect
+watchEffect(() => {
+  if (magicKeys.escape?.value) {
+    clearSelection()
+  }
+})
+</script>
+
+<template>
+  <!-- Snap alignment guides -->
+  <div
+    v-for="lineX in activeSnapLines.x"
+    :key="`snap-x-${lineX}`"
+    class="snap-guide snap-guide-x"
+    :style="{
+      position: 'absolute',
+      left: `${zoom * lineX}px`,
+      top: 0,
+      width: '1px',
+      height: '100%',
+      background: '#f43f5e',
+      pointerEvents: 'none',
+      zIndex: 9999,
+    }"
+  />
+  <div
+    v-for="lineY in activeSnapLines.y"
+    :key="`snap-y-${lineY}`"
+    class="snap-guide snap-guide-y"
+    :style="{
+      position: 'absolute',
+      left: 0,
+      top: `${zoom * lineY}px`,
+      width: '100%',
+      height: '1px',
+      background: '#f43f5e',
+      pointerEvents: 'none',
+      zIndex: 9999,
+    }"
+  />
+
+  <!-- Individual element selection borders -->
+  <div
+    v-for="el in selectedElements"
+    :key="el.dragId"
+    :style="{
+      position: 'absolute',
+      zIndex: el.zIndex.value,
+      left: `${zoom * (el.x0.value - el.width.value / 2)}px`,
+      top: `${zoom * (el.y0.value - el.height.value / 2)}px`,
+      width: `${zoom * el.width.value}px`,
+      height: `${zoom * el.height.value}px`,
+      transformOrigin: 'center center',
+      transform: `rotate(${el.rotate.value}deg)`,
+      border: '2px solid #4285f4',
+      borderRadius: '2px',
+      pointerEvents: 'none',
+    }"
+  />
+
+  <div
+    v-if="bounds"
+    id="group-drag-control-container"
+    :style="{
+      position: 'absolute',
+      zIndex: 9998,
+      left: `${zoom * bounds.minX}px`,
+      top: `${zoom * bounds.minY}px`,
+      width: `${zoom * bounds.width}px`,
+      height: `${zoom * bounds.height}px`,
+      pointerEvents: 'none',
+    }"
+  >
+    <!-- Dashed border around group -->
+    <div
+      class="absolute inset-0"
+      :style="{
+        border: '2px dashed #4285f4',
+        borderRadius: '2px',
+      }"
+    >
+      <!-- Corner handles -->
+      <div v-bind="getCornerProps(true, true)" />
+      <div v-bind="getCornerProps(false, true)" />
+      <div v-bind="getCornerProps(true, false)" />
+      <div v-bind="getCornerProps(false, false)" />
+
+      <!-- Rotation handle -->
+      <div v-bind="getRotateProps()">
+        <svg
+          width="12"
+          height="12"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="#4285f4"
+          stroke-width="2.5"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        >
+          <path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8" />
+          <path d="M21 3v5h-5" />
+        </svg>
+      </div>
+      <!-- Rotation stem -->
+      <div
+        class="absolute w-0"
+        :style="{
+          left: '50%',
+          top: `-${rotateHandleOffset - rotateHandleSize / 2}px`,
+          height: `${rotateHandleOffset - rotateHandleSize / 2}px`,
+          borderLeft: '1px solid #4285f4',
+        }"
+      />
+      <!-- Angle display during rotation -->
+      <div
+        v-if="isRotating"
+        class="absolute text-xs font-medium whitespace-nowrap"
+        :style="{
+          left: '50%',
+          top: `-${rotateHandleOffset + rotateHandleSize + 4}px`,
+          transform: 'translateX(-50%)',
+          color: '#4285f4',
+          pointerEvents: 'none',
+        }"
+      >
+        {{ Math.round(currentRotationAngle) }}°
+      </div>
+    </div>
+
+    <!-- Selection count badge -->
+    <div
+      class="absolute flex items-center gap-1 bg-blue-500 text-white rounded-full px-2 py-0.5 text-xs font-medium"
+      :style="{
+        bottom: '-24px',
+        left: '50%',
+        transform: 'translateX(-50%)',
+        pointerEvents: 'none',
+        whiteSpace: 'nowrap',
+      }"
+    >
+      {{ count }} selected
+    </div>
+  </div>
+</template>

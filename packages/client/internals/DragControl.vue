@@ -1,39 +1,167 @@
 <script setup lang="ts">
+/* eslint-disable vue/no-mutating-props -- Computed setters intentionally wrap parent refs for two-way binding */
 import type { Pausable } from '@vueuse/core'
 import type { DragElementState } from '../composables/useDragElements'
 import { clamp } from '@antfu/utils'
 import { useIntervalFn } from '@vueuse/core'
-import { computed, inject, ref, watchEffect } from 'vue'
+import { computed, inject, onMounted, onUnmounted, ref, watchEffect } from 'vue'
+import { findSnap, getDragElementsForPage, getSnapTargets } from '../composables/useDragElements'
 import { useSlideBounds } from '../composables/useSlideBounds'
 import { injectionSlideScale } from '../constants'
 import { slideHeight, slideWidth } from '../env'
 import { magicKeys } from '../state'
 
-const { data } = defineProps<{ data: DragElementState }>()
-const { dragId, zoom, autoHeight, x0, y0, width, height, rotate, isArrow } = data
+const props = defineProps<{ data: DragElementState }>()
+
+// Use computed to ensure we always access the current data prop's values
+const dragId = computed(() => props.data.dragId)
+const zoom = computed(() => props.data.zoom.value)
+const autoHeight = computed(() => props.data.autoHeight)
+const lockAspectRatio = computed(() => props.data.lockAspectRatio.value)
+const x0 = computed({
+  get: () => props.data.x0.value,
+  set: (v: number) => props.data.x0.value = v,
+})
+const y0 = computed({
+  get: () => props.data.y0.value,
+  set: (v: number) => props.data.y0.value = v,
+})
+const width = computed({
+  get: () => props.data.width.value,
+  set: (v: number) => props.data.width.value = v,
+})
+const height = computed({
+  get: () => props.data.height.value,
+  set: (v: number) => props.data.height.value = v,
+})
+const rotate = computed({
+  get: () => props.data.rotate.value,
+  set: (v: number) => props.data.rotate.value = v,
+})
+const zIndex = computed({
+  get: () => props.data.zIndex.value,
+  set: (v: number) => props.data.zIndex.value = v,
+})
+const isArrow = computed(() => props.data.isArrow)
+const activeSnapLines = computed(() => props.data.activeSnapLines.value)
+
+// Crop mode state
+const isCropping = computed(() => props.data.isCropping.value)
+const cropTop = computed({
+  get: () => props.data.cropTop.value,
+  set: (v: number) => props.data.cropTop.value = v,
+})
+const cropRight = computed({
+  get: () => props.data.cropRight.value,
+  set: (v: number) => props.data.cropRight.value = v,
+})
+const cropBottom = computed({
+  get: () => props.data.cropBottom.value,
+  set: (v: number) => props.data.cropBottom.value = v,
+})
+const cropLeft = computed({
+  get: () => props.data.cropLeft.value,
+  set: (v: number) => props.data.cropLeft.value = v,
+})
+
+// Store initial aspect ratio for reset - captured once when component mounts
+// Note: For images, ideally this would use natural dimensions, but we use initial dimensions
+const initialAspectRatio = width.value / height.value
+
+// Check if aspect ratio has changed from initial (with small tolerance for floating point).
+// Suppressed when the element has an explicit lockAspectRatio (YT / Tweet / BlueSky etc.):
+// the v-drag wrapper auto-corrects width:height to the locked ratio on mount, which can
+// nudge AR away from the dragPos's initial value (e.g. dragPos 300×170 → 300×168.5 once
+// YT's 16:9 locks in). That nudge isn't a user-induced AR break — it's intended
+// snap-to-natural — so "Reset AR" would be both spurious and dangerous (it'd revert
+// to the off-by-a-pixel dragPos and break the embed's layout).
+const hasAspectRatioChanged = computed(() => {
+  if (lockAspectRatio.value != null)
+    return false
+  const currentAR = width.value / height.value
+  return Math.abs(currentAR - initialAspectRatio) > 0.01
+})
+
+// Check if there's any crop applied
+const hasCrop = computed(() => cropTop.value > 0 || cropRight.value > 0 || cropBottom.value > 0 || cropLeft.value > 0)
+
+// Full dimensions (always the original size)
+const fullWidth = computed(() => Math.abs(width.value))
+const fullHeight = computed(() => Math.abs(height.value))
+
+// Cropped dimensions (the visible portion)
+const croppedWidth = computed(() => fullWidth.value * (100 - cropLeft.value - cropRight.value) / 100)
+const croppedHeight = computed(() => fullHeight.value * (100 - cropTop.value - cropBottom.value) / 100)
+
+// Crop offset in LOCAL element coordinates (before rotation)
+const cropOffsetLocalX = computed(() => (cropLeft.value - cropRight.value) / 100 * fullWidth.value / 2)
+const cropOffsetLocalY = computed(() => (cropTop.value - cropBottom.value) / 100 * fullHeight.value / 2)
+
+// Detect if the element has an associated link (wrapping <a> or internal <a>)
+const associatedLink = computed(() => {
+  const el = props.data.container.value
+  if (!el)
+    return null
+
+  // Check if element itself is an anchor
+  if (el.tagName === 'A')
+    return (el as HTMLAnchorElement).href
+
+  // Check if element is wrapped by an anchor
+  const parentAnchor = el.closest('a')
+  if (parentAnchor)
+    return parentAnchor.href
+
+  // Check if element contains an anchor (e.g., image inside a link)
+  const childAnchor = el.querySelector('a')
+  if (childAnchor)
+    return childAnchor.href
+
+  return null
+})
 
 const slideScale = inject(injectionSlideScale, ref(1))
 const scale = computed(() => slideScale.value * zoom.value)
 const { left: slideLeft, top: slideTop } = useSlideBounds()
 
 const ctrlSize = 10
-const minSize = isArrow ? Number.NEGATIVE_INFINITY : 40
+const minSize = computed(() => isArrow.value ? Number.NEGATIVE_INFINITY : 40)
 const minRemain = 10
 
 const rotateRad = computed(() => rotate.value * Math.PI / 180)
 const rotateSin = computed(() => Math.sin(rotateRad.value))
 const rotateCos = computed(() => Math.cos(rotateRad.value))
 
-const boundingWidth = computed(() => width.value * rotateCos.value + height.value * rotateSin.value)
-const boundingHeight = computed(() => width.value * rotateSin.value + height.value * rotateCos.value)
+// Visible center in WORLD coordinates (crop offset rotated by element rotation)
+const visibleCenterX = computed(() => x0.value + cropOffsetLocalX.value * rotateCos.value - cropOffsetLocalY.value * rotateSin.value)
+const visibleCenterY = computed(() => y0.value + cropOffsetLocalX.value * rotateSin.value + cropOffsetLocalY.value * rotateCos.value)
+
+// Display dimensions: full size in crop mode, cropped size otherwise
+const displayWidth = computed(() => isCropping.value ? fullWidth.value : (hasCrop.value ? croppedWidth.value : fullWidth.value))
+const displayHeight = computed(() => isCropping.value ? fullHeight.value : (hasCrop.value ? croppedHeight.value : fullHeight.value))
+// Selection box should be at visible center (for cropped images) or element center
+const displayX0 = computed(() => isCropping.value ? x0.value : (hasCrop.value ? visibleCenterX.value : x0.value))
+const displayY0 = computed(() => isCropping.value ? y0.value : (hasCrop.value ? visibleCenterY.value : y0.value))
+
+const boundingWidth = computed(() => Math.abs(width.value * rotateCos.value) + Math.abs(height.value * rotateSin.value))
+const boundingHeight = computed(() => Math.abs(width.value * rotateSin.value) + Math.abs(height.value * rotateCos.value))
 
 const boundingLeft = computed(() => x0.value - boundingWidth.value / 2)
 const boundingTop = computed(() => y0.value - boundingHeight.value / 2)
 const boundingRight = computed(() => x0.value + boundingWidth.value / 2)
 const boundingBottom = computed(() => y0.value + boundingHeight.value / 2)
 
-const arrowRevX = computed(() => isArrow && width.value < 0)
-const arrowRevY = computed(() => isArrow && height.value < 0)
+const arrowRevX = computed(() => isArrow.value && width.value < 0)
+const arrowRevY = computed(() => isArrow.value && height.value < 0)
+
+// Rotation state
+const isRotating = ref(false)
+const rotationStartAngle = ref(0) // Original element rotation when started (for ghost preview)
+const rotationStartMouseAngle = ref(0) // Mouse angle from center when rotation started
+const currentRotationAngle = ref(0) // Live angle during rotation (for display)
+// Store the visible center position at rotation start (to keep it fixed during rotation)
+const rotationPivotX = ref(0)
+const rotationPivotY = ref(0)
 
 let currentDrag: {
   x0: number
@@ -53,12 +181,28 @@ let currentDrag: {
   rby: number
 } | null = null
 
+// Last corner-resize pointermove parameters (clientX/Y + which corner). Lets a
+// Shift keydown / keyup mid-drag re-fire the resize math at the current cursor
+// position without requiring an actual mouse move — otherwise the AR-lock
+// toggle feels "stuck" because `ev.shiftKey` only updates on pointer events.
+let lastCornerMove: {
+  isLeft: boolean
+  isTop: boolean
+  clientX: number
+  clientY: number
+  metaKey: boolean
+} | null = null
+
 function onPointerdown(ev: PointerEvent) {
   if (ev.buttons !== 1)
     return
 
   ev.preventDefault()
   ev.stopPropagation()
+
+  // Save snapshot for undo before any manipulation
+  props.data.saveSnapshot('resize')
+
   const el = ev.target as HTMLElement
   const elBounds = el.getBoundingClientRect()
 
@@ -88,18 +232,66 @@ function onPointerdown(ev: PointerEvent) {
   (ev.currentTarget as HTMLElement).setPointerCapture(ev.pointerId)
 }
 
-function onPointermove(ev: PointerEvent) {
-  if (!currentDrag || ev.buttons !== 1)
-    return
+function applyPointSnap(px: number, py: number, metaKey: boolean): { x: number, y: number, linesX: number[], linesY: number[] } {
+  if (metaKey)
+    return { x: px, y: py, linesX: [], linesY: [] }
+  const targets = getSnapTargets(props.data.page.value, props.data.dragId)
+  const snapX = findSnap(px, 0, targets.x)
+  const snapY = findSnap(py, 0, targets.y)
+  return { x: snapX.value, y: snapY.value, linesX: snapX.lines, linesY: snapY.lines }
+}
 
-  ev.preventDefault()
-  ev.stopPropagation()
+// Snap a point while constraining it to a line through anchor with given direction (for aspect-ratio-preserving resize)
+function applyDiagonalSnap(
+  px: number,
+  py: number,
+  anchorX: number,
+  anchorY: number,
+  metaKey: boolean,
+): { x: number, y: number, linesX: number[], linesY: number[] } {
+  if (metaKey)
+    return { x: px, y: py, linesX: [], linesY: [] }
 
-  const x = (ev.clientX - slideLeft.value - currentDrag.dx0) / scale.value
-  const y = (ev.clientY - slideTop.value - currentDrag.dy0) / scale.value
+  const targets = getSnapTargets(props.data.page.value, props.data.dragId)
+  const dx = px - anchorX
+  const dy = py - anchorY
 
-  x0.value = clamp(x, -boundingWidth.value / 2 + minRemain, slideWidth.value + boundingWidth.value / 2 - minRemain)
-  y0.value = clamp(y, -boundingHeight.value / 2 + minRemain, slideHeight.value + boundingHeight.value / 2 - minRemain)
+  // Avoid division by zero
+  if (Math.abs(dx) < 0.001 && Math.abs(dy) < 0.001)
+    return { x: px, y: py, linesX: [], linesY: [] }
+
+  // Try snapping X and compute corresponding Y on the diagonal
+  const snapX = findSnap(px, 0, targets.x)
+  let xSnapDist = Infinity
+  let xSnappedX = px
+  let xSnappedY = py
+  if (snapX.lines.length > 0 && Math.abs(dx) > 0.001) {
+    xSnappedX = snapX.value
+    const t = (xSnappedX - anchorX) / dx
+    xSnappedY = anchorY + t * dy
+    xSnapDist = Math.abs(snapX.value - px)
+  }
+
+  // Try snapping Y and compute corresponding X on the diagonal
+  const snapY = findSnap(py, 0, targets.y)
+  let ySnapDist = Infinity
+  let ySnappedX = px
+  let ySnappedY = py
+  if (snapY.lines.length > 0 && Math.abs(dy) > 0.001) {
+    ySnappedY = snapY.value
+    const t = (ySnappedY - anchorY) / dy
+    ySnappedX = anchorX + t * dx
+    ySnapDist = Math.abs(snapY.value - py)
+  }
+
+  // Pick the closer snap - show line at actual snapped position, not target
+  if (xSnapDist < ySnapDist && xSnapDist < Infinity) {
+    return { x: xSnappedX, y: xSnappedY, linesX: [xSnappedX], linesY: [] }
+  }
+  else if (ySnapDist < Infinity) {
+    return { x: ySnappedX, y: ySnappedY, linesX: [], linesY: [ySnappedY] }
+  }
+  return { x: px, y: py, linesX: [], linesY: [] }
 }
 
 function onPointerup(ev: PointerEvent) {
@@ -108,11 +300,124 @@ function onPointerup(ev: PointerEvent) {
 
   ev.preventDefault()
   ev.stopPropagation()
+  lastCornerMove = null
 
+  props.data.clearSnapLines()
+  // Force the pending edit's commit to fire now (rather than on the watcher's debounce),
+  // so the recorded `after` reflects the final size/position.
+  void props.data.commitSnapshot()
   currentDrag = null
 }
 
 const ctrlClasses = `absolute border border-gray bg-gray dark:border-gray-500 dark:bg-gray-800 bg-opacity-30 `
+
+// Extracted corner-resize math so the pointermove handler AND the Shift
+// keydown/keyup re-fire (see `lastCornerMove` + the global key listeners below)
+// can share it. `shiftKey` is passed in rather than read from a PointerEvent so
+// a synthetic re-fire on key transition uses the desired state, not whatever
+// stale shift bit the last pointermove had.
+function applyCornerResize(isLeft: boolean, isTop: boolean, clientX: number, clientY: number, shiftKey: boolean, metaKey: boolean) {
+  if (!currentDrag)
+    return
+
+  let x = (clientX - slideLeft.value) / scale.value
+  let y = (clientY - slideTop.value) / scale.value
+
+  const { ltx, lty, rtx, rty, lbx, lby, rbx, rby } = currentDrag
+
+  // AR is locked when shift is held OR the wrapper sets lockAspectRatio (e.g. YT/Tweet).
+  // The wrapper's value is the *natural* AR of the content (16:9 for YT, dynamic for
+  // Tweet); when there's no wrapper AR, shift falls back to the element's *original*
+  // AR (captured at pointerdown into `currentDrag.width/height`, never mutated mid-
+  // drag) so the constraint is the pre-drag shape, not whatever skewed dims we'd
+  // accumulated by free-resizing first.
+  const lockARValue = props.data.lockAspectRatio.value
+  const lockAR = lockARValue || (shiftKey ? currentDrag.width / currentDrag.height : 0)
+  const wMin = Math.max(minSize.value, minSize.value * (lockAR || 1))
+  function getSize(w1: number, h1: number) {
+    if (lockAR) {
+      const w = Math.max(w1, h1 * lockAR, wMin)
+      const h = w / lockAR
+      return { w, h }
+    }
+    else {
+      return { w: Math.max(w1, minSize.value), h: Math.max(h1, minSize.value) }
+    }
+  }
+
+  if (isLeft) {
+    if (isTop) {
+      const w1 = (rbx - x) * rotateCos.value + (rby - y) * rotateSin.value
+      const h1 = -(rbx - x) * rotateSin.value + (rby - y) * rotateCos.value
+      const { w, h } = getSize(w1, h1)
+      x = rbx - w * rotateCos.value + h * rotateSin.value
+      y = rby - w * rotateSin.value - h * rotateCos.value
+    }
+    else {
+      const w1 = (rtx - x) * rotateCos.value - (y - rty) * rotateSin.value
+      const h1 = (rtx - x) * rotateSin.value + (y - rty) * rotateCos.value
+      const { w, h } = getSize(w1, h1)
+      x = rtx - w * rotateCos.value - h * rotateSin.value
+      y = rty - w * rotateSin.value + h * rotateCos.value
+    }
+  }
+  else {
+    if (isTop) {
+      const w1 = (x - lbx) * rotateCos.value - (lby - y) * rotateSin.value
+      const h1 = (x - lbx) * rotateSin.value + (lby - y) * rotateCos.value
+      const { w, h } = getSize(w1, h1)
+      x = lbx + w * rotateCos.value + h * rotateSin.value
+      y = lby + w * rotateSin.value - h * rotateCos.value
+    }
+    else {
+      const w1 = (x - ltx) * rotateCos.value + (y - lty) * rotateSin.value
+      const h1 = -(x - ltx) * rotateSin.value + (y - lty) * rotateCos.value
+      const { w, h } = getSize(w1, h1)
+      x = ltx + w * rotateCos.value - h * rotateSin.value
+      y = lty + w * rotateSin.value + h * rotateCos.value
+    }
+  }
+
+  // Snap the dragged corner to alignment targets. When AR is locked (above),
+  // snap projects guide-aligned positions onto the AR-preserving diagonal.
+  const anchorX = isLeft ? (isTop ? rbx : rtx) : (isTop ? lbx : ltx)
+  const anchorY = isLeft ? (isTop ? rby : rty) : (isTop ? lby : lty)
+  const snapped = lockAR
+    ? applyDiagonalSnap(x, y, anchorX, anchorY, metaKey)
+    : applyPointSnap(x, y, metaKey)
+  x = snapped.x
+  y = snapped.y
+  props.data.activeSnapLines.value = { x: snapped.linesX, y: snapped.linesY }
+
+  if (isLeft) {
+    if (isTop) {
+      x0.value = (x + rbx) / 2
+      y0.value = (y + rby) / 2
+      width.value = (rbx - x) * rotateCos.value + (rby - y) * rotateSin.value
+      height.value = -(rbx - x) * rotateSin.value + (rby - y) * rotateCos.value
+    }
+    else {
+      x0.value = (x + rtx) / 2
+      y0.value = (y + rty) / 2
+      width.value = (rtx - x) * rotateCos.value - (y - rty) * rotateSin.value
+      height.value = (rtx - x) * rotateSin.value + (y - rty) * rotateCos.value
+    }
+  }
+  else {
+    if (isTop) {
+      x0.value = (x + lbx) / 2
+      y0.value = (y + lby) / 2
+      width.value = (x - lbx) * rotateCos.value - (lby - y) * rotateSin.value
+      height.value = (x - lbx) * rotateSin.value + (lby - y) * rotateCos.value
+    }
+    else {
+      x0.value = (x + ltx) / 2
+      y0.value = (y + lty) / 2
+      width.value = (x - ltx) * rotateCos.value + (y - lty) * rotateSin.value
+      height.value = -(x - ltx) * rotateSin.value + (y - lty) * rotateCos.value
+    }
+  }
+}
 
 function getCornerProps(isLeft: boolean, isTop: boolean) {
   return {
@@ -120,89 +425,10 @@ function getCornerProps(isLeft: boolean, isTop: boolean) {
     onPointermove: (ev: PointerEvent) => {
       if (!currentDrag || ev.buttons !== 1)
         return
-
       ev.preventDefault()
       ev.stopPropagation()
-
-      let x = (ev.clientX - slideLeft.value) / scale.value
-      let y = (ev.clientY - slideTop.value) / scale.value
-
-      const { ltx, lty, rtx, rty, lbx, lby, rbx, rby } = currentDrag
-
-      const ratio = currentDrag.width / currentDrag.height
-      const wMin = Math.max(minSize, minSize * ratio)
-      function getSize(w1: number, h1: number) {
-        if (ev.shiftKey) {
-          const w = Math.max(w1, h1 * ratio, wMin)
-          const h = w / ratio
-          return { w, h }
-        }
-        else {
-          return { w: Math.max(w1, minSize), h: Math.max(h1, minSize) }
-        }
-      }
-
-      if (isLeft) {
-        if (isTop) {
-          const w1 = (rbx - x) * rotateCos.value + (rby - y) * rotateSin.value
-          const h1 = -(rbx - x) * rotateSin.value + (rby - y) * rotateCos.value
-          const { w, h } = getSize(w1, h1)
-          x = rbx - w * rotateCos.value + h * rotateSin.value
-          y = rby - w * rotateSin.value - h * rotateCos.value
-        }
-        else {
-          const w1 = (rtx - x) * rotateCos.value - (y - rty) * rotateSin.value
-          const h1 = (rtx - x) * rotateSin.value + (y - rty) * rotateCos.value
-          const { w, h } = getSize(w1, h1)
-          x = rtx - w * rotateCos.value - h * rotateSin.value
-          y = rty - w * rotateSin.value + h * rotateCos.value
-        }
-      }
-      else {
-        if (isTop) {
-          const w1 = (x - lbx) * rotateCos.value - (lby - y) * rotateSin.value
-          const h1 = (x - lbx) * rotateSin.value + (lby - y) * rotateCos.value
-          const { w, h } = getSize(w1, h1)
-          x = lbx + w * rotateCos.value + h * rotateSin.value
-          y = lby + w * rotateSin.value - h * rotateCos.value
-        }
-        else {
-          const w1 = (x - ltx) * rotateCos.value + (y - lty) * rotateSin.value
-          const h1 = -(x - ltx) * rotateSin.value + (y - lty) * rotateCos.value
-          const { w, h } = getSize(w1, h1)
-          x = ltx + w * rotateCos.value - h * rotateSin.value
-          y = lty + w * rotateSin.value + h * rotateCos.value
-        }
-      }
-
-      if (isLeft) {
-        if (isTop) {
-          x0.value = (x + rbx) / 2
-          y0.value = (y + rby) / 2
-          width.value = (rbx - x) * rotateCos.value + (rby - y) * rotateSin.value
-          height.value = -(rbx - x) * rotateSin.value + (rby - y) * rotateCos.value
-        }
-        else {
-          x0.value = (x + rtx) / 2
-          y0.value = (y + rty) / 2
-          width.value = (rtx - x) * rotateCos.value - (y - rty) * rotateSin.value
-          height.value = (rtx - x) * rotateSin.value + (y - rty) * rotateCos.value
-        }
-      }
-      else {
-        if (isTop) {
-          x0.value = (x + lbx) / 2
-          y0.value = (y + lby) / 2
-          width.value = (x - lbx) * rotateCos.value - (lby - y) * rotateSin.value
-          height.value = (x - lbx) * rotateSin.value + (lby - y) * rotateCos.value
-        }
-        else {
-          x0.value = (x + ltx) / 2
-          y0.value = (y + lty) / 2
-          width.value = (x - ltx) * rotateCos.value + (y - lty) * rotateSin.value
-          height.value = -(x - ltx) * rotateSin.value + (y - lty) * rotateCos.value
-        }
-      }
+      lastCornerMove = { isLeft, isTop, clientX: ev.clientX, clientY: ev.clientY, metaKey: ev.metaKey }
+      applyCornerResize(isLeft, isTop, ev.clientX, ev.clientY, ev.shiftKey, ev.metaKey)
     },
     onPointerup,
     style: {
@@ -213,8 +439,9 @@ function getCornerProps(isLeft: boolean, isTop: boolean) {
       right: isLeft !== arrowRevX.value ? undefined : '0',
       top: isTop !== arrowRevY.value ? '0' : undefined,
       bottom: isTop !== arrowRevY.value ? undefined : '0',
-      cursor: isArrow ? 'move' : +isLeft + +isTop === 1 ? 'nesw-resize' : 'nwse-resize',
-      borderRadius: isArrow ? '50%' : undefined,
+      cursor: isArrow.value ? 'move' : +isLeft + +isTop === 1 ? 'nesw-resize' : 'nwse-resize',
+      borderRadius: isArrow.value ? '50%' : undefined,
+      pointerEvents: 'auto' as const,
     },
     class: ctrlClasses,
   }
@@ -238,28 +465,60 @@ function getBorderProps(dir: 'l' | 'r' | 't' | 'b') {
       if (dir === 'l') {
         const rx = (rtx + rbx) / 2
         const ry = (rty + rby) / 2
-        width.value = Math.max((rx - x) * rotateCos.value + (ry - y) * rotateSin.value, minSize)
+        width.value = Math.max((rx - x) * rotateCos.value + (ry - y) * rotateSin.value, minSize.value)
+        // Snap the moving left edge midpoint
+        let mx = rx - width.value * rotateCos.value
+        let my = ry - width.value * rotateSin.value
+        const snapped = applyPointSnap(mx, my, ev.metaKey)
+        mx = snapped.x
+        my = snapped.y
+        props.data.activeSnapLines.value = { x: snapped.linesX, y: snapped.linesY }
+        width.value = Math.max((rx - mx) * rotateCos.value + (ry - my) * rotateSin.value, minSize.value)
         x0.value = rx - width.value * rotateCos.value / 2
         y0.value = ry - width.value * rotateSin.value / 2
       }
       else if (dir === 'r') {
         const lx = (ltx + lbx) / 2
         const ly = (lty + lby) / 2
-        width.value = Math.max((x - lx) * rotateCos.value + (y - ly) * rotateSin.value, minSize)
+        width.value = Math.max((x - lx) * rotateCos.value + (y - ly) * rotateSin.value, minSize.value)
+        // Snap the moving right edge midpoint
+        let mx = lx + width.value * rotateCos.value
+        let my = ly + width.value * rotateSin.value
+        const snapped = applyPointSnap(mx, my, ev.metaKey)
+        mx = snapped.x
+        my = snapped.y
+        props.data.activeSnapLines.value = { x: snapped.linesX, y: snapped.linesY }
+        width.value = Math.max((mx - lx) * rotateCos.value + (my - ly) * rotateSin.value, minSize.value)
         x0.value = lx + width.value * rotateCos.value / 2
         y0.value = ly + width.value * rotateSin.value / 2
       }
       else if (dir === 't') {
         const bx = (lbx + rbx) / 2
         const by = (lby + rby) / 2
-        height.value = Math.max((by - y) * rotateCos.value - (bx - x) * rotateSin.value, minSize)
+        height.value = Math.max((by - y) * rotateCos.value - (bx - x) * rotateSin.value, minSize.value)
+        // Snap the moving top edge midpoint
+        let mx = bx + height.value * rotateSin.value
+        let my = by - height.value * rotateCos.value
+        const snapped = applyPointSnap(mx, my, ev.metaKey)
+        mx = snapped.x
+        my = snapped.y
+        props.data.activeSnapLines.value = { x: snapped.linesX, y: snapped.linesY }
+        height.value = Math.max((by - my) * rotateCos.value - (bx - mx) * rotateSin.value, minSize.value)
         x0.value = bx + height.value * rotateSin.value / 2
         y0.value = by - height.value * rotateCos.value / 2
       }
       else if (dir === 'b') {
         const tx = (ltx + rtx) / 2
         const ty = (lty + rty) / 2
-        height.value = Math.max((y - ty) * rotateCos.value - (x - tx) * rotateSin.value, minSize)
+        height.value = Math.max((y - ty) * rotateCos.value - (x - tx) * rotateSin.value, minSize.value)
+        // Snap the moving bottom edge midpoint
+        let mx = tx - height.value * rotateSin.value
+        let my = ty + height.value * rotateCos.value
+        const snapped = applyPointSnap(mx, my, ev.metaKey)
+        mx = snapped.x
+        my = snapped.y
+        props.data.activeSnapLines.value = { x: snapped.linesX, y: snapped.linesY }
+        height.value = Math.max((my - ty) * rotateCos.value - (mx - tx) * rotateSin.value, minSize.value)
         x0.value = tx - height.value * rotateSin.value / 2
         y0.value = ty + height.value * rotateCos.value / 2
       }
@@ -273,14 +532,65 @@ function getBorderProps(dir: 'l' | 'r' | 't' | 'b') {
       top: dir === 't' ? '0' : dir === 'b' ? `100%` : `50%`,
       cursor: 'lr'.includes(dir) ? 'ew-resize' : 'ns-resize',
       borderRadius: '50%',
+      pointerEvents: 'auto' as const,
     },
     class: ctrlClasses,
   }
 }
 
+const rotateHandleSize = 18
+const rotateHandleOffset = 32 // Distance from top of element
+
+// Helper to calculate angle from a pivot point to a mouse position (0° = up/12 o'clock)
+function getAngleFromPivot(clientX: number, clientY: number, pivotX: number, pivotY: number): number {
+  const mouseX = (clientX - slideLeft.value) / scale.value
+  const mouseY = (clientY - slideTop.value) / scale.value
+  return Math.atan2(mouseX - pivotX, -(mouseY - pivotY)) * 180 / Math.PI
+}
+
 function getRotateProps() {
   return {
-    onPointerdown,
+    onPointerdown: (ev: PointerEvent) => {
+      if (ev.buttons !== 1)
+        return
+      ev.preventDefault()
+      ev.stopPropagation()
+
+      // Save snapshot for undo before rotation
+      props.data.saveSnapshot('rotate')
+
+      // Store the visible center as the rotation pivot (stays fixed during rotation)
+      rotationPivotX.value = hasCrop.value ? visibleCenterX.value : x0.value
+      rotationPivotY.value = hasCrop.value ? visibleCenterY.value : y0.value
+
+      // Store initial rotation for ghost preview
+      rotationStartAngle.value = rotate.value
+      currentRotationAngle.value = rotate.value
+      // Store where the mouse started (angle from pivot) so we can calculate delta
+      rotationStartMouseAngle.value = getAngleFromPivot(ev.clientX, ev.clientY, rotationPivotX.value, rotationPivotY.value)
+      isRotating.value = true
+
+      // We still need currentDrag for the general infrastructure
+      currentDrag = {
+        x0: x0.value,
+        y0: y0.value,
+        width: width.value,
+        height: height.value,
+        rotate: rotate.value,
+        dx0: 0,
+        dy0: 0,
+        ltx: 0,
+        lty: 0,
+        rtx: 0,
+        rty: 0,
+        lbx: 0,
+        lby: 0,
+        rbx: 0,
+        rby: 0,
+      }
+
+      ;(ev.currentTarget as HTMLElement).setPointerCapture(ev.pointerId)
+    },
     onPointermove: (ev: PointerEvent) => {
       if (!currentDrag || ev.buttons !== 1)
         return
@@ -288,32 +598,63 @@ function getRotateProps() {
       ev.preventDefault()
       ev.stopPropagation()
 
-      const x = (ev.clientX - slideLeft.value - currentDrag.dx0) / scale.value - ctrlSize / 4
-      const y = (ev.clientY - slideTop.value - currentDrag.dy0) / scale.value - ctrlSize / 4
+      // Calculate current mouse angle from the rotation pivot
+      const currentMouseAngle = getAngleFromPivot(ev.clientX, ev.clientY, rotationPivotX.value, rotationPivotY.value)
 
-      let angle = Math.atan2(y - y0.value, x - x0.value) * 180 / Math.PI + 90
+      // Calculate delta from where we started dragging
+      const delta = currentMouseAngle - rotationStartMouseAngle.value
 
-      const commonAngles = [0, 90, 180, 270, 360]
-      for (const a of commonAngles) {
-        if (Math.abs(angle - a) < 5) {
-          angle = a % 360
-          break
-        }
+      // New rotation = starting rotation + delta
+      let angle = rotationStartAngle.value + delta
+
+      // Normalize to 0-360
+      angle = ((angle % 360) + 360) % 360
+
+      // Snap to 15° increments only when holding Shift
+      if (ev.shiftKey) {
+        angle = Math.round(angle / 15) * 15
       }
 
+      currentRotationAngle.value = angle
       rotate.value = angle
+
+      // For cropped images, adjust x0/y0 to keep the visible center at the pivot
+      if (hasCrop.value) {
+        const newAngleRad = angle * Math.PI / 180
+        const cos = Math.cos(newAngleRad)
+        const sin = Math.sin(newAngleRad)
+        // x0 = pivot - rotated offset
+        x0.value = rotationPivotX.value - (cropOffsetLocalX.value * cos - cropOffsetLocalY.value * sin)
+        y0.value = rotationPivotY.value - (cropOffsetLocalX.value * sin + cropOffsetLocalY.value * cos)
+      }
     },
-    onPointerup,
+    onPointerup: (ev: PointerEvent) => {
+      if (!currentDrag)
+        return
+      ev.preventDefault()
+      ev.stopPropagation()
+      isRotating.value = false
+      void props.data.commitSnapshot()
+      currentDrag = null
+    },
     style: {
-      width: `${ctrlSize}px`,
-      height: `${ctrlSize}px`,
-      margin: `-${ctrlSize / 2}px`,
+      position: 'absolute' as const,
+      width: `${rotateHandleSize}px`,
+      height: `${rotateHandleSize}px`,
       left: '50%',
-      top: '-20px',
+      marginLeft: `-${rotateHandleSize / 2}px`,
+      top: `-${rotateHandleOffset}px`,
       cursor: 'grab',
       borderRadius: '50%',
+      pointerEvents: 'auto' as const,
+      // Google Draw style: white fill with blue border
+      background: '#fff',
+      border: '2px solid #4285f4',
+      boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
     },
-    class: ctrlClasses,
   }
 }
 
@@ -344,8 +685,11 @@ const moveDown = useIntervalFn(() => {
 }, moveInterval, intervalFnOptions)
 
 watchEffect(() => {
+  // Suppress arrow-key nudge when a modifier is held, so Cmd/Shift+Arrow can be used
+  // for other shortcuts (z-order change below) without also translating the element.
+  const hasModifier = !!(magicKeys.meta?.value || magicKeys.ctrl?.value || magicKeys.shift?.value || magicKeys.alt?.value)
   function shortcut(key: string, fn: Pausable) {
-    if (magicKeys[key].value)
+    if (magicKeys[key].value && !hasModifier)
       fn.resume()
     else fn.pause()
   }
@@ -354,28 +698,494 @@ watchEffect(() => {
   shortcut('up', moveUp)
   shortcut('down', moveDown)
 })
+
+function openLink() {
+  if (associatedLink.value)
+    window.open(associatedLink.value, '_blank')
+}
+
+function resetAspectRatio() {
+  props.data.saveSnapshot('resize')
+  height.value = width.value / initialAspectRatio
+  void props.data.commitSnapshot()
+}
+
+// z of every *other* drag element on this slide (so we can move past ties).
+function siblingZs(): number[] {
+  return getDragElementsForPage(props.data.page.value)
+    .filter(el => el.dragId !== props.data.dragId)
+    .map(el => el.zIndex())
+}
+
+function bringForward() {
+  props.data.saveSnapshot('zorder')
+  // If any sibling is at-or-above our current z, we need to leapfrog past it (a plain
+  // `z += 1` leaves us tied when a sibling is exactly z+1, so the visual order doesn't
+  // change). Find the lowest sibling z that's >= ours and go one above it.
+  const others = siblingZs()
+  const above = others.filter(z => z >= zIndex.value).sort((a, b) => a - b)
+  zIndex.value = above.length > 0 ? above[0] + 1 : zIndex.value + 1
+  void props.data.commitSnapshot()
+}
+
+function sendBackward() {
+  props.data.saveSnapshot('zorder')
+  // Mirror of bringForward: find the highest sibling z that's <= ours and go one below.
+  const others = siblingZs()
+  const below = others.filter(z => z <= zIndex.value).sort((a, b) => b - a)
+  zIndex.value = Math.max(1, below.length > 0 ? below[0] - 1 : zIndex.value - 1)
+  void props.data.commitSnapshot()
+}
+
+function bringToFront() {
+  props.data.saveSnapshot('zorder')
+  const others = siblingZs()
+  zIndex.value = others.length > 0 ? Math.max(...others) + 1 : zIndex.value
+  void props.data.commitSnapshot()
+}
+
+function sendToBack() {
+  props.data.saveSnapshot('zorder')
+  const others = siblingZs()
+  zIndex.value = others.length > 0 ? Math.max(1, Math.min(...others) - 1) : 1
+  void props.data.commitSnapshot()
+}
+
+// Undo/redo for this fork is handled by a deck-global stack with shortcuts and toolbar
+// buttons registered in `logic/shortcuts.ts` and `NavControls.vue` — no per-component
+// keyboard handler is needed here.
+
+// Z-order keyboard shortcuts: Meta/Ctrl + Arrow for forward/back one step,
+// add Shift for to-front/to-back. We attach a plain `keydown` capture-phase
+// listener so we can `stopImmediatePropagation` and block other handlers
+// (like the `magicKeys`-driven nudge above, which observes reactive state
+// rather than the event — preventDefault on the event doesn't stop it, but
+// stopImmediatePropagation here runs before VueUse's own keydown listener
+// has a chance to update `magicKeys`, preventing the nudge from triggering).
+function onZOrderKeyDown(e: KeyboardEvent) {
+  if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown')
+    return
+  if (!e.metaKey && !e.ctrlKey)
+    return
+  e.preventDefault()
+  e.stopPropagation()
+  e.stopImmediatePropagation()
+  if (e.key === 'ArrowUp')
+    (e.shiftKey ? bringToFront : bringForward)()
+  else
+    (e.shiftKey ? sendToBack : sendBackward)()
+}
+
+// During a corner-resize drag, Shift toggles AR-lock. `ev.shiftKey` only
+// refreshes on pointer events, so pressing or releasing Shift with the mouse
+// stationary leaves the AR-lock state stale until the next mousemove —
+// "stuck" from the user's POV. These listeners re-fire the resize math at the
+// last cursor position whenever Shift transitions, so the AR snap toggles
+// instantly.
+function onResizeShiftChange(e: KeyboardEvent) {
+  if (e.key !== 'Shift' || !lastCornerMove)
+    return
+  applyCornerResize(
+    lastCornerMove.isLeft,
+    lastCornerMove.isTop,
+    lastCornerMove.clientX,
+    lastCornerMove.clientY,
+    e.type === 'keydown',
+    lastCornerMove.metaKey,
+  )
+}
+
+onMounted(() => {
+  window.addEventListener('keydown', onZOrderKeyDown, { capture: true })
+  window.addEventListener('keydown', onResizeShiftChange)
+  window.addEventListener('keyup', onResizeShiftChange)
+})
+onUnmounted(() => {
+  window.removeEventListener('keydown', onZOrderKeyDown, { capture: true })
+  window.removeEventListener('keydown', onResizeShiftChange)
+  window.removeEventListener('keyup', onResizeShiftChange)
+})
+
+// Enter key to exit crop mode or interact mode
+watchEffect(() => {
+  if (magicKeys.enter?.value) {
+    if (isCropping.value)
+      props.data.exitCropMode()
+    else if (props.data.isInteracting.value)
+      props.data.exitInteractMode()
+  }
+})
+
+// Escape key to cancel crop mode (revert changes), exit interact mode, or deselect
+watchEffect(() => {
+  if (magicKeys.escape?.value) {
+    if (isCropping.value) {
+      props.data.cancelCropMode()
+    }
+    else if (props.data.isInteracting.value) {
+      props.data.exitInteractMode()
+    }
+    else {
+      props.data.stopDragging()
+    }
+  }
+})
+
+// Double-click to exit crop mode
+function handleDblclick() {
+  if (isCropping.value) {
+    props.data.exitCropMode()
+  }
+}
+
+// Crop handle dragging
+const cornerHandleSize = 28 // L-shaped corner handles are larger
+const edgeHandleLength = 20 // Length of edge midpoint handles
+let currentCropDrag: {
+  handle: 'top' | 'right' | 'bottom' | 'left' | 'topLeft' | 'topRight' | 'bottomLeft' | 'bottomRight'
+  startCropTop: number
+  startCropRight: number
+  startCropBottom: number
+  startCropLeft: number
+  startX: number
+  startY: number
+} | null = null
+
+function getCropHandleProps(handle: 'top' | 'right' | 'bottom' | 'left' | 'topLeft' | 'topRight' | 'bottomLeft' | 'bottomRight') {
+  const isCorner = handle.includes('top') || handle.includes('bottom') ? handle.includes('Left') || handle.includes('Right') : false
+  const isVertical = handle === 'top' || handle === 'bottom'
+
+  // Position calculations based on current crop values
+  let left = '0'
+  let top = '0'
+  let cursorStyle = 'default'
+
+  // Calculate crop region center for edge handle positioning
+  const cropCenterX = cropLeft.value + (100 - cropLeft.value - cropRight.value) / 2
+  const cropCenterY = cropTop.value + (100 - cropTop.value - cropBottom.value) / 2
+
+  // Vertical position (top edge of handle)
+  if (handle === 'top' || handle === 'topLeft' || handle === 'topRight') {
+    top = `${cropTop.value}%`
+  }
+  else if (handle === 'bottom' || handle === 'bottomLeft' || handle === 'bottomRight') {
+    top = `${100 - cropBottom.value}%`
+  }
+  else if (handle === 'left' || handle === 'right') {
+    // Edge handles at vertical center of crop region
+    top = `${cropCenterY}%`
+  }
+
+  // Horizontal position (left edge of handle)
+  if (handle === 'left' || handle === 'topLeft' || handle === 'bottomLeft') {
+    left = `${cropLeft.value}%`
+  }
+  else if (handle === 'right' || handle === 'topRight' || handle === 'bottomRight') {
+    left = `${100 - cropRight.value}%`
+  }
+  else if (handle === 'top' || handle === 'bottom') {
+    // Edge handles at horizontal center of crop region
+    left = `${cropCenterX}%`
+  }
+
+  // Cursor styles
+  if (handle === 'top' || handle === 'bottom') {
+    cursorStyle = 'ns-resize'
+  }
+  else if (handle === 'left' || handle === 'right') {
+    cursorStyle = 'ew-resize'
+  }
+  else if (handle === 'topLeft' || handle === 'bottomRight') {
+    cursorStyle = 'nwse-resize'
+  }
+  else if (handle === 'topRight' || handle === 'bottomLeft') {
+    cursorStyle = 'nesw-resize'
+  }
+
+  return {
+    onPointerdown: (ev: PointerEvent) => {
+      if (ev.buttons !== 1)
+        return
+      ev.preventDefault()
+      ev.stopPropagation()
+
+      // Save snapshot for undo before cropping
+      props.data.saveSnapshot('crop')
+
+      currentCropDrag = {
+        handle,
+        startCropTop: cropTop.value,
+        startCropRight: cropRight.value,
+        startCropBottom: cropBottom.value,
+        startCropLeft: cropLeft.value,
+        startX: ev.clientX,
+        startY: ev.clientY,
+      }
+
+      ;(ev.currentTarget as HTMLElement).setPointerCapture(ev.pointerId)
+    },
+    onPointermove: (ev: PointerEvent) => {
+      if (!currentCropDrag || ev.buttons !== 1)
+        return
+      ev.preventDefault()
+      ev.stopPropagation()
+
+      // Calculate delta as percentage of element size
+      const dx = (ev.clientX - currentCropDrag.startX) / scale.value / width.value * 100
+      const dy = (ev.clientY - currentCropDrag.startY) / scale.value / height.value * 100
+
+      const h = currentCropDrag.handle
+
+      // Update crop values based on which handle is being dragged
+      if (h === 'top' || h === 'topLeft' || h === 'topRight') {
+        cropTop.value = clamp(currentCropDrag.startCropTop + dy, 0, 100 - cropBottom.value - 10)
+      }
+      if (h === 'bottom' || h === 'bottomLeft' || h === 'bottomRight') {
+        cropBottom.value = clamp(currentCropDrag.startCropBottom - dy, 0, 100 - cropTop.value - 10)
+      }
+      if (h === 'left' || h === 'topLeft' || h === 'bottomLeft') {
+        cropLeft.value = clamp(currentCropDrag.startCropLeft + dx, 0, 100 - cropRight.value - 10)
+      }
+      if (h === 'right' || h === 'topRight' || h === 'bottomRight') {
+        cropRight.value = clamp(currentCropDrag.startCropRight - dx, 0, 100 - cropLeft.value - 10)
+      }
+
+      // Hold Shift to constrain the crop region to the wrapper's AR — so the cropped image
+      // fills the frame without distortion. (We pick wrapper AR, not the image's natural
+      // AR, because the wrapper is already the user-chosen frame; a crop at any other AR
+      // would be visibly stretched when scaled to fit it.) Edge handles: keep the dragged
+      // edge, symmetrically adjust the perpendicular pair (centered crop). Corner handles:
+      // pick the larger drag axis as primary, derive the perpendicular edge. Snap is
+      // skipped while Shift is held so we don't pull edges off the AR-preserving position.
+      if (ev.shiftKey) {
+        const w = width.value
+        const hv = height.value
+        const wrapperAR = w > 0 && hv > 0 ? w / hv : null
+        if (wrapperAR) {
+          if (h === 'top' || h === 'bottom') {
+            const visH = hv * (100 - cropTop.value - cropBottom.value) / 100
+            const targetVisW = visH * wrapperAR
+            const totalCropX = Math.max(0, 100 - 100 * targetVisW / w)
+            const sideCrop = totalCropX / 2
+            cropLeft.value = clamp(sideCrop, 0, 100 - cropRight.value - 10)
+            cropRight.value = clamp(sideCrop, 0, 100 - cropLeft.value - 10)
+          }
+          else if (h === 'left' || h === 'right') {
+            const visW = w * (100 - cropLeft.value - cropRight.value) / 100
+            const targetVisH = visW / wrapperAR
+            const totalCropY = Math.max(0, 100 - 100 * targetVisH / hv)
+            const sideCrop = totalCropY / 2
+            cropTop.value = clamp(sideCrop, 0, 100 - cropBottom.value - 10)
+            cropBottom.value = clamp(sideCrop, 0, 100 - cropTop.value - 10)
+          }
+          else {
+            // Corner handle: pick whichever axis the user dragged more in pct.
+            const dxAbs = Math.abs(dx)
+            const dyAbs = Math.abs(dy)
+            if (dxAbs >= dyAbs) {
+              const visW = w * (100 - cropLeft.value - cropRight.value) / 100
+              const targetVisH = visW / wrapperAR
+              const totalCropY = Math.max(0, 100 - 100 * targetVisH / hv)
+              if (h === 'topLeft' || h === 'topRight')
+                cropTop.value = clamp(totalCropY - cropBottom.value, 0, 100 - cropBottom.value - 10)
+              else
+                cropBottom.value = clamp(totalCropY - cropTop.value, 0, 100 - cropTop.value - 10)
+            }
+            else {
+              const visH = hv * (100 - cropTop.value - cropBottom.value) / 100
+              const targetVisW = visH * wrapperAR
+              const totalCropX = Math.max(0, 100 - 100 * targetVisW / w)
+              if (h === 'topLeft' || h === 'bottomLeft')
+                cropLeft.value = clamp(totalCropX - cropRight.value, 0, 100 - cropRight.value - 10)
+              else
+                cropRight.value = clamp(totalCropX - cropLeft.value, 0, 100 - cropLeft.value - 10)
+            }
+          }
+          props.data.activeSnapLines.value = { x: [], y: [] }
+          return
+        }
+      }
+
+      // Snap crop boundaries to alignment targets
+      if (!ev.metaKey) {
+        const cos = rotateCos.value
+        const sin = rotateSin.value
+        const w = width.value
+        const hv = height.value
+        const cx = x0.value
+        const cy = y0.value
+        let linesX: number[] = []
+        let linesY: number[] = []
+
+        // Snap each active crop edge's midpoint in world coords
+        if (h === 'left' || h === 'topLeft' || h === 'bottomLeft') {
+          const localX = -w / 2 + cropLeft.value / 100 * w
+          const worldX = cx + localX * cos
+          const worldY = cy + localX * sin
+          const snapped = applyPointSnap(worldX, worldY, false)
+          const snappedLocalX = (snapped.x - cx) * cos + (snapped.y - cy) * sin
+          cropLeft.value = clamp((snappedLocalX + w / 2) / w * 100, 0, 100 - cropRight.value - 10)
+          linesX = linesX.concat(snapped.linesX)
+          linesY = linesY.concat(snapped.linesY)
+        }
+        if (h === 'right' || h === 'topRight' || h === 'bottomRight') {
+          const localX = w / 2 - cropRight.value / 100 * w
+          const worldX = cx + localX * cos
+          const worldY = cy + localX * sin
+          const snapped = applyPointSnap(worldX, worldY, false)
+          const snappedLocalX = (snapped.x - cx) * cos + (snapped.y - cy) * sin
+          cropRight.value = clamp((w / 2 - snappedLocalX) / w * 100, 0, 100 - cropLeft.value - 10)
+          linesX = linesX.concat(snapped.linesX)
+          linesY = linesY.concat(snapped.linesY)
+        }
+        if (h === 'top' || h === 'topLeft' || h === 'topRight') {
+          const localY = -hv / 2 + cropTop.value / 100 * hv
+          const worldX = cx - localY * sin
+          const worldY = cy + localY * cos
+          const snapped = applyPointSnap(worldX, worldY, false)
+          const snappedLocalY = -(snapped.x - cx) * sin + (snapped.y - cy) * cos
+          cropTop.value = clamp((snappedLocalY + hv / 2) / hv * 100, 0, 100 - cropBottom.value - 10)
+          linesX = linesX.concat(snapped.linesX)
+          linesY = linesY.concat(snapped.linesY)
+        }
+        if (h === 'bottom' || h === 'bottomLeft' || h === 'bottomRight') {
+          const localY = hv / 2 - cropBottom.value / 100 * hv
+          const worldX = cx - localY * sin
+          const worldY = cy + localY * cos
+          const snapped = applyPointSnap(worldX, worldY, false)
+          const snappedLocalY = -(snapped.x - cx) * sin + (snapped.y - cy) * cos
+          cropBottom.value = clamp((hv / 2 - snappedLocalY) / hv * 100, 0, 100 - cropTop.value - 10)
+          linesX = linesX.concat(snapped.linesX)
+          linesY = linesY.concat(snapped.linesY)
+        }
+
+        props.data.activeSnapLines.value = { x: linesX, y: linesY }
+      }
+      else {
+        props.data.activeSnapLines.value = { x: [], y: [] }
+      }
+    },
+    onPointerup: (ev: PointerEvent) => {
+      if (!currentCropDrag)
+        return
+      ev.preventDefault()
+      ev.stopPropagation()
+      props.data.clearSnapLines()
+      void props.data.commitSnapshot()
+      currentCropDrag = null
+    },
+    style: isCorner
+      ? {
+          // Corner handles: L-shaped brackets
+          position: 'absolute' as const,
+          left,
+          top,
+          width: `${cornerHandleSize}px`,
+          height: `${cornerHandleSize}px`,
+          // Position the L-bracket to wrap the corner
+          marginLeft: handle === 'topLeft' || handle === 'bottomLeft' ? '-2px' : `-${cornerHandleSize - 2}px`,
+          marginTop: handle === 'topLeft' || handle === 'topRight' ? '-2px' : `-${cornerHandleSize - 2}px`,
+          background: 'transparent',
+          // L-shape using thicker borders on two sides
+          borderTop: (handle === 'topLeft' || handle === 'topRight') ? '5px solid #4285f4' : 'none',
+          borderBottom: (handle === 'bottomLeft' || handle === 'bottomRight') ? '5px solid #4285f4' : 'none',
+          borderLeft: (handle === 'topLeft' || handle === 'bottomLeft') ? '5px solid #4285f4' : 'none',
+          borderRight: (handle === 'topRight' || handle === 'bottomRight') ? '5px solid #4285f4' : 'none',
+          // Add white outline for visibility on dark backgrounds
+          filter: 'drop-shadow(0 0 1px white) drop-shadow(0 0 1px white)',
+          cursor: cursorStyle,
+          pointerEvents: 'auto' as const,
+          zIndex: 10,
+        }
+      : {
+          // Edge handles: longer pill/oval shapes
+          position: 'absolute' as const,
+          left,
+          top,
+          width: isVertical ? `${edgeHandleLength}px` : '8px',
+          height: isVertical ? '8px' : `${edgeHandleLength}px`,
+          marginLeft: isVertical ? `-${edgeHandleLength / 2}px` : '-4px',
+          marginTop: isVertical ? '-4px' : `-${edgeHandleLength / 2}px`,
+          background: '#fff',
+          border: '2px solid #4285f4',
+          borderRadius: '4px',
+          cursor: cursorStyle,
+          pointerEvents: 'auto' as const,
+          zIndex: 10,
+        },
+  }
+}
 </script>
 
 <template>
+  <!-- Snap alignment guides -->
+  <div
+    v-for="lineX in activeSnapLines.x"
+    :key="`snap-x-${lineX}`"
+    class="snap-guide snap-guide-x"
+    :style="{
+      position: 'absolute',
+      left: `${zoom * lineX}px`,
+      top: 0,
+      width: '1px',
+      height: '100%',
+      background: '#f43f5e',
+      pointerEvents: 'none' as const,
+      zIndex: 9999,
+    }"
+  />
+  <div
+    v-for="lineY in activeSnapLines.y"
+    :key="`snap-y-${lineY}`"
+    class="snap-guide snap-guide-y"
+    :style="{
+      position: 'absolute',
+      left: 0,
+      top: `${zoom * lineY}px`,
+      width: '100%',
+      height: '1px',
+      background: '#f43f5e',
+      pointerEvents: 'none' as const,
+      zIndex: 9999,
+    }"
+  />
+
+  <!-- Ghost preview showing original position during rotation -->
+  <div
+    v-if="Number.isFinite(x0) && isRotating && !isArrow"
+    :style="{
+      position: 'absolute',
+      zIndex: zIndex - 1,
+      left: `${zoom * (displayX0 - displayWidth / 2)}px`,
+      top: `${zoom * (displayY0 - displayHeight / 2)}px`,
+      width: `${zoom * displayWidth}px`,
+      height: `${zoom * displayHeight}px`,
+      transformOrigin: 'center center',
+      transform: `rotate(${rotationStartAngle}deg)`,
+      pointerEvents: 'none' as const,
+      border: '1px solid rgba(66, 133, 244, 0.4)',
+      background: 'rgba(66, 133, 244, 0.05)',
+    }"
+  />
+
   <div
     v-if="Number.isFinite(x0)"
     id="drag-control-container"
     :data-drag-id="dragId"
     :style="{
       position: 'absolute',
-      zIndex: 100,
-      left: `${zoom * (x0 - Math.abs(width) / 2)}px`,
-      top: `${zoom * (y0 - Math.abs(height) / 2)}px`,
-      width: `${zoom * Math.abs(width)}px`,
-      height: `${zoom * Math.abs(height)}px`,
+      zIndex,
+      left: `${zoom * (displayX0 - displayWidth / 2)}px`,
+      top: `${zoom * (displayY0 - displayHeight / 2)}px`,
+      width: `${zoom * displayWidth}px`,
+      height: `${zoom * displayHeight}px`,
       transformOrigin: 'center center',
       transform: `rotate(${rotate}deg)`,
+      pointerEvents: 'none' as const,
     }"
-    @pointerdown="onPointerdown"
-    @pointermove="onPointermove"
-    @pointerup="onPointerup"
   >
-    <div class="absolute inset-0 z-nav dark:b-gray-400" :class="isArrow ? '' : 'b b-dark'">
+    <!-- Normal selection mode -->
+    <div v-if="!isCropping" class="absolute inset-0 z-nav dark:b-gray-400" :class="isArrow ? '' : 'b b-dark'">
       <template v-if="!autoHeight">
         <div v-bind="getCornerProps(true, true)" />
         <div v-bind="getCornerProps(false, false)" />
@@ -385,21 +1195,204 @@ watchEffect(() => {
         </template>
       </template>
       <template v-if="!isArrow">
-        <div v-bind="getBorderProps('l')" />
-        <div v-bind="getBorderProps('r')" />
-        <template v-if="!autoHeight">
-          <div v-bind="getBorderProps('t')" />
-          <div v-bind="getBorderProps('b')" />
+        <!-- Border handles only resize one dim, which would distort fixed-AR content. -->
+        <template v-if="!lockAspectRatio">
+          <div v-bind="getBorderProps('l')" />
+          <div v-bind="getBorderProps('r')" />
+          <template v-if="!autoHeight">
+            <div v-bind="getBorderProps('t')" />
+            <div v-bind="getBorderProps('b')" />
+          </template>
         </template>
-        <div v-bind="getRotateProps()" />
+        <!-- Rotation handle with rotate icon -->
+        <div v-bind="getRotateProps()">
+          <!-- Rotate icon (circular arrow) -->
+          <svg
+            width="12"
+            height="12"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="#4285f4"
+            stroke-width="2.5"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          >
+            <path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8" />
+            <path d="M21 3v5h-5" />
+          </svg>
+        </div>
+        <!-- Stem connecting rotation handle to element -->
         <div
-          class="absolute -top-15px w-0 b b-dashed b-dark dark:b-gray-400"
+          class="absolute w-0"
           :style="{
-            left: 'calc(50% - 1px)',
-            height: autoHeight ? '14px' : '10px',
+            left: '50%',
+            top: `-${rotateHandleOffset - rotateHandleSize / 2}px`,
+            height: `${rotateHandleOffset - rotateHandleSize / 2}px`,
+            borderLeft: '1px solid #4285f4',
           }"
         />
+        <!-- Angle display during rotation -->
+        <div
+          v-if="isRotating"
+          class="absolute text-xs font-medium whitespace-nowrap"
+          :style="{
+            left: '50%',
+            top: `-${rotateHandleOffset + rotateHandleSize + 4}px`,
+            transform: `translateX(-50%) rotate(-${rotate}deg)`,
+            color: '#4285f4',
+            pointerEvents: 'none' as const,
+          }"
+        >
+          {{ Math.round(currentRotationAngle) }}°
+        </div>
       </template>
+    </div>
+
+    <!-- Crop mode: render four dimmer rectangles over the *cropped-out* edges of
+         the already-rendered element. We used to also re-render the image
+         twice (one full-opacity clipped + one dimmed-full-image background)
+         but that breaks for any image source with alpha transparency: both
+         overlays let the slide bg show through, losing whatever backdrop the
+         original `<img>`'s render gave the image (e.g. a theme's white card,
+         a parent's bg-color, the body's color). The four-rectangle approach
+         leaves the original render untouched and only darkens the four
+         not-going-to-be-kept margins. -->
+    <div v-if="isCropping" class="absolute inset-0" :style="{ pointerEvents: 'auto' }" @dblclick="handleDblclick">
+      <div
+        class="absolute crop-overlay"
+        :style="{ top: 0, left: 0, right: 0, height: `${cropTop}%` }"
+      />
+      <div
+        class="absolute crop-overlay"
+        :style="{ bottom: 0, left: 0, right: 0, height: `${cropBottom}%` }"
+      />
+      <div
+        class="absolute crop-overlay"
+        :style="{ top: `${cropTop}%`, left: 0, bottom: `${cropBottom}%`, width: `${cropLeft}%` }"
+      />
+      <div
+        class="absolute crop-overlay"
+        :style="{ top: `${cropTop}%`, right: 0, bottom: `${cropBottom}%`, width: `${cropRight}%` }"
+      />
+
+      <!-- Crop region border - blue like Google's -->
+      <div
+        class="absolute"
+        :style="{
+          top: `${cropTop}%`,
+          left: `${cropLeft}%`,
+          right: `${cropRight}%`,
+          bottom: `${cropBottom}%`,
+          border: '2px solid #4285f4',
+        }"
+      />
+
+      <!-- Crop handles - edges -->
+      <div v-bind="getCropHandleProps('top')" />
+      <div v-bind="getCropHandleProps('right')" />
+      <div v-bind="getCropHandleProps('bottom')" />
+      <div v-bind="getCropHandleProps('left')" />
+
+      <!-- Crop handles - corners -->
+      <div v-bind="getCropHandleProps('topLeft')" />
+      <div v-bind="getCropHandleProps('topRight')" />
+      <div v-bind="getCropHandleProps('bottomLeft')" />
+      <div v-bind="getCropHandleProps('bottomRight')" />
+
+      <!-- Crop mode toolbar — `font-sans` + explicit family so the theme's serif body
+           font doesn't bleed into the UI. -->
+      <div
+        class="absolute flex items-center gap-2 bg-white dark:bg-gray-800 rounded shadow-lg px-3 py-1.5 text-xs font-sans"
+        :style="{
+          bottom: '-40px',
+          left: '50%',
+          transform: 'translateX(-50%)',
+          zIndex: 101,
+          pointerEvents: 'auto' as const,
+          whiteSpace: 'nowrap',
+          fontFamily: `ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif`,
+        }"
+      >
+        <span class="text-gray-500 dark:text-gray-400">Drag handles to crop</span>
+        <button
+          class="px-2 py-0.5 bg-blue-500 text-white rounded hover:bg-blue-600"
+          @click.stop="props.data.exitCropMode()"
+        >
+          Done
+        </button>
+      </div>
+    </div>
+    <!-- Bottom floating bar: link info and/or reset AR button (hidden in crop mode).
+         Use top:100% + margin so the bar sits cleanly *below* the bottom resize handles
+         (which extend ~5px past the wrapper edge); `bottom:-32px` left them overlapping
+         and made the bottom corner / edge handles hard to grab. `font-family` pins to
+         system-ui sans so the deck theme's serif body font doesn't bleed into the UI. -->
+    <div
+      v-if="(associatedLink || (hasAspectRatioChanged && !isArrow && !autoHeight)) && !isCropping"
+      class="absolute flex items-center gap-2 bg-white dark:bg-gray-800 rounded shadow-lg px-2 py-1 text-xs font-sans"
+      :style="{
+        top: '100%',
+        marginTop: '12px',
+        left: '50%',
+        transform: 'translateX(-50%)',
+        zIndex: 101,
+        pointerEvents: 'auto' as const,
+        fontFamily: `ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif`,
+      }"
+    >
+      <!-- Link info -->
+      <template v-if="associatedLink">
+        <a
+          :href="associatedLink"
+          target="_blank"
+          rel="noopener noreferrer"
+          class="text-blue-600 dark:text-blue-400 hover:underline max-w-40 truncate"
+          @click.stop
+        >
+          {{ associatedLink }}
+        </a>
+        <button
+          class="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded"
+          title="Open link"
+          @click.stop="openLink"
+        >
+          <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+          </svg>
+        </button>
+      </template>
+      <!-- Divider if both link and reset AR are shown -->
+      <div v-if="associatedLink && hasAspectRatioChanged && !isArrow && !autoHeight" class="w-px h-4 bg-gray-300 dark:bg-gray-600" />
+      <!-- Reset aspect ratio button (only when AR has changed) -->
+      <button
+        v-if="hasAspectRatioChanged && !isArrow && !autoHeight"
+        class="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded flex items-center gap-1"
+        title="Reset aspect ratio"
+        @click.stop="resetAspectRatio"
+      >
+        <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" />
+        </svg>
+        <span class="text-gray-600 dark:text-gray-400">Reset AR</span>
+      </button>
     </div>
   </div>
 </template>
+
+<style scoped>
+.crop-overlay {
+  /* Semi-transparent checkerboard pattern for visibility on both light and dark backgrounds */
+  background-color: rgba(0, 0, 0, 0.4);
+  background-image:
+    linear-gradient(45deg, rgba(255, 255, 255, 0.1) 25%, transparent 25%),
+    linear-gradient(-45deg, rgba(255, 255, 255, 0.1) 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, rgba(255, 255, 255, 0.1) 75%),
+    linear-gradient(-45deg, transparent 75%, rgba(255, 255, 255, 0.1) 75%);
+  background-size: 20px 20px;
+  background-position:
+    0 0,
+    0 10px,
+    10px -10px,
+    -10px 0px;
+}
+</style>

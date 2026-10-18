@@ -8,6 +8,7 @@ import MarkdownItFootnote from 'markdown-it-footnote'
 import MarkdownItGitHubAlerts from 'markdown-it-github-alerts'
 import { MarkdownItCodeblocks } from './codeblock'
 import MarkdownItVDrag from './drag'
+import MarkdownItDraggableImage from './draggable-image'
 import MarkdownItEscapeInlineCode from './escape-code'
 import MarkdownItKatex from './katex'
 import MarkdownItLink from './link'
@@ -34,6 +35,7 @@ export async function useMarkdownItPlugins(
   md.use(MarkdownItTaskList, { enabled: true, lineNumber: true, label: true })
   if (features.katex)
     md.use(MarkdownItKatex, katexOptions)
+  md.use(MarkdownItDraggableImage, markdownTransformMap, { enabled: config.draggableImages })
   md.use(MarkdownItVDrag, markdownTransformMap)
   md.use(MarkdownItSlotSugar)
   if (config.comark || config.mdc)

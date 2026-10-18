@@ -2,8 +2,10 @@
 import { useStyleTag } from '@vueuse/core'
 import { computed, ref, shallowRef } from 'vue'
 import { useDrawings } from '../composables/useDrawings'
+import { useFileDrop } from '../composables/useFileDrop'
 import { useHideCursorIdle } from '../composables/useHideCursorIdle'
 import { useNav } from '../composables/useNav'
+import { usePasteImage } from '../composables/usePasteImage'
 import { usePinchZoomPan } from '../composables/usePinchZoomPan'
 import { useSwipeControls } from '../composables/useSwipeControls'
 import { useWakeLock } from '../composables/useWakeLock'
@@ -20,6 +22,8 @@ import { editorHeight, editorWidth, isEditorVertical, isScreenVertical, showEdit
 
 const { next, prev, isPrintMode, isPlaying, isEmbedded } = useNav()
 const { isDrawing } = useDrawings()
+// Whether the auto-hiding nav bar (non-persist mode) is currently summoned.
+const navHover = ref(false)
 
 const root = ref<HTMLDivElement>()
 function onClick(e: MouseEvent) {
@@ -27,17 +31,23 @@ function onClick(e: MouseEvent) {
     return
 
   if (e.button === 0 && (e.target as HTMLElement)?.id === 'slide-container') {
-    // click right to next, left to previous
-    if ((e.pageX / window.innerWidth) > 0.5)
-      next()
-    else
+    // Only the outer 15% on each side advances/rewinds slides. The middle 70%
+    // (and the letterbox/pillarbox bars near vertical center) is a no-op, so
+    // clicking off-element to defocus doesn't accidentally page the deck.
+    const x = e.pageX / window.innerWidth
+    const HOT = 0.15
+    if (x < HOT)
       prev()
+    else if (x > 1 - HOT)
+      next()
   }
 }
 
 usePinchZoomPan(root)
 useSwipeControls(root)
 registerShortcuts()
+const { dropActive: fileDropActive, inFlight: fileDropInFlight } = useFileDrop()
+usePasteImage()
 if (__SLIDEV_FEATURE_WAKE_LOCK__)
   useWakeLock()
 useHideCursorIdle(computed(() => isPlaying.value && !isEmbedded.value && !showEditor.value))
@@ -63,8 +73,14 @@ if (import.meta.hot) {
 const persistNav = computed(() => isScreenVertical.value || showEditor.value)
 
 const SideEditor = shallowRef<any>()
+const HistoryDrawer = shallowRef<any>()
+// SideEditor writes back to slides.md source — only useful in dev mode.
 if (__DEV__ && __SLIDEV_FEATURE_EDITOR__)
   import('../internals/SideEditor.vue').then(v => SideEditor.value = v.default)
+// HistoryDrawer reads/writes through the IStateClient abstraction (RemoteStateClient in
+// dev, LocalStateClient in static deploys), so it's useful in either mode — load it
+// always.
+import('../internals/HistoryDrawer.vue').then(v => HistoryDrawer.value = v.default)
 
 const contentStyle = computed(() => {
   let filter = ''
@@ -101,23 +117,46 @@ const contentStyle = computed(() => {
       <template #default>
         <SlidesShow render-context="slide" />
         <PresenterMouse />
+        <div
+          v-if="fileDropActive || fileDropInFlight"
+          class="absolute inset-0 pointer-events-none flex items-center justify-center"
+          :class="fileDropActive ? 'bg-blue-500/10 border-4 border-dashed border-blue-400' : 'bg-blue-500/5'"
+        >
+          <div class="bg-main px-4 py-2 rounded shadow text-sm op-90">
+            {{ fileDropInFlight ? 'Inserting…' : 'Drop image / video to insert into this slide' }}
+          </div>
+        </div>
         <LaserPointer />
       </template>
       <template #controls>
         <SlugChip />
-        <div
-          v-if="!isPrintMode"
-          class="absolute bottom-0 left-0 transition duration-300 opacity-0 hover:opacity-100 focus-within:opacity-100 focus-visible:opacity-100"
-          :class="[
-            persistNav ? '!opacity-100 right-0' : 'opacity-0 p-2',
-            isDrawing ? 'pointer-events-none' : '',
-          ]"
-        >
-          <NavControls :persist="persistNav" />
-        </div>
+        <template v-if="!isPrintMode">
+          <!-- Narrow "summon" strip. Hovering the bar's full footprint used to pop
+               it open — and, being only opacity-0 (not removed), it also swallowed
+               clicks over any slide content in the lower-left. Restrict the hover
+               target to a thin bottom strip, and make the hidden bar
+               pointer-events-none so clicks pass through to the slide. -->
+          <div
+            v-if="!persistNav"
+            class="absolute bottom-0 left-0 h-3.5 w-80"
+            @mouseenter="navHover = true"
+          />
+          <div
+            class="absolute bottom-0 left-0 transition duration-300 focus-within:opacity-100 focus-within:pointer-events-auto"
+            :class="[
+              persistNav ? '!opacity-100 right-0' : (navHover ? 'opacity-100 p-2' : 'opacity-0 pointer-events-none p-2'),
+              isDrawing ? 'pointer-events-none' : '',
+            ]"
+            @mouseenter="navHover = true"
+            @mouseleave="navHover = false"
+          >
+            <NavControls :persist="persistNav" />
+          </div>
+        </template>
       </template>
     </SlideContainer>
     <SideEditor v-if="SideEditor && showEditor" :resize="true" />
+    <component :is="HistoryDrawer" v-if="HistoryDrawer" />
   </div>
   <Controls v-if="!isPrintMode" />
   <div id="twoslash-container" />

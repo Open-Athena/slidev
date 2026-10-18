@@ -1,11 +1,12 @@
 <script setup lang="ts">
 import { computed, ref, shallowRef } from 'vue'
 import CustomNavControls from '#slidev/custom-nav-controls'
+import { commitToYaml, describeEntry, downloadCoordsYaml, canRedo as historyCanRedo, canUndo as historyCanUndo, isDirty as historyIsDirty, redo as historyRedo, undo as historyUndo, lastYamlCommitEventId, revertToYaml, topActiveEventId, topRedoEntry, topUndoEntry } from '../composables/useDragHistory'
 import { useDrawings } from '../composables/useDrawings'
 import { useNav } from '../composables/useNav'
 import { configs } from '../env'
 import { isColorSchemaConfigured, isDark, toggleDark } from '../logic/dark'
-import { activeElement, breakpoints, cursorStyle, fullscreen, hasViewerCssFilter, presenterLayout, showEditor, showInfoDialog, showPresenterCursor, toggleOverview, togglePresenterCursor, togglePresenterLayout } from '../state'
+import { activeElement, breakpoints, cursorStyle, fullscreen, hasViewerCssFilter, presenterLayout, showEditor, showHistoryDrawer, showInfoDialog, showPresenterCursor, toggleOverview, togglePresenterCursor, togglePresenterLayout } from '../state'
 import { downloadPDF } from '../utils'
 import IconButton from './IconButton.vue'
 import MenuButton from './MenuButton.vue'
@@ -51,6 +52,41 @@ const barStyle = computed(() => props.persist
   ? 'text-$slidev-controls-foreground bg-transparent'
   : 'rounded-md bg-main shadow-xl border border-main')
 
+const undoTitle = computed(() => historyCanUndo.value
+  ? `Undo ${describeEntry(topUndoEntry.value)} (⌘Z)`
+  : 'Nothing to undo')
+const redoTitle = computed(() => historyCanRedo.value
+  ? `Redo ${describeEntry(topRedoEntry.value)} (⇧⌘Z)`
+  : 'Nothing to redo')
+
+const commitTitle = computed(() => {
+  if (!historyIsDirty.value)
+    return `slides.coords.yaml is up to date${lastYamlCommitEventId.value ? ` (event ${lastYamlCommitEventId.value})` : ''}`
+  const top = topActiveEventId.value ?? 0
+  const last = lastYamlCommitEventId.value ?? 0
+  const n = Math.max(0, top - last)
+  return `Commit ${n} pending edit${n === 1 ? '' : 's'} to slides.coords.yaml`
+})
+
+async function onCommitClick() {
+  if (!historyIsDirty.value)
+    return
+  await commitToYaml()
+}
+
+async function onRevertClick() {
+  if (!historyIsDirty.value)
+    return
+  const top = topActiveEventId.value ?? 0
+  const last = lastYamlCommitEventId.value ?? 0
+  const n = Math.max(0, top - last)
+  const noun = n === 1 ? 'edit' : 'edits'
+  // eslint-disable-next-line no-alert -- destructive op needs explicit confirmation; toast/modal would be over-engineered for a dev-only utility
+  if (!window.confirm(`Drop ${n} uncommitted ${noun} and reload from slides.coords.yaml?`))
+    return
+  await revertToYaml()
+}
+
 const RecordingControls = shallowRef<any>()
 if (__SLIDEV_FEATURE_RECORD__)
   import('./RecordingControls.vue').then(v => RecordingControls.value = v.default)
@@ -75,6 +111,47 @@ if (__SLIDEV_FEATURE_RECORD__)
       </IconButton>
       <IconButton v-if="!isEmbedded" title="Show slide overview" @click="toggleOverview()">
         <div class="i-carbon:apps" />
+      </IconButton>
+      <IconButton :class="{ disabled: !historyCanUndo }" :title="undoTitle" @click="historyUndo()">
+        <div class="i-carbon:undo" />
+      </IconButton>
+      <IconButton :class="{ disabled: !historyCanRedo }" :title="redoTitle" @click="historyRedo()">
+        <div class="i-carbon:redo" />
+      </IconButton>
+      <IconButton
+        v-if="__DEV__ && __SLIDEV_FEATURE_EDITOR__"
+        :class="{ disabled: !historyIsDirty }"
+        :title="commitTitle"
+        class="relative"
+        @click="onCommitClick"
+      >
+        <div class="i-carbon:save" />
+        <div
+          v-if="historyIsDirty"
+          class="absolute top-0.5 right-0.5 w-1.5 h-1.5 rounded-full bg-orange-500"
+        />
+      </IconButton>
+      <IconButton
+        v-if="__DEV__ && __SLIDEV_FEATURE_EDITOR__"
+        :class="{ disabled: !historyIsDirty }"
+        title="Revert uncommitted edits — drop state.db and re-hydrate from slides.coords.yaml"
+        @click="onRevertClick"
+      >
+        <div class="i-carbon:reset" />
+      </IconButton>
+      <IconButton
+        v-if="!__DEV__"
+        title="Download slides.coords.yaml (positions of every dragged element on every slide)"
+        @click="downloadCoordsYaml"
+      >
+        <div class="i-carbon:document-export" />
+      </IconButton>
+      <IconButton
+        :title="`${showHistoryDrawer ? 'Hide' : 'Show'} edit history (h)`"
+        :class="showHistoryDrawer ? 'text-primary' : ''"
+        @click="showHistoryDrawer = !showHistoryDrawer"
+      >
+        <div class="i-carbon:time-plot" />
       </IconButton>
       <IconButton
         v-if="!isColorSchemaConfigured"

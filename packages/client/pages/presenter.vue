@@ -241,8 +241,12 @@ function normalizeResizerState() {
 }
 
 const SideEditor = shallowRef<any>()
+const HistoryDrawer = shallowRef<any>()
+// SideEditor writes back to slides.md source — only useful in dev mode.
 if (__DEV__ && __SLIDEV_FEATURE_EDITOR__)
   import('../internals/SideEditor.vue').then(v => SideEditor.value = v.default)
+// HistoryDrawer works against either backend (Remote in dev, Local in static) — always load.
+import('../internals/HistoryDrawer.vue').then(v => HistoryDrawer.value = v.default)
 
 // sync presenter cursor
 onMounted(() => {
@@ -425,6 +429,7 @@ onMounted(() => {
   <Goto />
   <QuickOverview />
   <ContextMenu />
+  <component :is="HistoryDrawer" v-if="HistoryDrawer" />
 </template>
 
 <style scoped>

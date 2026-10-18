@@ -1,7 +1,15 @@
 shamefullyHoist: true
 
-# `playwright-chromium` is needed for `slidev export` (PDF/PNG/PPTX) and has a
-# postinstall script that downloads the browser. pnpm v11 errors on unapproved
-# build scripts by default (`strictDepBuilds: true`), so allowlist it up-front.
+# pnpm v11 errors on unapproved dependency build scripts by default
+# (`strictDepBuilds: true`), so allowlist the ones slidev pulls in:
+# - `playwright-chromium`: needed for `slidev export` (PDF/PNG/PPTX); its
+#   postinstall downloads the browser.
+# - `better-sqlite3`: backs the dev editor's deck-state history (undo/redo,
+#   version drawer). It's an optionalDependency of `@slidev/cli` and the dev
+#   server degrades gracefully without it, but allowlisting it builds the native
+#   binary up-front so the history features work. To skip it instead (no native
+#   build), move it to `ignoredBuiltDependencies` rather than deleting the line —
+#   otherwise pnpm re-errors on the unapproved script.
 allowBuilds:
+  better-sqlite3: true
   playwright-chromium: true
