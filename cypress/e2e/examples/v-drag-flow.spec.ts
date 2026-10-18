@@ -33,6 +33,8 @@ context('v-drag (flow layout)', () => {
     cy.visit(`${BASE}/24`, {
       onBeforeLoad: win => win.localStorage.setItem('slidev-edit-mode', 'true'),
     }).wait(500)
+    // Slide scale starts at 0 on a cold load; wait for real geometry before reading rects.
+    cy.get('#slide-content').should($slide => expect($slide[0].getBoundingClientRect().width).to.be.greaterThan(100))
     // The images must have loaded for `object-fit` to letterbox them.
     cy.get('[data-testid="flow-a"]').should($img => expect(($img[0] as HTMLImageElement).naturalWidth).to.eq(800))
   })

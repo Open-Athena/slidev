@@ -8,6 +8,16 @@ context('v-drag', () => {
     cy.visit(`${BASE}/${no}`, {
       onBeforeLoad: win => win.localStorage.setItem('slidev-edit-mode', String(editing)),
     }).wait(500)
+    waitForSlideScale()
+  }
+
+  // On a cold load the slide's scale starts at 0 (its container hasn't been measured yet), so
+  // every rect inside it collapses to a point. Tests that compute pointer targets from rects must
+  // wait for real geometry, or they drag to the wrong place (seen as CI-only snap failures).
+  function waitForSlideScale() {
+    cy.get('#slide-content').should(($slide) => {
+      expect($slide[0].getBoundingClientRect().width).to.be.greaterThan(100)
+    })
   }
 
   describe('edit mode', () => {
