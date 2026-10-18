@@ -26,12 +26,16 @@ context('text editing', () => {
     cy.visit(`${BASE}/${SLIDE}`, {
       onBeforeLoad: win => win.localStorage.setItem('slidev-edit-mode', String(editing)),
     })
-    cy.get('#slide-content').should($s => expect($s[0].getBoundingClientRect().width).to.be.greaterThan(100))
-    cy.contains('li', 'first item').should('have.attr', 'data-slidev-md')
+    // Generous timeouts: the first visit after the fixture server starts compiles the deck.
+    cy.get('#slide-content', { timeout: 30000 }).should($s => expect($s[0].getBoundingClientRect().width).to.be.greaterThan(100))
+    cy.contains('li', 'first item', { timeout: 30000 }).should('have.attr', 'data-slidev-md')
   }
 
+  // Double-click near the block's top-left, on its first line of text: an element's center can
+  // fall on a nested block (a list item's box includes its nested list), and editing that is
+  // correct behavior, just not what the test means.
   function startEditing(selector: string, text: string, alt = false) {
-    cy.contains(selector, text).dblclick({ altKey: alt })
+    cy.contains(selector, text).dblclick(8, 8, { altKey: alt })
   }
 
   before(() => {
