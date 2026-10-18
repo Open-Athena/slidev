@@ -354,7 +354,7 @@ export class LocalStateClient implements IStateClient {
     // baked initial positions. We clear the event log + meta and let the registry's live
     // values become the new ground truth on next interaction.
     this.writeEvents([])
-    this.writeMeta({ lastEventId: 0, lastYamlCommitEventId: null })
+    this.writeMeta(defaultMeta())
     this.broadcast({ type: 'state-change', source: 'revert-to-yaml', topActiveEventId: null })
     return null
   }

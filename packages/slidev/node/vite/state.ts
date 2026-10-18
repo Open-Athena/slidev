@@ -28,7 +28,7 @@ const SSE_HEARTBEAT_MS = 25_000
 // re-fetches state + events — the source is informational.
 interface StateChangeMessage {
   type: 'state-change'
-  source: 'edit' | 'undo' | 'redo' | 'restore' | 'yaml-commit'
+  source: 'edit' | 'undo' | 'redo' | 'restore' | 'yaml-commit' | 'revert-to-yaml'
   topActiveEventId: number | null
   triggeringEventId?: number | null
 }
