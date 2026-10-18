@@ -1,7 +1,8 @@
 import type { RouteLocationNormalized, RouteRecordRaw } from 'vue-router'
 import configs from '#slidev/configs'
 import setups from '#slidev/setups/routes'
-import { getSlide, slugForSlide } from '../logic/slides'
+import { resolveNumberedSlug } from '../logic/slidePath'
+import { getSlide, slides, slugForSlide } from '../logic/slides'
 
 export default function setupRoutes() {
   const routes: RouteRecordRaw[] = []
@@ -88,13 +89,20 @@ export default function setupRoutes() {
 
   routes.push(
     {
-      // Canonical `/<n>-<slug>` form (e.g. `/3-install`). The slug param is
-      // decorative — play.vue resolves by `:no`. We accept any slug here (don't
-      // verify it matches the current slug) so renaming a slug doesn't break
-      // existing shared links: stale `/3-old-slug` URLs still land on slide 3.
+      // Canonical `/<n>-<slug>` form (e.g. `/3-install`). A slug naming exactly one slide wins
+      // over the number, so links shared before a slide was inserted earlier in the deck follow
+      // their slide (`/3-install` → `/4-install`). A slug no slide has (renamed) or several have
+      // falls back to the number: stale `/3-old-slug` URLs still land on slide 3.
       name: 'play-slug',
       path: '/:no(\\d+)-:slug([a-z0-9][a-z0-9-]*)',
       component: () => import('../pages/play.vue'),
+      beforeEnter: (to) => {
+        const no = Number(to.params.no)
+        const target = resolveNumberedSlug(no, String(to.params.slug), slides.value, slugForSlide)
+        if (target === no)
+          return true
+        return { path: `/${target}-${to.params.slug}`, query: to.query, hash: to.hash, replace: true }
+      },
     },
     {
       name: 'play',

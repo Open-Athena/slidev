@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import { renderSVG } from 'uqr'
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { useSlideContext } from '../context'
 import { configs } from '../env'
 import { getSlide, slugForSlide } from '../logic/slides'
+import { editMode } from '../state'
 
 type Position = 'tl' | 'tr' | 'bl' | 'br'
 type UrlForm = 'canonical' | 'n' | 'slug' | 'n-slug'
@@ -100,25 +101,28 @@ const origin = computed(() => {
   return ''
 })
 
-const slidePath = computed(() => {
+// `'canonical'` means "follow the deck's `publish.canonicalForm`" — useful when a deck explicitly
+// wants the QR to match share/scrape canonical URL rather than the chunky-QR default.
+const urlForm = computed<Exclude<UrlForm, 'canonical'>>(() => {
+  const form = resolved.value.urlForm
+  if (form !== 'canonical')
+    return form
+  const c = (configs.publish as any)?.canonicalForm
+  return (c === 'n' || c === 'slug' || c === 'n-slug') ? c : 'n-slug'
+})
+
+function pathFor(form: Exclude<UrlForm, 'canonical'>): string {
   const no = $page.value
-  const slide = getSlide(no)
-  const slug = slugForSlide(slide)
-  let form: UrlForm = resolved.value.urlForm
-  if (form === 'canonical') {
-    // `'canonical'` means "follow the deck's `publish.canonicalForm`" — useful
-    // when a deck explicitly wants the QR to match share/scrape canonical URL
-    // rather than the chunky-QR default.
-    const c = (configs.publish as any)?.canonicalForm
-    form = (c === 'n' || c === 'slug' || c === 'n-slug') ? c : 'n-slug'
-  }
+  const slug = slugForSlide(getSlide(no))
   switch (form) {
     case 'n': return String(no)
     case 'slug': return slug || String(no)
     case 'n-slug':
     default: return slug ? `${no}-${slug}` : String(no)
   }
-})
+}
+
+const slidePath = computed(() => pathFor(urlForm.value))
 
 const targetUrl = computed(() => {
   if (props.url)
@@ -155,6 +159,31 @@ const positionStyle = computed(() => {
 })
 
 const disabled = computed(() => slideQrCfg.value.disabled === true)
+
+// Hover: show the encoded URL. In dev + edit mode, also offer the URL forms, which write the
+// deck's `qr.url`: the number alone is the shortest (chunkiest QR) but goes stale when slides
+// are inserted before this one; a slug keeps pointing at this slide (`/<n>-<slug>` resolves by
+// slug first).
+const hovered = ref(false)
+const forms = computed(() => (['n', 'n-slug', 'slug'] as const)
+  .map(form => ({ form, path: `/${pathFor(form)}` }))
+  .filter((f, i, all) => all.findIndex(g => g.path === f.path) === i))
+const canEditForm = computed(() => __DEV__ && editMode.value && !props.url)
+
+async function setDeckUrlForm(form: Exclude<UrlForm, 'canonical'>) {
+  const res = await fetch('/__slidev/slides/1.json')
+  if (!res.ok)
+    throw new Error(`Failed to fetch the headmatter (${res.status})`)
+  const { frontmatter } = await res.json() as { frontmatter: Record<string, unknown> }
+  const qr = typeof frontmatter.qr === 'object' && frontmatter.qr !== null ? frontmatter.qr : {}
+  const post = await fetch('/__slidev/slides/1.json', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+    body: JSON.stringify({ frontmatter: { qr: { ...qr, url: form } }, skipHmr: false }),
+  })
+  if (!post.ok)
+    throw new Error(`Failed to save \`qr.url\` (${post.status})`)
+}
 </script>
 
 <template>
@@ -163,7 +192,25 @@ const disabled = computed(() => slideQrCfg.value.disabled === true)
     class="slidev-qr"
     :style="positionStyle"
     :data-position="resolved.position"
+    @pointerenter="hovered = true"
+    @pointerleave="hovered = false"
   >
+    <div v-if="hovered" class="slidev-qr-pop" @pointerdown.stop @click.stop>
+      <div class="slidev-qr-pop-url">
+        {{ displayUrl }}
+      </div>
+      <div v-if="canEditForm" class="slidev-qr-pop-forms">
+        <button
+          v-for="f in forms"
+          :key="f.form"
+          :data-active="f.form === urlForm ? '' : undefined"
+          :title="f.form === 'n' ? 'Shortest; goes stale if slides are inserted before this one' : 'Follows this slide when slides are inserted or removed'"
+          @click="setDeckUrlForm(f.form)"
+        >
+          {{ f.path }}
+        </button>
+      </div>
+    </div>
     <div v-if="resolved.showText" class="slidev-qr-url">
       {{ displayUrl }}
     </div>
@@ -207,6 +254,68 @@ const disabled = computed(() => slideQrCfg.value.disabled === true)
   border-radius: 3px;
   box-shadow: 0 1px 4px rgb(0 0 0 / 0.08);
   overflow: hidden;
+}
+.slidev-qr-pop {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: rgb(17 24 39 / 0.92);
+  color: white;
+  font:
+    11px/1.4 ui-monospace,
+    SFMono-Regular,
+    Menlo,
+    monospace;
+  white-space: nowrap;
+  box-shadow: 0 4px 14px rgb(0 0 0 / 0.25);
+  user-select: text;
+}
+/* Bridge the gap to the QR, so moving the pointer onto the popover keeps it open. */
+.slidev-qr-pop::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 100%;
+  height: 8px;
+}
+.slidev-qr[data-position^='t'] .slidev-qr-pop::after {
+  top: auto;
+  bottom: 100%;
+}
+.slidev-qr[data-position^='t'] .slidev-qr-pop {
+  top: calc(100% + 6px);
+  bottom: auto;
+}
+.slidev-qr[data-position$='r'] .slidev-qr-pop {
+  right: 0;
+}
+.slidev-qr[data-position$='l'] .slidev-qr-pop {
+  left: 0;
+}
+.slidev-qr-pop-forms {
+  display: flex;
+  gap: 4px;
+}
+.slidev-qr-pop-forms button {
+  padding: 1px 6px;
+  border: 1px solid rgb(255 255 255 / 0.3);
+  border-radius: 4px;
+  color: inherit;
+  font: inherit;
+  opacity: 0.75;
+}
+.slidev-qr-pop-forms button:hover {
+  opacity: 1;
+}
+.slidev-qr-pop-forms button[data-active] {
+  border-color: rgb(96 165 250);
+  background: rgb(59 130 246 / 0.35);
+  opacity: 1;
 }
 .slidev-qr-svg :deep(svg) {
   display: block;
