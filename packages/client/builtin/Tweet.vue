@@ -4,16 +4,19 @@ A simple wrapper for embedded Tweet
 Usage:
 
 <Tweet id="20" />
+<Tweet url="https://x.com/jack/status/20" />
 -->
 
 <script setup lang="ts">
 import { useElementSize } from '@vueuse/core'
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { isDark } from '../logic/dark'
+import { resolveTweetId } from '../logic/tweet'
 import VDrag from './VDrag.vue'
 
 const props = withDefaults(defineProps<{
-  id: string | number
+  id?: string | number
+  url?: string
   scale?: string | number
   conversation?: string
   cards?: 'hidden' | 'visible'
@@ -56,6 +59,8 @@ const tweetAR = computed(() => {
   return (fitW + 8) / (8 + ih * fitW / TWEET_NATURAL_W)
 })
 
+const tweetId = computed(() => resolveTweetId(props.id, props.url))
+
 const loaded = ref(false)
 const tweetNotFound = ref(false)
 
@@ -68,6 +73,14 @@ const tweetNotFound = ref(false)
 let observer: MutationObserver | null = null
 
 async function create(retries = 10) {
+  const id = tweetId.value
+  if (!id) {
+    loaded.value = true
+    tweetNotFound.value = true
+    console.error('Tweet requires a valid id or X post URL.')
+    return
+  }
+
   // @ts-expect-error global
   if (!window.twttr?.widgets?.createTweet) {
     if (retries <= 0)
@@ -78,7 +91,7 @@ async function create(retries = 10) {
   try {
     // @ts-expect-error global
     const element = await window.twttr.widgets.createTweet(
-      props.id.toString(),
+      id,
       tweet.value,
       {
         theme: isDark.value ? 'dark' : 'light',
@@ -138,12 +151,12 @@ onUnmounted(() => {
     <div ref="wrapper" class="tweet-fit" data-waitfor="iframe">
       <!-- DragControl.associatedLink picks this up via `querySelector('a')`,
            surfacing a clickable URL in the control bar when the embed is selected. -->
-      <a :href="`https://x.com/i/web/status/${id}`" target="_blank" rel="noopener noreferrer" aria-hidden="true" class="tweet-link" />
+      <a :href="`https://x.com/i/web/status/${tweetId}`" target="_blank" rel="noopener noreferrer" aria-hidden="true" class="tweet-link" />
       <div ref="tweet" class="tweet slidev-tweet" :style="tweetStyle">
         <div v-if="!loaded || tweetNotFound" class="w-30 h-30 my-10px bg-gray-400 bg-opacity-10 rounded-lg flex opacity-50">
           <div class="m-auto animate-pulse text-4xl">
             <div class="i-carbon:logo-twitter" />
-            <span v-if="tweetNotFound">Could not load tweet with id="{{ props.id }}"</span>
+            <span v-if="tweetNotFound">Could not load tweet</span>
           </div>
         </div>
       </div>
@@ -154,7 +167,7 @@ onUnmounted(() => {
       <div v-if="!loaded || tweetNotFound" class="w-30 h-30 my-10px bg-gray-400 bg-opacity-10 rounded-lg flex opacity-50">
         <div class="m-auto animate-pulse text-4xl">
           <div class="i-carbon:logo-twitter" />
-          <span v-if="tweetNotFound">Could not load tweet with id="{{ props.id }}"</span>
+          <span v-if="tweetNotFound">Could not load tweet</span>
         </div>
       </div>
     </div>

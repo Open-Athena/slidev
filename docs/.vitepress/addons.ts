@@ -314,6 +314,28 @@ export const community: AddonInfo[] = [
     },
     repo: 'https://github.com/nirtamir2/slidev-addon-sandpack',
   },
+  {
+    id: 'slidev-addon-studio',
+    name: 'Studio',
+    description: 'Edit slides on the canvas, with every change written back to your Markdown.',
+    tags: ['Editor', 'Tool'],
+    author: {
+      name: 'Daniel Christensen',
+      link: 'https://github.com/BobTheShoplifter',
+    },
+    repo: 'https://github.com/BobTheShoplifter/slidev-addon-studio',
+  },
+  {
+    id: 'slidev-addon-gsap',
+    name: 'GSAP',
+    description: 'Use click-driven GSAP timelines for a much more natural and powerful way to specify your animations.',
+    tags: ['Animation', 'Integration'],
+    author: {
+      name: 'Max Kurze',
+      link: 'https://github.com/maxkurze1',
+    },
+    repo: 'https://github.com/maxkurze1/slidev-addon-gsap',
+  },
   // Add yours here!
   {
     id: '',
