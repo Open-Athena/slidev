@@ -1,8 +1,8 @@
 {
   "type": "module",
-  "version": "52.18.0",
+  "version": "52.19.1",
   "private": true,
-  "packageManager": "pnpm@11.10.0",
+  "packageManager": "pnpm@11.22.0",
   "engines": {
     "node": ">=20.12.0"
   },
@@ -33,7 +33,7 @@
     "@antfu/eslint-config": "catalog:dev",
     "@antfu/ni": "catalog:prod",
     "@antfu/utils": "catalog:frontend",
-    "@modelcontextprotocol/sdk": "catalog:prod",
+    "@modelcontextprotocol/client": "catalog:prod",
     "@shikijs/markdown-it": "catalog:frontend",
     "@slidev/cli": "workspace:*",
     "@slidev/parser": "workspace:*",
@@ -47,7 +47,6 @@
     "@types/prompts": "catalog:types",
     "@types/recordrtc": "catalog:types",
     "@types/resolve": "catalog:types",
-    "@types/semver": "catalog:types",
     "@types/yargs": "catalog:types",
     "@vue/compiler-sfc": "catalog:demo",
     "@vueuse/core": "catalog:frontend",

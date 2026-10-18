@@ -147,6 +147,8 @@ cli.command(
             host,
             // @ts-expect-error Vite <= 4
             force,
+            // Allow Cloudflare Quick Tunnel domains when tunneling is enabled
+            ...(tunnel && remote != null ? { allowedHosts: ['.trycloudflare.com'] } : {}),
           },
           optimizeDeps: {
             // Vite 5
@@ -739,7 +741,7 @@ function printInfo(
     if (remote !== undefined) {
       Object.values(os.networkInterfaces())
         .forEach(v => (v || [])
-          .filter(details => String(details.family).slice(-1) === '4' && !details.address.includes('127.0.0.1'))
+          .filter(details => String(details.family).endsWith('4') && !details.address.includes('127.0.0.1'))
           .forEach(({ address }) => {
             lastRemoteUrl = `http://${address}:${portAndBase}${entryPath}`
             console.log(`${dim('  remote control ')}     > ${blue(lastRemoteUrl)}`)
