@@ -12,6 +12,7 @@ import { configs } from '../env'
 import { getSlidePath } from '../logic/slides'
 import setupShortcuts from '../setup/shortcuts'
 import { editMode, fullscreen, isInputting, isOnFocus, magicKeys, shortcutsEnabled, shortcutsLocked, showHistoryDrawer } from '../state'
+import { registerShortcutDisplay } from './shortcut-display'
 
 export function registerShortcuts() {
   const { isPrintMode, currentSlideRoute } = useNav()
@@ -25,7 +26,14 @@ export function registerShortcuts() {
   shortcuts.forEach((options) => {
     if (options.fn)
       shortcut(options.key, options.fn, options.autoRepeat)
+    if (options.name && options.display)
+      registerShortcutDisplay(options.name, options.display)
   })
+  registerShortcutDisplay('toggle_fullscreen', ['f'])
+  registerShortcutDisplay('toggle_history', ['h'])
+  registerShortcutDisplay('copy_url', ['y'])
+  registerShortcutDisplay('undo', ['⌘Z'])
+  registerShortcutDisplay('redo', ['⇧⌘Z'])
 
   strokeShortcut('f', () => fullscreen.toggle())
   strokeShortcut('h', () => showHistoryDrawer.value = !showHistoryDrawer.value)

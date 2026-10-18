@@ -43,6 +43,11 @@ export interface ShortcutOptions {
   fn?: () => void
   autoRepeat?: boolean
   name?: string
+  /**
+   * The key combination(s) as shown to people, e.g. `['o', '`']` or `['⇧ →']`, for tooltips on
+   * the controls that do the same thing. `key` can't be read back, so keep the two in sync.
+   */
+  display?: string[]
 }
 
 export interface ShikiContext {

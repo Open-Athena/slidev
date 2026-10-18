@@ -290,3 +290,30 @@ html {
   box-shadow: 0 4px 14px rgb(0 0 0 / 0.25);
   pointer-events: none;
 }
+
+/* Toolbar tooltips (`internals/IconButton.vue`). */
+.slidev-tooltip {
+  position: fixed;
+  z-index: 1001;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  border-radius: 6px;
+  background: rgb(17 24 39 / 0.94);
+  color: white;
+  font: 12px/1.4 system-ui, sans-serif;
+  white-space: nowrap;
+  transform: translate(-50%, -100%);
+  pointer-events: none;
+  box-shadow: 0 4px 14px rgb(0 0 0 / 0.25);
+}
+.slidev-tooltip[data-below] {
+  transform: translate(-50%, 0);
+}
+.slidev-tooltip kbd {
+  padding: 0 5px;
+  border: 1px solid rgb(255 255 255 / 0.3);
+  border-radius: 4px;
+  font: 11px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace;
+}

@@ -53,10 +53,10 @@ const barStyle = computed(() => props.persist
   : 'rounded-md bg-main shadow-xl border border-main')
 
 const undoTitle = computed(() => historyCanUndo.value
-  ? `Undo ${describeEntry(topUndoEntry.value)} (⌘Z)`
+  ? `Undo ${describeEntry(topUndoEntry.value)}`
   : 'Nothing to undo')
 const redoTitle = computed(() => historyCanRedo.value
-  ? `Redo ${describeEntry(topRedoEntry.value)} (⇧⌘Z)`
+  ? `Redo ${describeEntry(topRedoEntry.value)}`
   : 'Nothing to redo')
 
 // History events since the last YAML commit. Positions live in `.slidev/state.db` until committed
@@ -101,21 +101,22 @@ if (__SLIDEV_FEATURE_RECORD__)
       :class="barStyle"
       @mouseleave="onMouseLeave"
     >
-      <IconButton v-if="!isEmbedded" :title="isFullscreen ? 'Close fullscreen' : 'Enter fullscreen'" @click="toggleFullscreen">
+      <IconButton v-if="!isEmbedded" :title="isFullscreen ? 'Close fullscreen' : 'Enter fullscreen'" shortcut="toggle_fullscreen" @click="toggleFullscreen">
         <div v-if="isFullscreen" class="i-carbon:minimize" />
         <div v-else class="i-carbon:maximize" />
       </IconButton>
-      <IconButton :disabled="!hasPrev" title="Go to previous slide" @click="prev">
+      <IconButton :disabled="!hasPrev" title="Previous" :shortcut="['prev_left', 'prev_space']" @click="prev">
         <div class="i-carbon:arrow-left" />
       </IconButton>
-      <IconButton :disabled="!hasNext" title="Go to next slide" @click="next">
+      <IconButton :disabled="!hasNext" title="Next" :shortcut="['next_right', 'next_space']" @click="next">
         <div class="i-carbon:arrow-right" />
       </IconButton>
-      <IconButton v-if="!isEmbedded" title="Show slide overview" @click="toggleOverview()">
+      <IconButton v-if="!isEmbedded" title="Show slide overview" shortcut="toggle_overview" @click="toggleOverview()">
         <div class="i-carbon:apps" />
       </IconButton>
       <IconButton
-        :title="editMode ? 'Stop editing (e)' : 'Edit: move, resize, crop; double-click text to edit it (e)'"
+        :title="editMode ? 'Stop editing' : 'Edit: move, resize, crop; double-click text to edit it'"
+        shortcut="toggle_edit"
         :class="editMode ? 'text-primary' : ''"
         @click="editMode = !editMode"
       >
@@ -123,10 +124,10 @@ if (__SLIDEV_FEATURE_RECORD__)
         <div class="i-carbon:pen" />
       </IconButton>
       <template v-if="editMode">
-        <IconButton :class="{ disabled: !historyCanUndo }" :title="undoTitle" @click="historyUndo()">
+        <IconButton :class="{ disabled: !historyCanUndo }" :title="undoTitle" shortcut="undo" @click="historyUndo()">
           <div class="i-carbon:undo" />
         </IconButton>
-        <IconButton :class="{ disabled: !historyCanRedo }" :title="redoTitle" @click="historyRedo()">
+        <IconButton :class="{ disabled: !historyCanRedo }" :title="redoTitle" shortcut="redo" @click="historyRedo()">
           <div class="i-carbon:redo" />
         </IconButton>
         <IconButton
@@ -160,7 +161,8 @@ if (__SLIDEV_FEATURE_RECORD__)
           <div class="i-carbon:document-export" />
         </IconButton>
         <IconButton
-          :title="`${showHistoryDrawer ? 'Hide' : 'Show'} edit history (h)`"
+          :title="`${showHistoryDrawer ? 'Hide' : 'Show'} edit history`"
+          shortcut="toggle_history"
           :class="showHistoryDrawer ? 'text-primary' : ''"
           @click="showHistoryDrawer = !showHistoryDrawer"
         >
@@ -170,6 +172,7 @@ if (__SLIDEV_FEATURE_RECORD__)
       <IconButton
         v-if="!isColorSchemaConfigured"
         :title="isDark ? 'Switch to light mode theme' : 'Switch to dark mode theme'"
+        shortcut="toggle_dark"
         @click="toggleDark()"
       >
         <div v-if="isDark" class="i-carbon-moon" />
