@@ -21,6 +21,11 @@ export default defineConfig({
       on('task', {
         startBasePathServer,
         stopBasePathServer,
+        // Print to the terminal (and so the CI log); `cy.log` only shows in the runner UI.
+        log(message: string) {
+          console.log(message)
+          return null
+        },
       })
     },
   },

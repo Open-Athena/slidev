@@ -284,6 +284,26 @@ context('v-drag', () => {
     })
   })
 
+  // Dump the snap fixtures' geometry to the terminal, so a CI-only failure leaves evidence.
+  function logSnapState(label: string) {
+    cy.document().then((doc) => {
+      const describe = (testId: string) => {
+        const el = doc.querySelector<HTMLElement>(`[data-testid="${testId}"]`)
+        if (!el)
+          return `${testId}: missing`
+        const r = el.getBoundingClientRect()
+        return `${testId}: rect=${[r.left, r.top, r.width, r.height].map(Math.round)} style="${el.getAttribute('style')}" positioned=${el.dataset.dragPositioned != null} editing=${el.dataset.dragEditing != null} offsetParent=${el.offsetParent?.className}`
+      }
+      const slide = doc.querySelector('#slide-content')!.getBoundingClientRect()
+      const lines = [
+        `[snap ${label}] slide=${[slide.left, slide.top, slide.width, slide.height].map(Math.round)} selected=${doc.querySelector('#drag-control-container')?.getAttribute('data-drag-id')} guides=${doc.querySelectorAll('.snap-guide').length}`,
+        describe('snap-target'),
+        describe('snap-mover'),
+      ]
+      cy.task('log', lines.join('\n  '))
+    })
+  }
+
   describe('snap alignment', () => {
     // Page 18: snap-target at dragPos 480,270,120,80 (center x0=540, y0=310)
     //          snap-mover at dragPos 100,100,100,80  (center x0=150, y0=140)
@@ -295,6 +315,11 @@ context('v-drag', () => {
       // un-positioned flow location and the drag lands nowhere near the snap target.
       cy.get('[data-testid="snap-target"]').should('have.attr', 'data-drag-positioned')
       cy.get('[data-testid="snap-mover"]').should('have.attr', 'data-drag-positioned')
+    })
+
+    afterEach(function () {
+      if (this.currentTest?.state === 'failed')
+        logSnapState(`after failed "${this.currentTest.title}"`)
     })
 
     it('initial layout: two boxes at distinct positions', () => {
@@ -312,6 +337,7 @@ context('v-drag', () => {
         // Drag near the target's center (slightly offset to trigger snap)
         const nearTargetX = targetRect.left + targetRect.width / 2 + 3
         const nearTargetY = targetRect.top + targetRect.height / 2 + 3
+        logSnapState(`before drag to ${[nearTargetX, nearTargetY].map(Math.round)}`)
 
         cy.get('[data-testid="snap-mover"]')
           .trigger('pointerdown', { button: 0, pointerId: 1, buttons: 1, force: true })
@@ -376,6 +402,7 @@ context('v-drag', () => {
         // Drag mover to approximate slide center
         const centerX = slideRect.left + slideRect.width / 2 + 3
         const centerY = slideRect.top + slideRect.height / 2 + 3
+        logSnapState(`before drag to ${[centerX, centerY].map(Math.round)}`)
 
         cy.get('[data-testid="snap-mover"]')
           .trigger('pointerdown', { button: 0, pointerId: 1, buttons: 1, force: true })
