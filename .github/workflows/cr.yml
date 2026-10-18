@@ -1,6 +1,15 @@
 # Continuous Releases provided by https://pkg.pr.new
+#
+# Every push to main publishes preview packages keyed by commit SHA. Users
+# install with e.g.
+#   npm i 'https://pkg.pr.new/Open-Athena/slidev/@slidev/cli@<sha>'
+# (any package manager). See README for the install pattern.
 name: CR (Continuous Releases)
-on: [push, pull_request]
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
 
 jobs:
   cr:
@@ -15,7 +24,9 @@ jobs:
 
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: lts/*
+          # Pinned to 22: `better-sqlite3` has no prebuilt binary for newer `lts/*`,
+          # and its source build hangs install.
+          node-version: 22
           cache: pnpm
 
       - run: npm i -g @antfu/ni

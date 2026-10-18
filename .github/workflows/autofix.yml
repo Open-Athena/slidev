@@ -1,12 +1,14 @@
 name: autofix.ci
 
-on:
-  push:
-    branches:
-      - main
-  pull_request:
-    branches:
-      - main
+# Disabled for the Open-Athena fork: autofix-ci/action fails with `The
+# autofix.ci action is not allowed to modify the .github directory` on every
+# main push, because our fork edits workflow files (this one, `pages.yml`)
+# outside of autofix.ci's allowlist. We don't depend on the bot to commit lint
+# fixes from CI — the husky / lint-staged pre-commit hook already runs
+# `eslint --fix` locally. Manual `workflow_dispatch` stays available if anyone
+# wants to re-enable per-push autofix behaviour.
+on: workflow_dispatch
+
 permissions:
   contents: read
 
@@ -21,10 +23,12 @@ jobs:
       - name: Setup pnpm
         uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
 
-      - name: Use Node.js lts/*
+      - name: Use Node.js 22
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: lts/*
+          # Pinned to 22: `better-sqlite3` has no prebuilt binary for newer `lts/*`,
+          # and its source build hangs install.
+          node-version: 22
           cache: pnpm
 
       - name: Setup

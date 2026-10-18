@@ -65,6 +65,7 @@
     "shiki": "catalog:frontend",
     "typescript": "catalog:dev",
     "unocss": "catalog:prod",
+    "uqr": "catalog:prod",
     "vue": "catalog:frontend",
     "vue-router": "catalog:frontend",
     "yaml": "catalog:prod"

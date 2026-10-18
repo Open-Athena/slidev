@@ -1,5 +1,6 @@
 import type { ResolvedSlidevOptions } from '@slidev/types'
 import type { Plugin, UserConfig } from 'vite'
+import process from 'node:process'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { slash, uniq } from '@antfu/utils'
 import { createResolve } from 'mlly'
@@ -135,6 +136,11 @@ export function createConfigPlugin(options: ResolvedSlidevOptions): Plugin {
               ...options.roots,
             ]),
           },
+          // Comma-separated hosts the dev server will respond to. Vite's default
+          // is to reject anything that doesn't match the bound host, which makes
+          // tailnet / external-domain testing painful. Pass-through via env var
+          // so the user's shell rc can populate it once.
+          allowedHosts: process.env.VITE_ALLOWED_HOSTS?.split(',').map(s => s.trim()).filter(Boolean),
         },
         publicDir: join(options.userRoot, 'public'),
         build: {

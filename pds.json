@@ -1,0 +1,9 @@
+{
+  "strategy": "override",
+  "fleet": [
+    "@slidev/cli",
+    "@slidev/client",
+    "@slidev/parser",
+    "@slidev/types"
+  ]
+}

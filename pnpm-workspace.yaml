@@ -41,6 +41,7 @@ patchedDependencies:
 
 allowBuilds:
   '@vscode/vsce-sign': true
+  better-sqlite3: true
   cypress: true
   esbuild: true
   keytar: true
@@ -137,6 +138,7 @@ catalogs:
     '@vitejs/plugin-vue': ^6.0.9
     '@vitejs/plugin-vue-jsx': ^5.1.6
     ansis: ^4.4.0
+    better-sqlite3: ^12.9.0
     chokidar: ^5.0.0
     cli-progress: ^3.12.0
     connect: ^3.7.0
@@ -192,6 +194,7 @@ catalogs:
     '@slidev/theme-default': ^0.25.0
     '@slidev/theme-seriph': ^0.25.0
   types:
+    '@types/better-sqlite3': ^7.6.13
     '@types/cli-progress': ^3.11.6
     '@types/connect': ^3.4.38
     '@types/file-saver': ^2.0.7
