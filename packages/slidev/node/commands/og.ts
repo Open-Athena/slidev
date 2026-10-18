@@ -634,7 +634,6 @@ let sharpModule: Promise<any> | undefined
 
 /** `sharp`, or `null` when it isn't installed (it's an optional dependency). */
 function loadSharp(): Promise<any> {
-  // @ts-expect-error — `sharp` is optional; resolved at runtime if installed.
   sharpModule ??= import('sharp').then(m => m.default, () => null)
   return sharpModule
 }

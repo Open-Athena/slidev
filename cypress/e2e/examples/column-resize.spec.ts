@@ -45,7 +45,16 @@ context('column resizing', () => {
    * column's width. `meta` (⌘) turns off snapping.
    */
   function dragBoundary(grid: string, fraction: number, meta = true) {
-    cy.get(grid, { timeout: 30000 }).should('have.css', 'display', 'grid').then(($g) => {
+    // Wait for settled geometry (the slide scales in on load): the same rect twice in a row.
+    let last = ''
+    cy.get(grid, { timeout: 30000 }).should(($g) => {
+      const r = $g[0].getBoundingClientRect()
+      const now = [r.left, r.top, r.width, r.height].map(Math.round).join()
+      const settled = now === last && r.width > 0
+      last = now
+      expect(settled, `grid rect ${now}`).to.eq(true)
+    })
+    cy.get(grid).should('have.css', 'display', 'grid').then(($g) => {
       const el = $g[0]
       const rect = el.getBoundingClientRect()
       const scale = rect.width / el.offsetWidth
@@ -55,6 +64,7 @@ context('column resizing', () => {
       const x = rect.left + Number.parseFloat(style.paddingLeft) * scale + (first + gap / 2) * scale
       const y = rect.top + rect.height / 2
       const dx = first * fraction * scale
+      cy.task('log', `dragBoundary ${grid}: tracks=${style.gridTemplateColumns} gap=${gap} scale=${scale.toFixed(3)} x=${Math.round(x)} dx=${Math.round(dx)}`)
       cy.document().trigger('pointermove', { clientX: x, clientY: y, buttons: 0, pointerType: 'mouse' })
       cy.get('.slidev-cols-handle').should('be.visible')
       cy.get('.slidev-cols-handle')

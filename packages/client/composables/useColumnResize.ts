@@ -238,7 +238,9 @@ export function useColumnResize() {
   }
 
   function onHandlePointerdown(ev: PointerEvent) {
-    const b = hovered
+    // Re-measure: the slide's scale or layout may have changed since the hover placed the handle
+    // (e.g. a slide transition still running then), and the drag math needs current values.
+    const b = hovered && boundariesOf(hovered.grid)[hovered.index]
     if (!b || ev.button !== 0)
       return
     ev.preventDefault()
