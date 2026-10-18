@@ -6,10 +6,17 @@ type ImageRenderer = NonNullable<MarkdownExit['renderer']['rules']['image']>
 
 export interface DraggableImageOptions {
   /**
-   * Whether to make images draggable by default
+   * Whether to make images draggable by default: `true` for markdown images, `'all'` to also
+   * cover raw HTML `<img>` tags and the components in `tags`.
    * @default false
    */
-  enabled?: boolean
+  enabled?: boolean | 'all'
+  /**
+   * Components (by tag name, e.g. `Scrn`) whose root element is an image, treated like `<img>`
+   * when `enabled` is `'all'`.
+   * @default []
+   */
+  tags?: string[]
 }
 
 /**
@@ -36,9 +43,9 @@ export function extractImageId(src: string): string {
 export default function MarkdownItDraggableImage(
   md: MarkdownExit,
   markdownTransformMap: Map<string, MagicString>,
-  options: DraggableImageOptions = {},
+  pluginOptions: DraggableImageOptions = {},
 ) {
-  if (!options.enabled)
+  if (!pluginOptions.enabled)
     return
 
   const sourceMapConsumers = new WeakMap<MagicString, SourceMapConsumer>()
@@ -60,6 +67,32 @@ export default function MarkdownItDraggableImage(
     return smc
   }
 
+  // Per-slide id allocation, shared by markdown images and HTML tags so ids stay unique.
+  function allocateId(env: any, src: string): string {
+    const slideNo = env.slideNo ?? 1
+    env._draggableImageIds = env._draggableImageIds ?? new Map<number, Set<string>>()
+    const slideIds: Set<string> = env._draggableImageIds.get(slideNo) ?? new Set()
+    env._draggableImageIds.set(slideNo, slideIds)
+    const baseId = `img-${extractImageId(src)}`
+    let imgId = baseId
+    let counter = 2
+    while (slideIds.has(imgId))
+      imgId = `${baseId}-${counter++}`
+    slideIds.add(imgId)
+    return imgId
+  }
+
+  if (pluginOptions.enabled === 'all') {
+    for (const rule of ['html_block', 'html_inline'] as const) {
+      const defaultHtmlRender = md.renderer.rules[rule]
+        ?? ((tokens, idx) => tokens[idx].content)
+      md.renderer.rules[rule] = function (tokens, idx, opts, env, self) {
+        const html = defaultHtmlRender(tokens, idx, opts, env, self) as string
+        return addVDragToHtmlImages(html, pluginOptions.tags ?? [], src => allocateId(env, src))
+      }
+    }
+  }
+
   const defaultImageRender: ImageRenderer = md.renderer.rules.image
     ?? ((tokens, idx, options, _env, self) => self.renderToken(tokens, idx, options))
 
@@ -77,21 +110,8 @@ export default function MarkdownItDraggableImage(
     const alt = token.attrGet('alt') ?? token.content ?? ''
     const title = token.attrGet('title')
 
-    // Generate a stable ID for this image based on its source basename
-    // Track used IDs per slide to handle duplicates
-    const slideNo = env.slideNo ?? 1
-    env._draggableImageIds = env._draggableImageIds ?? new Map<number, Set<string>>()
-    const slideIds: Set<string> = env._draggableImageIds.get(slideNo) ?? new Set()
-    env._draggableImageIds.set(slideNo, slideIds)
-
-    // Extract base ID from src and ensure uniqueness within slide
-    const baseId = `img-${extractImageId(src)}`
-    let imgId = baseId
-    let counter = 2
-    while (slideIds.has(imgId)) {
-      imgId = `${baseId}-${counter++}`
-    }
-    slideIds.add(imgId)
+    // Generate a stable ID for this image based on its source basename, unique within the slide
+    const imgId = allocateId(env, src)
 
     // Calculate markdown source position for persistence
     const smc = getSourceMapConsumer(env.id)
@@ -107,11 +127,30 @@ export default function MarkdownItDraggableImage(
     }
 
     // Build the img tag with v-drag
-    let imgTag = `<img v-drag="'${imgId}'"${markdownSource} src="${src}" alt="${alt}"`
+    // Under `'all'`, markdown images keep their layout slot too (`.flow`), like HTML ones; `true`
+    // keeps the original take-it-out-of-the-layout behavior.
+    const directive = pluginOptions.enabled === 'all' ? 'v-drag.flow' : 'v-drag'
+    let imgTag = `<img ${directive}="'${imgId}'"${markdownSource} src="${src}" alt="${alt}"`
     if (title)
       imgTag += ` title="${title}"`
     imgTag += ` />`
 
     return imgTag
   }
+}
+
+/**
+ * Add `v-drag.flow="'img-<name>'"` to each `<img>` (and each listed component) in a chunk of raw
+ * HTML that doesn't already have a `v-drag`. `flow` because hand-written HTML images sit in
+ * author-built layouts (grids, columns), which absolute positioning would break.
+ */
+export function addVDragToHtmlImages(html: string, tags: string[], allocateId: (src: string) => string): string {
+  const names = ['img', ...tags].map(t => t.replace(/[^\w-]/g, ''))
+  const re = new RegExp(`<(${names.join('|')})(?=[\\s/>])([^>]*)>`, 'g')
+  return html.replace(re, (match, tag: string, attrs: string) => {
+    if (/(?:^|\s)v-drag\b/.test(attrs))
+      return match
+    const src = attrs.match(/(?:^|\s):?src\s*=\s*(["'])(.*?)\1/)?.[2] ?? ''
+    return `<${tag} v-drag.flow="'${allocateId(src)}'"${attrs}>`
+  })
 }

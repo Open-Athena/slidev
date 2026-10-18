@@ -5,7 +5,7 @@ import { SourceMapConsumer } from 'source-map-js'
 type Token = ReturnType<MarkdownExit['parseInline']>[number]
 
 const dragComponentRegex = /<(v-?drag-?\w*)([\s>])/i
-const dragDirectiveRegex = /(?<![</\w])v-drag(=".*?")?/i
+const dragDirectiveRegex = /(?<![</\w])v-drag((?:\.\w+)*)(=".*?")?/i
 
 export default function MarkdownItVDrag(md: MarkdownExit, markdownTransformMap: Map<string, MagicString>) {
   const visited = new WeakSet()
@@ -61,8 +61,8 @@ export default function MarkdownItVDrag(md: MarkdownExit, markdownTransformMap: 
             replaceChildren(token, dragComponentRegex, replacement)
             return replacement
           })
-          .replace(dragDirectiveRegex, (_, value, idx) => {
-            const replacement = `v-drag${value ?? ''} :markdownSource="${toMarkdownSource(token.map!, idx)}"`
+          .replace(dragDirectiveRegex, (_, modifiers, value, idx) => {
+            const replacement = `v-drag${modifiers}${value ?? ''} :markdownSource="${toMarkdownSource(token.map!, idx)}"`
             replaceChildren(token, dragDirectiveRegex, replacement)
             return replacement
           })

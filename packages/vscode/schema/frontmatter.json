@@ -145,6 +145,16 @@
           "description": "Store the positions of draggable elements Normally you don't need to set this manually\n\nSee https://sli.dev/features/draggable",
           "markdownDescription": "Store the positions of draggable elements\nNormally you don't need to set this manually\n\nSee https://sli.dev/features/draggable"
         },
+        "dragLayout": {
+          "type": "string",
+          "enum": [
+            "absolute",
+            "flow"
+          ],
+          "description": "How draggable elements on this slide are positioned.\n\n- `'absolute'` - taken out of the layout; positions are relative to the slide.\n- `'flow'` - keep their place in the layout (grids, columns, flex); moving shifts them visually   without reflowing their neighbors, and resizing resizes their layout slot.\n\nSet it for every slide via `defaults`. Single elements opt in with `v-drag.flow` or `<v-drag flow>`.",
+          "markdownDescription": "How draggable elements on this slide are positioned.\n\n- `'absolute'` - taken out of the layout; positions are relative to the slide.\n- `'flow'` - keep their place in the layout (grids, columns, flex); moving shifts them visually\n  without reflowing their neighbors, and resizing resizes their layout slot.\n\nSet it for every slide via `defaults`. Single elements opt in with `v-drag.flow` or `<v-drag flow>`.",
+          "default": "absolute"
+        },
         "src": {
           "type": "string",
           "description": "Includes a markdown file\n\nSee https://sli.dev/guide/syntax.html#importing-slides",

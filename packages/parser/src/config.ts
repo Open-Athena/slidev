@@ -60,6 +60,7 @@ export function getDefaultConfig(): SlidevConfig {
     shiki: {},
     preloadImages: true,
     draggableImages: false,
+    draggableImageTags: [],
     clickAnimation: '',
     publish: {},
   }

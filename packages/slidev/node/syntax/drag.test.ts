@@ -25,3 +25,13 @@ it('v-drag directive', async () => {
 
   expect(result).toMatchInlineSnapshot(`"<div v-drag :markdownSource="[0,1,5]">Content</div>"`)
 })
+
+it('v-drag directive keeps modifiers', async () => {
+  const md = MarkdownExit({ html: true })
+  const map = new Map<string, MagicString>()
+  md.use(MarkdownItVDrag, map)
+
+  const result = await md.renderAsync(`<img v-drag.flow="'chart'" src="/chart.png">`, { id: 'test' })
+
+  expect(result).toMatchInlineSnapshot(`"<img v-drag.flow="'chart'" :markdownSource="[0,1,5]" src="/chart.png">"`)
+})

@@ -12,7 +12,7 @@ export function createVDragDirective() {
         name: 'v-drag',
 
         created(el, binding, vnode) {
-          const state = useDragElement(binding, binding.value, vnode.props?.markdownSource)
+          const state = useDragElement(binding, binding.value, vnode.props?.markdownSource, false, binding.modifiers.flow || undefined)
           if (vnode.props) {
             vnode.props = { ...vnode.props }
             delete vnode.props.markdownSource
@@ -30,12 +30,23 @@ export function createVDragDirective() {
           const lockAR = lockARRaw != null ? Number(lockARRaw) : Number.NaN
           if (Number.isFinite(lockAR) && lockAR > 0)
             state.lockAspectRatio.value = lockAR
+          // Keys set by the previous style, so ones the new style drops (e.g. `left` after an undo
+          // back to unpositioned) get cleared instead of lingering.
+          let appliedKeys: string[] = []
           state.watchStopHandles.push(
             watch(state.containerStyle, (style) => {
+              const keys: string[] = []
               for (const [k, v] of Object.entries(style)) {
-                if (v !== undefined && v !== null)
+                if (v !== undefined && v !== null) {
                   el.style[k as any] = v as any
+                  keys.push(k)
+                }
               }
+              for (const k of appliedKeys) {
+                if (!keys.includes(k))
+                  el.style[k as any] = ''
+              }
+              appliedKeys = keys
             }, { immediate: true }),
             watch(state.isInteracting, (interacting) => {
               if (interacting)

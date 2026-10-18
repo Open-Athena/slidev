@@ -89,3 +89,47 @@ describe('markdown-it-draggable-image', () => {
     expect(result).toContain(`title="Mario the plumber"`)
   })
 })
+
+describe('draggableImages: all', () => {
+  function makeAllMd(tags: string[] = []) {
+    const md = MarkdownExit({ html: true })
+    md.use(MarkdownItDraggableImage, new Map<string, MagicString>(), { enabled: 'all', tags })
+    return md
+  }
+
+  it('adds `v-drag.flow` to raw HTML images and listed components, sharing ids with markdown images', async () => {
+    const md = makeAllMd(['Scrn'])
+    const src = [
+      '![](logo.png)',
+      '',
+      '<div class="grid">',
+      '<img src="/img/logo.png" class="rounded" />',
+      '<Scrn src="/scrns/omnibar.png" class="shadow" />',
+      `<img v-drag="'manual'" src="manual.png">`,
+      '</div>',
+    ].join('\n')
+    const result = await md.renderAsync(src, { id: 'test', slideNo: 1 })
+    expect(result.trim().split('\n')).toEqual([
+      `<p><img v-drag.flow="'img-logo'" src="logo.png" alt="" /></p>`,
+      '<div class="grid">',
+      `<img v-drag.flow="'img-logo-2'" src="/img/logo.png" class="rounded" />`,
+      `<Scrn v-drag.flow="'img-omnibar'" src="/scrns/omnibar.png" class="shadow" />`,
+      `<img v-drag="'manual'" src="manual.png">`,
+      '</div>',
+    ])
+  })
+
+  it('leaves unlisted components and look-alike tags alone', async () => {
+    const md = makeAllMd()
+    const src = '<Scrn src="/a.png" />\n<imgx src="/b.png">\n<image href="/c.png" />'
+    const result = await md.renderAsync(src, { id: 'test', slideNo: 1 })
+    expect(result).toBe(src)
+  })
+
+  it('makes no HTML changes under `draggableImages: true`', async () => {
+    const md = makeMd()
+    const src = '<img src="/img/logo.png" />'
+    const result = await md.renderAsync(src, { id: 'test', slideNo: 1 })
+    expect(result).toBe(src)
+  })
+})

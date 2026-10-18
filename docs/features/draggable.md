@@ -20,6 +20,43 @@ draggableImages: true
 
 When enabled, every image in your slides becomes draggable without needing explicit `v-drag` attributes. Positions are automatically stored in the frontmatter.
 
+To also cover raw HTML `<img>` tags, and components that render a single image, use `all`:
+
+```yaml
+---
+draggableImages: all
+draggableImageTags: [Scrn] # optional: components whose root element is an image
+---
+```
+
+Under `all`, images keep their place in the layout ([flow layout](#flow-layout)), so images in columns and grids stay put until you move them.
+
+## Flow Layout
+
+By default, a draggable element is taken out of the layout and positioned on the slide (`position: absolute`). That's right for free-floating elements, but an image in a grid cell or a column would leave its slot, letting its neighbors reflow into the space.
+
+With flow layout, the element keeps its slot:
+
+- Before you edit it, it renders exactly as authored.
+- Moving shifts it visually (`position: relative`) without moving its neighbors.
+- Resizing resizes its slot.
+- Selecting a letterboxed image (`object-fit: contain`, as many themes give column images) fits the box to the image's pixels, so cropping clips the picture rather than the empty bands.
+
+Enable it per element, per slide, or for the whole deck:
+
+```md
+<img v-drag.flow="'chart'" src="/chart.png">
+
+<v-drag flow pos="note">…</v-drag>
+
+---
+
+dragLayout: flow # this slide; or under `defaults:` in the headmatter for every slide
+---
+```
+
+Elements their author already positioned (e.g. `class="absolute right-8"`) keep absolute positioning either way. Positions are stored in slide coordinates in both modes.
+
 ## Directive Usage
 
 ### Data from the frontmatter

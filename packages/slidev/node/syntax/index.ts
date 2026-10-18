@@ -35,7 +35,7 @@ export async function useMarkdownItPlugins(
   md.use(MarkdownItTaskList, { enabled: true, lineNumber: true, label: true })
   if (features.katex)
     md.use(MarkdownItKatex, katexOptions)
-  md.use(MarkdownItDraggableImage, markdownTransformMap, { enabled: config.draggableImages })
+  md.use(MarkdownItDraggableImage, markdownTransformMap, { enabled: config.draggableImages, tags: config.draggableImageTags })
   md.use(MarkdownItVDrag, markdownTransformMap)
   md.use(MarkdownItSlotSugar)
   if (config.comark || config.mdc)
