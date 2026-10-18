@@ -5,6 +5,7 @@ import { computed, ref, watch } from 'vue'
 import { injectionCurrentPage, injectionFrontmatter, injectionRenderContext, injectionSlideElement, injectionSlideScale, injectionSlideZoom } from '../constants'
 import { slideHeight, slideWidth } from '../env'
 import { makeId } from '../logic/utils'
+import { editMode } from '../state'
 import { directiveInject } from '../utils'
 import { paddingOriginWithin, renderedImageRect } from './drag-layout'
 // `getVisibleBounds`, `findSnap`, `SNAP_THRESHOLD` moved to `./snap.ts` so the
@@ -589,7 +590,7 @@ export function useDragElement(directive: DirectiveBinding | null, posRaw?: stri
       state.stopDragging()
     },
     startDragging(): void {
-      if (!enabled)
+      if (!enabled || !editMode.value)
         return
       updateBounds()
       measureLayoutOrigin()
@@ -700,6 +701,11 @@ export function useDragElement(directive: DirectiveBinding | null, posRaw?: stri
   watchStopHandles.push(
     watch(useWindowFocus(), (focused) => {
       if (!focused)
+        state.stopDragging()
+    }),
+    // Leaving edit mode drops the selection (and any crop / iframe-interact mode).
+    watch(editMode, (on) => {
+      if (!on)
         state.stopDragging()
     }),
     // Toggle data-drag-positioned for CSS iframe sizing (avoids circular dependency with auto-sized containers)

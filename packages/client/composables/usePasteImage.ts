@@ -1,4 +1,5 @@
 import { onMounted, onUnmounted, ref } from 'vue'
+import { editMode } from '../state'
 import { uploadAndInsert } from './useImageInsert'
 import { useNav } from './useNav'
 
@@ -51,7 +52,7 @@ export function usePasteImage() {
   const { currentSlideNo } = useNav()
 
   async function onPaste(ev: ClipboardEvent) {
-    if (inputContextActive())
+    if (!editMode.value || inputContextActive())
       return
     const dt = ev.clipboardData
     if (!dt)

@@ -1,4 +1,5 @@
 import { onMounted, onUnmounted, ref } from 'vue'
+import { editMode } from '../state'
 import { uploadAndInsert } from './useImageInsert'
 import { useNav } from './useNav'
 
@@ -29,14 +30,14 @@ export function useFileDrop() {
   let depth = 0
 
   function onDragEnter(ev: DragEvent) {
-    if (!eventCarriesFiles(ev))
+    if (!editMode.value || !eventCarriesFiles(ev))
       return
     depth++
     dropActive.value = true
   }
 
   function onDragLeave(ev: DragEvent) {
-    if (!eventCarriesFiles(ev))
+    if (!editMode.value || !eventCarriesFiles(ev))
       return
     depth = Math.max(0, depth - 1)
     if (depth === 0)
@@ -44,7 +45,7 @@ export function useFileDrop() {
   }
 
   function onDragOver(ev: DragEvent) {
-    if (!eventCarriesFiles(ev))
+    if (!editMode.value || !eventCarriesFiles(ev))
       return
     ev.preventDefault()
     if (ev.dataTransfer)
@@ -52,7 +53,7 @@ export function useFileDrop() {
   }
 
   async function onDrop(ev: DragEvent) {
-    if (!eventCarriesFiles(ev))
+    if (!editMode.value || !eventCarriesFiles(ev))
       return
     ev.preventDefault()
     depth = 0

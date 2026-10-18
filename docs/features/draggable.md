@@ -8,6 +8,10 @@ description: |
 
 Draggable elements give you the ability to move, resize, rotate, and crop elements by dragging them with the mouse. This is useful for creating floating elements in your slides.
 
+## Edit Mode
+
+Editing is off by default, so clicks during a talk (or on a published deck) can't select or move anything, and links and embeds inside draggable elements stay clickable. Press `e`, or click the pencil in the navigation bar, to toggle it. The setting is remembered per browser and synced across tabs, so the presenter and audience windows agree. Undo / redo (`⌘Z` / `⌘⇧Z`), image insert (`i`), paste and file drop only work in edit mode.
+
 ## Auto-Draggable Images
 
 You can make all markdown images (`![](...)`) draggable by default, similar to Google Slides:

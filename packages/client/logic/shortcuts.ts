@@ -11,7 +11,7 @@ import { useNav } from '../composables/useNav'
 import { configs } from '../env'
 import { getSlidePath } from '../logic/slides'
 import setupShortcuts from '../setup/shortcuts'
-import { fullscreen, isInputting, isOnFocus, magicKeys, shortcutsEnabled, shortcutsLocked, showHistoryDrawer } from '../state'
+import { editMode, fullscreen, isInputting, isOnFocus, magicKeys, shortcutsEnabled, shortcutsLocked, showHistoryDrawer } from '../state'
 
 export function registerShortcuts() {
   const { isPrintMode, currentSlideRoute } = useNav()
@@ -63,7 +63,8 @@ export function registerShortcuts() {
   // Global undo / redo for v-drag edits — operates on the deck-global stack so it works
   // whether or not an element is selected, and whether or not its slide is current.
   onKeyDown('z', (e) => {
-    if (!enabled.value)
+    // Edit mode only, so a stray ⌘Z while presenting can't undo an edit.
+    if (!enabled.value || !editMode.value)
       return
     if (!e.metaKey && !e.ctrlKey)
       return

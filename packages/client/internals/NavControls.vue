@@ -6,7 +6,7 @@ import { useDrawings } from '../composables/useDrawings'
 import { useNav } from '../composables/useNav'
 import { configs } from '../env'
 import { isColorSchemaConfigured, isDark, toggleDark } from '../logic/dark'
-import { activeElement, breakpoints, cursorStyle, fullscreen, hasViewerCssFilter, presenterLayout, showEditor, showHistoryDrawer, showInfoDialog, showPresenterCursor, toggleOverview, togglePresenterCursor, togglePresenterLayout } from '../state'
+import { activeElement, breakpoints, cursorStyle, editMode, fullscreen, hasViewerCssFilter, presenterLayout, showEditor, showHistoryDrawer, showInfoDialog, showPresenterCursor, toggleOverview, togglePresenterCursor, togglePresenterLayout } from '../state'
 import { downloadPDF } from '../utils'
 import IconButton from './IconButton.vue'
 import MenuButton from './MenuButton.vue'
@@ -112,47 +112,56 @@ if (__SLIDEV_FEATURE_RECORD__)
       <IconButton v-if="!isEmbedded" title="Show slide overview" @click="toggleOverview()">
         <div class="i-carbon:apps" />
       </IconButton>
-      <IconButton :class="{ disabled: !historyCanUndo }" :title="undoTitle" @click="historyUndo()">
-        <div class="i-carbon:undo" />
-      </IconButton>
-      <IconButton :class="{ disabled: !historyCanRedo }" :title="redoTitle" @click="historyRedo()">
-        <div class="i-carbon:redo" />
-      </IconButton>
       <IconButton
-        v-if="__DEV__ && __SLIDEV_FEATURE_EDITOR__"
-        :class="{ disabled: !historyIsDirty }"
-        :title="commitTitle"
-        class="relative"
-        @click="onCommitClick"
+        :title="editMode ? 'Stop editing (e)' : 'Edit: move, resize and crop elements (e)'"
+        :class="editMode ? 'text-primary' : ''"
+        @click="editMode = !editMode"
       >
-        <div class="i-carbon:save" />
-        <div
-          v-if="historyIsDirty"
-          class="absolute top-0.5 right-0.5 w-1.5 h-1.5 rounded-full bg-orange-500"
-        />
+        <div class="i-carbon:edit" />
       </IconButton>
-      <IconButton
-        v-if="__DEV__ && __SLIDEV_FEATURE_EDITOR__"
-        :class="{ disabled: !historyIsDirty }"
-        title="Revert uncommitted edits — drop state.db and re-hydrate from slides.coords.yaml"
-        @click="onRevertClick"
-      >
-        <div class="i-carbon:reset" />
-      </IconButton>
-      <IconButton
-        v-if="!__DEV__"
-        title="Download slides.coords.yaml (positions of every dragged element on every slide)"
-        @click="downloadCoordsYaml"
-      >
-        <div class="i-carbon:document-export" />
-      </IconButton>
-      <IconButton
-        :title="`${showHistoryDrawer ? 'Hide' : 'Show'} edit history (h)`"
-        :class="showHistoryDrawer ? 'text-primary' : ''"
-        @click="showHistoryDrawer = !showHistoryDrawer"
-      >
-        <div class="i-carbon:time-plot" />
-      </IconButton>
+      <template v-if="editMode">
+        <IconButton :class="{ disabled: !historyCanUndo }" :title="undoTitle" @click="historyUndo()">
+          <div class="i-carbon:undo" />
+        </IconButton>
+        <IconButton :class="{ disabled: !historyCanRedo }" :title="redoTitle" @click="historyRedo()">
+          <div class="i-carbon:redo" />
+        </IconButton>
+        <IconButton
+          v-if="__DEV__ && __SLIDEV_FEATURE_EDITOR__"
+          :class="{ disabled: !historyIsDirty }"
+          :title="commitTitle"
+          class="relative"
+          @click="onCommitClick"
+        >
+          <div class="i-carbon:save" />
+          <div
+            v-if="historyIsDirty"
+            class="absolute top-0.5 right-0.5 w-1.5 h-1.5 rounded-full bg-orange-500"
+          />
+        </IconButton>
+        <IconButton
+          v-if="__DEV__ && __SLIDEV_FEATURE_EDITOR__"
+          :class="{ disabled: !historyIsDirty }"
+          title="Revert uncommitted edits — drop state.db and re-hydrate from slides.coords.yaml"
+          @click="onRevertClick"
+        >
+          <div class="i-carbon:reset" />
+        </IconButton>
+        <IconButton
+          v-if="!__DEV__"
+          title="Download slides.coords.yaml (positions of every dragged element on every slide)"
+          @click="downloadCoordsYaml"
+        >
+          <div class="i-carbon:document-export" />
+        </IconButton>
+        <IconButton
+          :title="`${showHistoryDrawer ? 'Hide' : 'Show'} edit history (h)`"
+          :class="showHistoryDrawer ? 'text-primary' : ''"
+          @click="showHistoryDrawer = !showHistoryDrawer"
+        >
+          <div class="i-carbon:time-plot" />
+        </IconButton>
+      </template>
       <IconButton
         v-if="!isColorSchemaConfigured"
         :title="isDark ? 'Switch to light mode theme' : 'Switch to dark mode theme'"

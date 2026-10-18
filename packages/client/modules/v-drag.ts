@@ -3,6 +3,7 @@ import type { DragElementState } from '../composables/useDragElements'
 import { watch } from 'vue'
 import { handleBodyDragPointerdown } from '../composables/useBodyDragHandler'
 import { useDragElement } from '../composables/useDragElements'
+import { editMode } from '../state'
 
 export function createVDragDirective() {
   return {
@@ -20,8 +21,6 @@ export function createVDragDirective() {
           state.container.value = el
           el.draggingState = state
           el.dataset.dragId = state.dragId
-          if (state.enabled)
-            el.dataset.dragEditing = ''
           // Opt-in AR lock via `data-lock-ar` attribute (numeric width/height ratio). Used
           // for `<img v-drag>` on shapes whose natural AR we want preserved during resize.
           // Read from vnode.props since the `created` hook fires before HTML attributes are
@@ -48,6 +47,14 @@ export function createVDragDirective() {
               }
               appliedKeys = keys
             }, { immediate: true }),
+            // `data-drag-editing` drives edit-mode CSS (e.g. iframes stop taking clicks so the
+            // wrapper can be dragged); outside edit mode the element behaves as authored.
+            watch(editMode, (on) => {
+              if (state.enabled && on)
+                el.dataset.dragEditing = ''
+              else
+                delete el.dataset.dragEditing
+            }, { immediate: true }),
             watch(state.isInteracting, (interacting) => {
               if (interacting)
                 el.dataset.dragInteract = ''
@@ -59,8 +66,10 @@ export function createVDragDirective() {
             handleBodyDragPointerdown(ev, { state })
           }
 
-          // Prevent click from following links
+          // Prevent click from following links (while editing; otherwise links work)
           function handleClick(ev: MouseEvent) {
+            if (!editMode.value)
+              return
             ev.preventDefault()
             ev.stopPropagation()
           }
@@ -70,6 +79,8 @@ export function createVDragDirective() {
           // when there's actually an image to clip — otherwise the user just sees an empty
           // blue rectangle floating over the slide.
           function handleDblclick(ev: MouseEvent) {
+            if (!editMode.value)
+              return
             ev.preventDefault()
             ev.stopPropagation()
             if (state.isArrow)
@@ -95,6 +106,8 @@ export function createVDragDirective() {
           if (parentAnchor) {
             // Prevent anchor click from navigating
             function handleAnchorClick(ev: MouseEvent) {
+              if (!editMode.value)
+                return
               ev.preventDefault()
               ev.stopPropagation()
             }

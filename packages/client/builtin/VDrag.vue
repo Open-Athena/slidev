@@ -3,6 +3,7 @@ import type { DragElementMarkdownSource } from '../composables/useDragElements'
 import { onMounted, onUnmounted, watchEffect } from 'vue'
 import { handleBodyDragPointerdown } from '../composables/useBodyDragHandler'
 import { useDragElement } from '../composables/useDragElements'
+import { editMode } from '../state'
 
 const props = withDefaults(defineProps<{
   pos?: string
@@ -30,7 +31,16 @@ function handlePointerdown(ev: PointerEvent) {
   })
 }
 
+function handleClick(ev: MouseEvent) {
+  if (!editMode.value)
+    return
+  ev.preventDefault()
+  ev.stopPropagation()
+}
+
 function handleDblclick(ev: MouseEvent) {
+  if (!editMode.value)
+    return
   ev.preventDefault()
   ev.stopPropagation()
   const el = container.value
@@ -50,13 +60,13 @@ onUnmounted(unmounted)
   <div
     ref="container"
     :data-drag-id="dragId"
-    :data-drag-editing="enabled ? '' : undefined"
+    :data-drag-editing="enabled && editMode ? '' : undefined"
     :data-drag-interact="isInteracting ? '' : undefined"
     :style="containerStyle"
     class="p-1"
     @pointerdown="handlePointerdown"
-    @click.prevent.stop
-    @dblclick.prevent.stop="handleDblclick"
+    @click="handleClick"
+    @dblclick="handleDblclick"
   >
     <slot />
   </div>

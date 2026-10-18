@@ -30,7 +30,9 @@ context('v-drag (flow layout)', () => {
   }
 
   beforeEach(() => {
-    cy.visit(`${BASE}/24`).wait(500)
+    cy.visit(`${BASE}/24`, {
+      onBeforeLoad: win => win.localStorage.setItem('slidev-edit-mode', 'true'),
+    }).wait(500)
     // The images must have loaded for `object-fit` to letterbox them.
     cy.get('[data-testid="flow-a"]').should($img => expect(($img[0] as HTMLImageElement).naturalWidth).to.eq(800))
   })

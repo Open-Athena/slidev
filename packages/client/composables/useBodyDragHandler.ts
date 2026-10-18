@@ -11,6 +11,7 @@
 // wrapper as the element moves with the cursor).
 
 import type { DragElementState } from './useDragElements'
+import { editMode } from '../state'
 import { activeTouchCount } from './useActiveTouches'
 import { pushEdit, pushGroupEdit } from './useDragHistory'
 import { addToSelection, getSelectedElements, isSelected, removeFromSelection } from './useMultiSelect'
@@ -63,6 +64,9 @@ export interface BodyDragHandlerOptions {
 
 export function handleBodyDragPointerdown(ev: PointerEvent, opts: BodyDragHandlerOptions): void {
   const { state } = opts
+  // Outside edit mode, events pass straight through (links, iframes, swipe-nav).
+  if (!editMode.value)
+    return
   if (ev.button !== 0)
     return
   if (opts.shouldSkip?.())

@@ -3,9 +3,36 @@ export {}
 const BASE = 'http://localhost:3041'
 
 context('v-drag', () => {
-  function goPage(no: number) {
-    cy.visit(`${BASE}/${no}`).wait(500)
+  // Editing (select / drag / crop) is behind edit mode, which is off by default.
+  function goPage(no: number, editing = true) {
+    cy.visit(`${BASE}/${no}`, {
+      onBeforeLoad: win => win.localStorage.setItem('slidev-edit-mode', String(editing)),
+    }).wait(500)
   }
+
+  describe('edit mode', () => {
+    it('is off by default: clicks select nothing, and links / iframes stay live', () => {
+      goPage(14, false)
+      cy.get('[data-testid="box1"]').should('not.have.attr', 'data-drag-editing')
+      cy.get('[data-testid="box1"]').click()
+      cy.wait(200)
+      cy.get('#drag-control-container').should('not.exist')
+    })
+
+    it('`e` toggles it, and leaving it drops the selection', () => {
+      goPage(14, false)
+      // Wait for the slide to be mounted (shortcuts register with it) before sending keys.
+      cy.get('[data-testid="box1"]').should('be.visible').and('not.have.attr', 'data-drag-editing')
+      cy.get('body').type('e')
+      cy.get('[data-testid="box1"]').should('have.attr', 'data-drag-editing', '')
+      cy.get('[data-testid="box1"]').click()
+      cy.get('#drag-control-container').should('have.attr', 'data-drag-id', 'box1')
+      cy.get('body').type('e')
+      cy.get('#drag-control-container').should('not.exist')
+      cy.get('[data-testid="box1"]').should('not.have.attr', 'data-drag-editing')
+      cy.window().then(win => expect(win.localStorage.getItem('slidev-edit-mode')).to.eq('false'))
+    })
+  })
 
   describe('selection', () => {
     beforeEach(() => {
