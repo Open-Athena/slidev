@@ -4,6 +4,7 @@ import { computed, ref, shallowRef } from 'vue'
 import { useDrawings } from '../composables/useDrawings'
 import { useHideCursorIdle } from '../composables/useHideCursorIdle'
 import { useNav } from '../composables/useNav'
+import { usePinchZoomPan } from '../composables/usePinchZoomPan'
 import { useSwipeControls } from '../composables/useSwipeControls'
 import { useWakeLock } from '../composables/useWakeLock'
 import Controls from '../internals/Controls.vue'
@@ -33,6 +34,7 @@ function onClick(e: MouseEvent) {
   }
 }
 
+usePinchZoomPan(root)
 useSwipeControls(root)
 registerShortcuts()
 if (__SLIDEV_FEATURE_WAKE_LOCK__)
