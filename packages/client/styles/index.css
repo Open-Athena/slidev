@@ -153,3 +153,51 @@ html {
 .slidev-note ul {
   margin: 0;
 }
+
+/* Footnotes (from markdown-it-footnote) */
+.footnotes-sep {
+  display: none;
+}
+
+.footnotes {
+  position: absolute;
+  bottom: 0.5rem;
+  left: 0;
+  right: 0;
+  padding: 0 2rem;
+  font-size: 0.75rem;
+  opacity: 0.5;
+}
+
+.footnote-backref {
+  display: none;
+}
+
+/* Generic v-drag iframes (other than Youtube/Tweet/BlueSky, all of which
+   scale-to-fit via transform — see Youtube.vue / Tweet.vue / BlueSky.vue)
+   fill their wrapper.
+   - Without this, generic iframes fall back to HTML's 300×150 default.
+   - BlueSky must be excluded because its widget sizes the iframe to its content
+     height via postMessage; forcing height: 100% here defeats that and clamps
+     rich posts (quoted threads, link cards, etc.) back to the 150px default. */
+[data-drag-positioned] iframe:not(.youtube):not(.twitter-tweet > iframe):not(.bluesky-embed > iframe) {
+  width: 100% !important;
+  height: 100% !important;
+}
+
+/* Twitter's widget sets `margin: 10px 0` on `.twitter-tweet`, which pushes the tweet
+   content ~10px below the top of the v-drag selection box and adds 10px at the bottom.
+   Zero it out so the selection box hugs the rendered tweet. */
+[data-drag-positioned] .twitter-tweet {
+  margin: 0 !important;
+}
+
+/* Block iframe clicks in edit mode so v-drag can capture them */
+[data-drag-editing] iframe {
+  pointer-events: none !important;
+}
+
+/* Restore iframe interaction in interact mode (double-click to enter) */
+[data-drag-editing][data-drag-interact] iframe {
+  pointer-events: auto !important;
+}
