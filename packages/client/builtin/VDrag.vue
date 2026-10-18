@@ -4,15 +4,17 @@ import { onMounted, onUnmounted, watchEffect } from 'vue'
 import { handleBodyDragPointerdown } from '../composables/useBodyDragHandler'
 import { useDragElement } from '../composables/useDragElements'
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   pos?: string
   markdownSource?: DragElementMarkdownSource
   // Lock the wrapper's aspect ratio (width / height) to this value. Used by Youtube /
   // Tweet wrappers around fixed-AR content. Falsy = free resize.
   lockAspectRatio?: number
-}>()
+  // Keep the element's slot in the layout (see `dragLayout: flow`). Unset = the slide's `dragLayout`.
+  flow?: boolean
+}>(), { flow: undefined })
 
-const state = useDragElement(null, props.pos, props.markdownSource)
+const state = useDragElement(null, props.pos, props.markdownSource, false, props.flow)
 const { dragId, container, containerStyle, mounted, unmounted, enabled, isInteracting } = state
 
 watchEffect(() => {

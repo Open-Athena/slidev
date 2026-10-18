@@ -382,14 +382,25 @@ export interface HeadmatterConfig extends TransitionOptions {
    */
   preloadImages?: boolean | { ahead?: number }
   /**
-   * Make all markdown images (`![](...)`) draggable by default
+   * Make images draggable by default
    *
    * When enabled, images can be moved, resized, rotated, and cropped
    * like in Google Slides. Positions are auto-stored in frontmatter.
    *
+   * - `true` - markdown images (`![](...)`)
+   * - `'all'` - markdown images, raw HTML `<img>` tags, and the components named in `draggableImageTags`.
+   *   HTML images keep their place in the layout (`dragLayout: flow`).
+   *
    * @default false
    */
-  draggableImages?: boolean
+  draggableImages?: boolean | 'all'
+  /**
+   * Components that render a single image (e.g. `['Scrn']`), made draggable like `<img>` when
+   * `draggableImages` is `'all'`. The component's root element must be the image.
+   *
+   * @default []
+   */
+  draggableImageTags?: string[]
 }
 
 export interface Frontmatter extends TransitionOptions {
@@ -491,6 +502,18 @@ export interface Frontmatter extends TransitionOptions {
    * See https://sli.dev/features/draggable
    */
   dragPos?: Record<string, string>
+  /**
+   * How draggable elements on this slide are positioned.
+   *
+   * - `'absolute'` - taken out of the layout; positions are relative to the slide.
+   * - `'flow'` - keep their place in the layout (grids, columns, flex); moving shifts them visually
+   *   without reflowing their neighbors, and resizing resizes their layout slot.
+   *
+   * Set it for every slide via `defaults`. Single elements opt in with `v-drag.flow` or `<v-drag flow>`.
+   *
+   * @default 'absolute'
+   */
+  dragLayout?: 'absolute' | 'flow'
   /**
    * Includes a markdown file
    *

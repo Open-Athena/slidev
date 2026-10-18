@@ -361,3 +361,19 @@ const answer = 42
 layout: iframe
 url: about:blank
 ---
+
+---
+
+# Page 24
+
+<!-- `v-drag.flow` images in a two-column grid, like a theme's `two-cols` (`.col { position: relative }`),
+letterboxed by `object-fit: contain`. Page 24 is last so earlier specs' page numbers don't move. -->
+<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; height: 300px">
+  <div style="position: relative; display: flex; flex-direction: column; padding-left: 20px; border-left: 1px solid #ccc">
+    <img v-drag.flow="'flow-a'" data-testid="flow-a" src="/wide.svg" style="width: 100%; height: 200px; object-fit: contain">
+    <div data-testid="flow-caption">caption</div>
+  </div>
+  <div style="position: relative">
+    <img v-drag.flow="'flow-b'" data-testid="flow-b" src="/wide.svg" style="width: 100%; height: 200px; object-fit: contain">
+  </div>
+</div>

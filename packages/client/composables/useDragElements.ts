@@ -6,6 +6,7 @@ import { injectionCurrentPage, injectionFrontmatter, injectionRenderContext, inj
 import { slideHeight, slideWidth } from '../env'
 import { makeId } from '../logic/utils'
 import { directiveInject } from '../utils'
+import { paddingOriginWithin, renderedImageRect } from './drag-layout'
 // `getVisibleBounds`, `findSnap`, `SNAP_THRESHOLD` moved to `./snap.ts` so the
 // snap math is unit-testable without a Vue runtime / vite virtual modules.
 // Re-exported below for callers that already import them from this module.
@@ -130,7 +131,7 @@ export function useDragElementsUpdater(no: number) {
   }
 }
 
-export function useDragElement(directive: DirectiveBinding | null, posRaw?: string | number | number[], markdownSource?: DragElementMarkdownSource, isArrow = false) {
+export function useDragElement(directive: DirectiveBinding | null, posRaw?: string | number | number[], markdownSource?: DragElementMarkdownSource, isArrow = false, flow?: boolean) {
   function inject<T>(key: InjectionKey<T> | string): T | undefined {
     return directive
       ? directiveInject(directive, key)
@@ -143,9 +144,16 @@ export function useDragElement(directive: DirectiveBinding | null, posRaw?: stri
   const updater = computed(() => useDragElementsUpdater(page.value))
   const scale = inject(injectionSlideScale) ?? ref(1)
   const zoom = inject(injectionSlideZoom) ?? ref(1)
-  const { left: slideLeft, top: slideTop, stop: stopWatchBounds } = useSlideBounds(inject(injectionSlideElement) ?? ref())
+  const slideElement = inject(injectionSlideElement) ?? ref()
+  const { left: slideLeft, top: slideTop, stop: stopWatchBounds } = useSlideBounds(slideElement)
   const { isPrintMode } = useNav()
   const enabled = ['slide', 'presenter'].includes(renderContext.value) && !isPrintMode.value
+  // `flow`: the element keeps its slot in the layout (grid cell, column, flex item) and is shifted
+  // with `position: relative`; otherwise it's taken out of the layout with `position: absolute`.
+  const flowRequested = flow ?? (directive?.modifiers?.flow || frontmatter.dragLayout === 'flow')
+  // An element its author already positioned (`class="absolute right-8"`) isn't in the flow to
+  // begin with; it gets absolute semantics either way. Decided at mount, from the author's CSS.
+  const flowLayout = ref(flowRequested)
 
   let dataSource: DragElementDataSource = directive ? 'directive' : 'prop'
   let dragId: string = makeId()
@@ -228,27 +236,73 @@ export function useDragElement(directive: DirectiveBinding | null, posRaw?: stri
     cropTop.value !== 0 || cropRight.value !== 0 || cropBottom.value !== 0 || cropLeft.value !== 0,
   )
 
-  const containerStyle = computed(() => {
-    const baseStyle: CSSProperties = Number.isFinite(x0.value)
+  // Where `left: 0; top: 0` puts the element, in slide coordinates. Positions are stored in slide
+  // coordinates, but CSS offsets are relative to the element's `offsetParent` (absolute), or to
+  // its own slot in the layout (flow). Both are (0, 0) for an element placed directly on a slide;
+  // they differ inside layouts with positioned containers, like a theme's `.col { position: relative }`.
+  const layoutOrigin = ref({ x: 0, y: 0 })
+  function measureLayoutOrigin() {
+    const el = container.value
+    if (!el || !slideElement.value)
+      return
+    const parentOrigin = paddingOriginWithin(el.offsetParent as HTMLElement | null, slideElement.value)
+    if (!parentOrigin)
+      return
+    // A relatively-positioned element's `offsetLeft` includes its own `left`; subtract the applied
+    // offset to get its slot in the layout.
+    const origin = flowLayout.value
       ? {
-          position: 'absolute',
-          zIndex: zIndex.value,
-          left: `${x0.value - width.value / 2}px`,
-          top: `${y0.value - height.value / 2}px`,
-          width: `${width.value}px`,
-          height: autoHeight ? undefined : `${height.value}px`,
-          transformOrigin: 'center center',
-          transform: `rotate(${rotate.value}deg)`,
+          x: parentOrigin.x + el.offsetLeft - (Number.parseFloat(el.style.left) || 0),
+          y: parentOrigin.y + el.offsetTop - (Number.parseFloat(el.style.top) || 0),
         }
-      : {
-          position: 'absolute',
-          zIndex: zIndex.value,
-        }
+      : parentOrigin
+    if (Math.abs(origin.x - layoutOrigin.value.x) > 0.5 || Math.abs(origin.y - layoutOrigin.value.y) > 0.5)
+      layoutOrigin.value = origin
+  }
+
+  const containerStyle = computed(() => {
+    let baseStyle: CSSProperties
+    if (Number.isFinite(x0.value)) {
+      baseStyle = {
+        position: flowLayout.value ? 'relative' : 'absolute',
+        zIndex: zIndex.value,
+        left: `${x0.value - width.value / 2 - layoutOrigin.value.x}px`,
+        top: `${y0.value - height.value / 2 - layoutOrigin.value.y}px`,
+        width: `${width.value}px`,
+        // `auto` (not unset) so layout rules like a theme's `img { height: 100% }` don't stretch it.
+        height: autoHeight ? 'auto' : `${height.value}px`,
+        // Layout-imposed size limits (e.g. `max-h-72`) would otherwise fight the stored size.
+        maxWidth: 'none',
+        maxHeight: 'none',
+        transformOrigin: 'center center',
+        transform: `rotate(${rotate.value}deg)`,
+      }
+      if (flowLayout.value) {
+        // A flex item would otherwise shrink below its stored size when its container is full.
+        baseStyle.flexShrink = 0
+        // With a fixed width, horizontal margins (e.g. a theme's inline-image `margin: 0 0.15em`)
+        // would push the slot past what the layout gave it, widening a grid column. The measured
+        // layout origin absorbs the shift, so the element doesn't move.
+        baseStyle.marginLeft = 0
+        baseStyle.marginRight = 0
+      }
+    }
+    else if (flowRequested) {
+      // Until it's first positioned, a flow element renders exactly as its author laid it out.
+      baseStyle = {}
+    }
+    else {
+      baseStyle = {
+        position: 'absolute',
+        zIndex: zIndex.value,
+      }
+    }
 
     // In crop mode, drop the clip-path so the full image is visible (DragControl
     // overlays four dimmer rectangles on the *cropped-out* edges; the in-crop
     // region just shows the original render straight through).
-    baseStyle.opacity = 1
+    if (!flowRequested || Number.isFinite(x0.value))
+      baseStyle.opacity = 1
     if (!isCropping.value && hasCrop.value) {
       baseStyle.clipPath = `inset(${cropTop.value}% ${cropRight.value}% ${cropBottom.value}% ${cropLeft.value}%)`
     }
@@ -468,6 +522,30 @@ export function useDragElement(directive: DirectiveBinding | null, posRaw?: stri
           { immediate: true },
         ),
       )
+      // Layout origin matters in every context (overview thumbnails, print/export too), and
+      // shifts whenever the layout around the element reflows (images loading, fonts, resizing
+      // this element in flow mode).
+      if (flowRequested && container.value) {
+        // Read the author's `position` from under our own inline one.
+        const el = container.value
+        const inline = el.style.position
+        el.style.position = ''
+        const authorPosition = getComputedStyle(el).position
+        el.style.position = inline
+        flowLayout.value = authorPosition !== 'absolute' && authorPosition !== 'fixed'
+      }
+      measureLayoutOrigin()
+      watchStopHandles.push(watch(containerStyle, measureLayoutOrigin, { flush: 'post' }))
+      if (container.value && typeof ResizeObserver !== 'undefined') {
+        const ro = new ResizeObserver(() => measureLayoutOrigin())
+        ro.observe(container.value)
+        const parent = container.value.parentElement
+        if (parent)
+          ro.observe(parent)
+        if (slideElement.value)
+          ro.observe(slideElement.value)
+        watchStopHandles.push(() => ro.disconnect())
+      }
       if (!enabled)
         return
       // Set data-drag-positioned so [data-drag-positioned] iframe CSS (width/height: 100%) applies.
@@ -514,12 +592,36 @@ export function useDragElement(directive: DirectiveBinding | null, posRaw?: stri
       if (!enabled)
         return
       updateBounds()
+      measureLayoutOrigin()
       // Auto-position unpositioned elements from their current layout position
       if (!Number.isFinite(x0.value)) {
-        x0.value = (bounds.value.left + bounds.value.width / 2 - slideLeft.value) / scale.value
-        y0.value = (bounds.value.top + bounds.value.height / 2 - slideTop.value) / scale.value
-        width.value = bounds.value.width / scale.value
-        height.value = bounds.value.height / scale.value
+        let box: { left: number, top: number, width: number, height: number } = {
+          left: (bounds.value.left - slideLeft.value) / scale.value,
+          top: (bounds.value.top - slideTop.value) / scale.value,
+          width: bounds.value.width / scale.value,
+          height: bounds.value.height / scale.value,
+        }
+        // A letterboxed image (`object-fit: contain`, as themes give column images) would
+        // otherwise be edited as its whole box: crop would clip the empty bands, and the
+        // selection would outline space the picture doesn't fill. Shrink the box to the pixels.
+        const el = container.value
+        if (el instanceof HTMLImageElement && el.naturalWidth && !rotate.value) {
+          const style = getComputedStyle(el)
+          const pixels = renderedImageRect(
+            box,
+            { width: el.naturalWidth, height: el.naturalHeight },
+            style.objectFit,
+            style.objectPosition,
+          )
+          box = { left: box.left + pixels.left, top: box.top + pixels.top, width: pixels.width, height: pixels.height }
+        }
+        // `y0` of an auto-height element is derived from its measured height; set that first.
+        if (autoHeight)
+          actualHeight.value = box.height
+        x0.value = box.left + box.width / 2
+        y0.value = box.top + box.height / 2
+        width.value = box.width
+        height.value = box.height
       }
       selectElement(state)
     },
