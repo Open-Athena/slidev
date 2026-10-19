@@ -359,10 +359,90 @@ describe('auth Worker', () => {
     expect(await grantRedeems(grant.id)).toBe(0)
   })
 
+  it('mints a link through the API for an admin, which lands on its slide', async () => {
+    const admin = await cookieFor('boss@example.org')
+    const res = await mf.dispatchFetch(`${BASE_URL}/api/auth/grants`, {
+      method: 'POST',
+      headers: { 'Cookie': admin, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ scopes: ['deck'], subjectName: 'Rae', email: null, note: 'review', avatar: null, maxRedeems: null, expiresInS: 86400, allowlist: false }),
+    })
+    const { grant, token } = await res.json() as { grant: any, token: string }
+    expect([res.status, grant.subject, grant.note, grant.scopes, grant.createdBy, grant.expiresAt - grant.createdAt, typeof token])
+      .toEqual([200, { name: 'Rae' }, 'review', ['deck'], 'boss@example.org', 86400, 'string'])
+    // The URL "Get link" builds: the slide's canonical path, its query, and the key.
+    const landing = await get(`/2-chart?m=heatmap&key=${token}`)
+    expect([landing.status, landing.headers.get('Location')]).toEqual([302, '/2-chart?m=heatmap'])
+    const page = await get('/2-chart?m=heatmap', { Cookie: landing.headers.get('Set-Cookie')!.split(';')[0] })
+    expect(page.status).toBe(200)
+    // The links table: listed with one use, then revoked.
+    const list = await (await get('/api/auth/grants', { Cookie: admin })).json() as { grants: any[] }
+    expect(list.grants.find(g => g.id === grant.id)?.redeems).toBe(1)
+    const activity = await get(`/api/auth/grants/${grant.id}/activity`, { Cookie: admin })
+    expect([activity.status, ((await activity.json()) as any).grantId]).toEqual([200, grant.id])
+    const revoke = await mf.dispatchFetch(`${BASE_URL}/api/auth/grants/${grant.id}/revoke`, { method: 'POST', headers: { Cookie: admin } })
+    expect([revoke.status, await revoke.json()]).toEqual([200, { ok: true }])
+    const after = await get(`/2-chart?key=${token}`)
+    expect([after.status, bodyOf(await after.text())])
+      .toEqual([200, signInBody({ title: TITLE, base: '/', next: '/2-chart', google: false, notice: 'That share link has been revoked.' })])
+  })
+
+  it('refuses to mint for a staff account (403) or anonymously (401)', async () => {
+    const mintAs = async (headers: Record<string, string>) => {
+      const res = await mf.dispatchFetch(`${BASE_URL}/api/auth/grants`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...headers },
+        body: JSON.stringify({ scopes: ['deck'] }),
+      })
+      return [res.status, await res.json()]
+    }
+    expect(await mintAs({ Cookie: await cookieFor('alice@openathena.ai') })).toEqual([403, { error: 'forbidden' }])
+    expect(await mintAs({})).toEqual([401, { error: 'unauthenticated' }])
+  })
+
   it('says why a share link didn\'t work', async () => {
     const res = await get('/2-chart?key=bogus')
     expect([res.status, bodyOf(await res.text())])
       .toEqual([200, signInBody({ title: TITLE, base: '/', next: '/2-chart', google: false, notice: 'That share link isn\'t valid.' })])
+  })
+})
+
+describe('auth Worker with `DEV_ADMIN_EMAIL` (`wrangler dev`)', () => {
+  let deck: Deck
+  beforeAll(async () => {
+    deck = await makeDeck(true, { ...VARS, DEV_ADMIN_EMAIL: 'boss@example.org' })
+  }, 30000)
+  afterAll(() => deck.mf.dispose())
+
+  const cookieShape = (c: string | null) => c?.replace(/^oa_auth=[\w-]+\.[\w-]+;/, 'oa_auth=<session>;')
+
+  it('signs localhost requests in as that admin', async () => {
+    for (const origin of ['http://localhost:8787', 'http://127.0.0.1:8787']) {
+      const me = await deck.mf.dispatchFetch(`${origin}/api/auth/whoami`)
+      expect([me.status, await me.json(), cookieShape(me.headers.get('Set-Cookie'))])
+        .toEqual([200, { kind: 'sso', email: 'boss@example.org', admin: true, scopes: ['*'], subject: null }, 'oa_auth=<session>; HttpOnly; SameSite=Lax; Path=/; Max-Age=2592000'])
+    }
+    // A page reloads with the cookie; with it, nothing more is set.
+    const page = await deck.mf.dispatchFetch('http://localhost:8787/2-chart?m=heatmap', { redirect: 'manual' })
+    const cookie = page.headers.get('Set-Cookie')!
+    expect([page.status, page.headers.get('Location'), cookieShape(cookie)]).toEqual([302, '/2-chart?m=heatmap', 'oa_auth=<session>; HttpOnly; SameSite=Lax; Path=/; Max-Age=2592000'])
+    const again = await deck.mf.dispatchFetch('http://localhost:8787/2-chart?m=heatmap', { headers: { Cookie: cookie.split(';')[0] }, redirect: 'manual' })
+    expect([again.status, again.headers.get('Set-Cookie')]).toEqual([200, null])
+    // Admin routes answer within the same request.
+    const mint = await deck.mf.dispatchFetch('http://localhost:8787/api/auth/grants', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ scopes: ['deck'], subjectName: 'Rae', avatar: null }),
+    })
+    expect([mint.status, ((await mint.json()) as any).grant.createdBy]).toEqual([200, 'boss@example.org'])
+  })
+
+  it('never signs in a request that isn\'t to localhost', async () => {
+    const me = await deck.mf.dispatchFetch(`${BASE_URL}/api/auth/whoami`)
+    expect([me.status, await me.json(), me.headers.get('Set-Cookie')]).toEqual([401, { error: 'unauthenticated' }, null])
+    const js = await deck.mf.dispatchFetch(`${BASE_URL}/assets/index.js`)
+    expect(js.status).toBe(401)
+    const spoofed = await deck.mf.dispatchFetch(`${BASE_URL}/api/auth/whoami`, { headers: { 'Host': 'localhost', 'X-Forwarded-Host': 'localhost' } })
+    expect([spoofed.status, spoofed.headers.get('Set-Cookie')]).toEqual([401, null])
   })
 })
 

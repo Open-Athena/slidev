@@ -12,6 +12,9 @@
 // - anonymous: a slide URL gets its share tags and a sign-in prompt (no scripts or styles), other
 //   pages get their HTML with every script / stylesheet stripped and the body replaced by the
 //   prompt, and anything else is a 401. Cards stay public while `publicCards`.
+// - `DEV_ADMIN_EMAIL` (in `.dev.vars`, for `wrangler dev`): requests to localhost are signed in as
+//   that address, so the admin side ("Get link", the links table) works without Google. Never off
+//   localhost: Cloudflare routes a deployed Worker by its real hostname.
 
 import type { CardRenderer, Gate, GateInfo, WorkerEnv, WorkerManifest } from './runtime'
 import { createWorker, metaOnlyShell } from './runtime'
@@ -47,6 +50,7 @@ export interface AuthLib {
 interface AuthGate {
   authenticate: (req: Request) => Promise<unknown | null>
   redeem: (token: string, req: Request) => Promise<{ ok: true, cookie: string } | { ok: false, reason: string }>
+  signIn: (email: string, req: Request) => Promise<{ cookie: string } | null>
 }
 
 export interface AuthEnv extends WorkerEnv {
@@ -58,6 +62,8 @@ export interface AuthEnv extends WorkerEnv {
   STAFF_DOMAIN?: string
   /** Comma-separated addresses that always get in (and may mint share links). */
   ADMIN_EMAILS?: string
+  /** Local development only: sign localhost requests in as this address. */
+  DEV_ADMIN_EMAIL?: string
 }
 
 export interface AuthWorkerOptions {
@@ -122,6 +128,28 @@ async function anonymousPage(request: Request, env: AuthEnv, base: string, body:
   return new Response(out.body, { status: 200, headers: ANON_HEADERS })
 }
 
+const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]'])
+
+/** A request to this machine (`wrangler dev`), never one a deployed Worker gets. */
+export function isLocalRequest(request: Request): boolean {
+  return LOCAL_HOSTS.has(new URL(request.url).hostname)
+}
+
+/** `request` with one more cookie (`name=value`), method and body kept. */
+function withCookie(request: Request, pair: string): Request {
+  const headers = new Headers(request.headers)
+  const existing = headers.get('Cookie')
+  headers.set('Cookie', existing ? `${existing}; ${pair}` : pair)
+  return new Request(request, { headers })
+}
+
+/** `response` with `cookie` appended as a `Set-Cookie`. */
+function settingCookie(response: Response, cookie: string): Response {
+  const out = new Response(response.body, response)
+  out.headers.append('Set-Cookie', cookie)
+  return out
+}
+
 /** The last path segment has no file extension: a page, not an asset. */
 function isPagePath(pathname: string): boolean {
   return !/\.[a-z0-9]+$/i.test(pathname.slice(pathname.lastIndexOf('/') + 1))
@@ -130,7 +158,8 @@ function isPagePath(pathname: string): boolean {
 /** The `gate` hook for `createWorker`, built on `@open-athena/auth`. */
 export function authGate(manifest: WorkerManifest, { auth, lib }: Pick<AuthWorkerOptions, 'auth' | 'lib'>): Gate {
   const publicCards = manifest.publicCards !== false
-  return async (request, workerEnv, _ctx, info: GateInfo) => {
+  return async (originalRequest, workerEnv, _ctx, info: GateInfo) => {
+    let request = originalRequest
     const env = workerEnv as AuthEnv
     const { base } = info
     if (!env.SESSION_SECRET || !env.DB) {
@@ -152,6 +181,17 @@ export function authGate(manifest: WorkerManifest, { auth, lib }: Pick<AuthWorke
       ),
     })
 
+    // Local dev sign-in, as disky's `functions/api/auth/[[path]].ts` does: the session cookie goes
+    // into this request (so it authenticates now) and back out as `Set-Cookie`.
+    let devCookie: string | undefined
+    if (env.DEV_ADMIN_EMAIL && isLocalRequest(request) && !url.searchParams.has('key') && !(await gate.authenticate(request))) {
+      const signed = await gate.signIn(env.DEV_ADMIN_EMAIL, request)
+      if (signed) {
+        devCookie = signed.cookie
+        request = withCookie(request, signed.cookie.split(';')[0])
+      }
+    }
+
     const google = !!(env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET)
     if (google && (url.pathname === `${base}auth/google` || url.pathname === `${base}auth/google/callback`)) {
       const oidc = {
@@ -167,7 +207,7 @@ export function authGate(manifest: WorkerManifest, { auth, lib }: Pick<AuthWorke
     if (url.pathname === apiBase || url.pathname.startsWith(`${apiBase}/`)) {
       const res = await lib.authRoutes(gate, { basePath: apiBase, audit: lib.d1AuditQuery(db), allowlist: lib.d1Allowlist(db) })(request)
       if (res)
-        return res
+        return devCookie ? settingCookie(res, devCookie) : res
     }
 
     const isGet = request.method === 'GET' || request.method === 'HEAD'
@@ -183,8 +223,12 @@ export function authGate(manifest: WorkerManifest, { auth, lib }: Pick<AuthWorke
     }
 
     const session = await gate.authenticate(request)
-    if (session && lib.hasScope(session, auth.scope))
+    if (session && lib.hasScope(session, auth.scope)) {
+      // A page reloads with the dev session's cookie set; the rest (assets) just goes through.
+      if (devCookie && isGet && isPagePath(url.pathname))
+        return new Response(null, { status: 302, headers: { 'Location': url.pathname + url.search, 'Set-Cookie': devCookie, 'Cache-Control': 'no-store' } })
       return undefined
+    }
 
     const denied = url.searchParams.get('denied')
     if (denied)

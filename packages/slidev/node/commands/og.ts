@@ -882,7 +882,8 @@ export function renderWranglerConfig(name: string, renderer: 'browser' | 'none',
   // \`@open-athena/auth\`'s database: share links, the allowlist, the access log.
   // Secrets (\`wrangler secret put\`; \`.dev.vars\` for \`wrangler dev\`): SESSION_SECRET (\`slidev deploy\`
   // sets it when it's missing); GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET for Google sign-in (without
-  // them, only share links work).
+  // them, only share links work). For \`wrangler dev\` only, DEV_ADMIN_EMAIL in \`.dev.vars\` signs
+  // localhost requests in as that address (an admin can then mint share links without Google).
   "d1_databases": [
     {
       "binding": "DB",
