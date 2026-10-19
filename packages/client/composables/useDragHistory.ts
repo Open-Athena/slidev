@@ -8,6 +8,7 @@ import type {
 } from './state-client'
 import { computed, ref } from 'vue'
 import { findLineRun } from './delete-source'
+import { hmrShared } from './hmr-shared'
 import { showNotice } from './notice'
 import { getStateClient } from './state-client'
 import { spliceLines } from './text-edit'
@@ -54,7 +55,8 @@ export interface RegisteredState {
   apply: (s: ElementSnapshot) => void
 }
 
-const registry = new Map<string, RegisteredState>()
+// Shared across HMR copies of this module (see `hmr-shared.ts`), as is the state below.
+const registry = hmrShared(import.meta.hot, 'registry', () => new Map<string, RegisteredState>())
 const regKey = (slideNo: number, dragId: string) => `${slideNo}:${dragId}`
 
 export function registerHistoryState(state: RegisteredState): void {
@@ -69,13 +71,13 @@ export function unregisterHistoryState(state: RegisteredState): void {
 
 // Cached client-side mirror of the IStateClient's bookkeeping. Kept fresh by every
 // mutation response and by the SSE-or-storage subscriber.
-export const topActiveEventId = ref<number | null>(null)
-export const lastYamlCommitEventId = ref<number | null>(null)
-const topActiveEvent = ref<Event | null>(null)
-const topRedoableEvent = ref<Event | null>(null)
+export const topActiveEventId = hmrShared(import.meta.hot, 'topActiveEventId', () => ref<number | null>(null))
+export const lastYamlCommitEventId = hmrShared(import.meta.hot, 'lastYamlCommitEventId', () => ref<number | null>(null))
+const topActiveEvent = hmrShared(import.meta.hot, 'topActiveEvent', () => ref<Event | null>(null))
+const topRedoableEvent = hmrShared(import.meta.hot, 'topRedoableEvent', () => ref<Event | null>(null))
 // Server-derived element state, populated on cold-start hydration. Lets useDragElement
 // override frontmatter.dragPos when the DB has fresher values than the YAML snapshot.
-export const initialState = ref<Record<string, Record<string, ElementSnapshot>> | null>(null)
+export const initialState = hmrShared(import.meta.hot, 'initialState', () => ref<Record<string, Record<string, ElementSnapshot>> | null>(null))
 
 export const canUndo = computed(() => topActiveEvent.value !== null)
 export const canRedo = computed(() => topRedoableEvent.value !== null)
@@ -106,7 +108,7 @@ export async function refreshHistoryState(): Promise<void> {
 const fetchTopEvents = refreshHistoryState
 
 // Bumped after every edit/undo/redo/restore so the version-history drawer can refetch.
-export const eventStreamVersion = ref(0)
+export const eventStreamVersion = hmrShared(import.meta.hot, 'eventStreamVersion', () => ref(0))
 function bumpEventStream(): void {
   eventStreamVersion.value += 1
 }
@@ -165,8 +167,8 @@ interface PendingEdit {
   capture: () => ElementSnapshot
 }
 
-const pendingByKey = new Map<string, PendingEdit>()
-const debounceTimers = new Map<string, ReturnType<typeof setTimeout>>()
+const pendingByKey = hmrShared(import.meta.hot, 'pendingByKey', () => new Map<string, PendingEdit>())
+const debounceTimers = hmrShared(import.meta.hot, 'debounceTimers', () => new Map<string, ReturnType<typeof setTimeout>>())
 const COMMIT_DEBOUNCE_MS = 150
 
 function clearPending(slideNo: number, dragId: string): void {

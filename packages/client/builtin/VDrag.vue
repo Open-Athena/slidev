@@ -52,7 +52,13 @@ function handleDblclick(ev: MouseEvent) {
     state.enterCropMode()
 }
 
-onMounted(mounted)
+onMounted(() => {
+  // As the `v-drag` directive does, so code that finds elements by `data-drag-id` (selecting a
+  // just-inserted embed) can reach their state.
+  if (container.value)
+    (container.value as HTMLElement & { draggingState?: typeof state }).draggingState = state
+  mounted()
+})
 onUnmounted(unmounted)
 </script>
 

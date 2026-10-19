@@ -9,6 +9,7 @@ import { makeId } from '../logic/utils'
 import { editMode } from '../state'
 import { directiveInject } from '../utils'
 import { imageFitAsCrop, isBoxDecorated, paddingOriginWithin, renderedImageRect } from './drag-layout'
+import { hmrShared } from './hmr-shared'
 // `getVisibleBounds`, `findSnap`, `SNAP_THRESHOLD` moved to `./snap.ts` so the
 // snap math is unit-testable without a Vue runtime / vite virtual modules.
 // Re-exported below for callers that already import them from this module.
@@ -42,7 +43,8 @@ export type DragElementMarkdownSource = [startLine: number, endLine: number, ind
 
 export type DragElementsUpdater = (id: string, posStr: string, type: DragElementDataSource, markdownSource?: DragElementMarkdownSource) => void
 
-const map: Record<number, DragElementsUpdater> = {}
+// Shared across HMR copies of this module (see `hmr-shared.ts`).
+const map = hmrShared(import.meta.hot, 'updaters', (): Record<number, DragElementsUpdater> => ({}))
 
 // Registry of all drag elements per page for snap alignment
 export interface DragElementInfo {
@@ -58,7 +60,7 @@ export interface DragElementInfo {
   cropBottom: () => number
   cropLeft: () => number
 }
-const dragElementRegistry: Map<number, Map<string, DragElementInfo>> = new Map()
+const dragElementRegistry = hmrShared(import.meta.hot, 'registry', () => new Map<number, Map<string, DragElementInfo>>())
 
 export function getDragElementsForPage(page: number): DragElementInfo[] {
   const pageElements = dragElementRegistry.get(page)
