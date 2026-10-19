@@ -14,6 +14,8 @@ declare global {
   const __SLIDEV_FEATURE_WAKE_LOCK__: boolean
   const __SLIDEV_FEATURE_PWA__: boolean
   const __SLIDEV_HAS_SERVER__: boolean
+  const __SLIDEV_FEATURE_AUTH__: boolean
+  const __SLIDEV_AUTH_SCOPE__: string
 }
 
 declare module '@vue/runtime-core' {
@@ -32,5 +34,7 @@ declare module '@vue/runtime-core' {
     __SLIDEV_FEATURE_WAKE_LOCK__: boolean
     __SLIDEV_FEATURE_PWA__: boolean
     __SLIDEV_HAS_SERVER__: boolean
+    __SLIDEV_FEATURE_AUTH__: boolean
+    __SLIDEV_AUTH_SCOPE__: string
   }
 }

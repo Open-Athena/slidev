@@ -51,6 +51,17 @@ export interface SlidevEntryOptions {
    * Override routerMode at build time
    */
   routerMode?: 'hash' | 'history' | 'memory'
+
+  /**
+   * `slidev build --worker` / `--no-worker`, so the client knows whether the deck is built for
+   * the Worker (and, with `auth`, behind it)
+   */
+  worker?: boolean
+
+  /**
+   * `slidev build --auth <provider>`: the Worker's auth provider (`publish.worker.auth`)
+   */
+  auth?: string
 }
 
 export interface ResolvedSlidevOptions extends RootsInfo, SlidevEntryOptions {

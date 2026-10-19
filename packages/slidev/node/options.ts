@@ -1,4 +1,5 @@
 import type { ResolvedSlidevOptions, ResolvedSlidevUtils, SlidevData, SlidevEntryOptions } from '@slidev/types'
+import process from 'node:process'
 import { objectMap, uniq } from '@antfu/utils'
 import fg from 'fast-glob'
 import { createDebug } from 'obug'
@@ -13,6 +14,7 @@ import setupIndexHtml from './setups/indexHtml'
 import setupKatex from './setups/katex'
 import setupShiki from './setups/shiki'
 import { applySlugHistory, loadSlugHistory } from './slug-history'
+import { resolveWorkerConfig } from './worker-config'
 
 const RE_FILE_EXTENSION = /\.\w+$/
 
@@ -157,8 +159,28 @@ export async function createDataUtils(resolved: Omit<ResolvedSlidevOptions, 'uti
   }
 }
 
+/**
+ * The scope of the deck's `@open-athena/auth` gate (`publish.worker.auth`, `slidev build --auth`),
+ * or `''` without one. Decides whether the client asks `api/auth/whoami` at all (for "Get link").
+ * `SLIDEV_AUTH_UI=1` turns it on in the dev server without a gate (the e2e fixture, whose auth
+ * routes are stubbed); the dev server has no auth routes of its own, so nobody is an admin there.
+ */
+export function authScopeFor(options: Pick<ResolvedSlidevOptions, 'mode' | 'worker' | 'auth'> & { data: { config: { publish?: any } } }): string {
+  let scope = ''
+  try {
+    scope = resolveWorkerConfig(options.data.config.publish?.worker, options.worker, options.auth)?.auth?.scope ?? ''
+  }
+  catch {
+    // An unknown provider: the build refuses it (`generateOgShells`), the dev server shows nothing.
+  }
+  if (!scope && options.mode === 'dev' && process.env.SLIDEV_AUTH_UI === '1')
+    scope = 'deck'
+  return scope
+}
+
 function getDefine(options: Omit<ResolvedSlidevOptions, 'utils'>): Record<string, string> {
   const matchMode = (mode: string | boolean) => mode === true || mode === options.mode
+  const authScope = authScopeFor(options)
   return objectMap(
     {
       __DEV__: options.mode === 'dev',
@@ -177,6 +199,8 @@ function getDefine(options: Omit<ResolvedSlidevOptions, 'utils'>): Record<string
       __SLIDEV_FEATURE_WAKE_LOCK__: matchMode(options.data.config.wakeLock),
       __SLIDEV_FEATURE_PWA__: matchMode(options.data.config.pwa),
       __SLIDEV_HAS_SERVER__: options.mode !== 'build',
+      __SLIDEV_FEATURE_AUTH__: !!authScope,
+      __SLIDEV_AUTH_SCOPE__: authScope,
     },
     (v, k) => [v, JSON.stringify(k)],
   )

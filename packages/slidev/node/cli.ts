@@ -404,11 +404,11 @@ cli.command(
     .strict()
     .help(),
   async (args) => {
-    const { entry, theme, base, download, out, inspect, 'without-notes': withoutNotes, 'router-mode': routerMode } = args
+    const { entry, theme, base, download, out, inspect, 'without-notes': withoutNotes, 'router-mode': routerMode, worker, auth } = args
     const { build } = await import('./commands/build')
 
     for (const entryFile of entry as unknown as string[]) {
-      const options = await resolveOptions({ entry: entryFile, theme, inspect, download, base, withoutNotes, routerMode: routerMode as 'hash' | 'history' | 'memory' | undefined }, 'build')
+      const options = await resolveOptions({ entry: entryFile, theme, inspect, download, base, withoutNotes, routerMode: routerMode as 'hash' | 'history' | 'memory' | undefined, worker, auth }, 'build')
 
       printInfo(options)
       await build(
