@@ -11,7 +11,7 @@ import type {
   StateSnapshot,
 } from './types'
 import { loadCoords, saveCoordsForSlide } from '../coords'
-import { renumbering } from '../slide-order'
+import { renumbering, reorderCoords } from '../slide-order'
 
 interface EventRow {
   id: number
@@ -492,17 +492,26 @@ export function listEvents(
 }
 
 /**
- * Renumber slide-keyed state after slides are reordered or duplicated (see `slide-order.ts`):
- * events and element state follow their slide to its new number, and a copy gets its original's
- * element state (but none of its history).
+ * Renumber slide-keyed state after slides are reordered, duplicated, inserted or removed (see
+ * `slide-order.ts`): events and element state follow their slide to its new number, and a copy
+ * gets its original's element state (but none of its history). A removed slide's element state
+ * is dropped (`remapSlides` parks it first), and its events move to slide 0 and are abandoned, so
+ * undo / redo / restore don't replay them onto whichever slide takes its number.
  */
 export function renumberSlides(db: Database.Database, order: Slot[]): void {
   const map = renumbering(order)
   const tx = db.transaction(() => {
     const events = db.prepare('SELECT id, slide_no FROM events').all() as Array<{ id: number, slide_no: number }>
     const setEventSlide = db.prepare('UPDATE events SET slide_no = ? WHERE id = ?')
-    for (const e of events)
-      setEventSlide.run(map.get(e.slide_no) ?? e.slide_no, e.id)
+    const orphanEvent = db.prepare('UPDATE events SET slide_no = 0, abandoned_at = COALESCE(abandoned_at, ?) WHERE id = ?')
+    const now = Date.now()
+    for (const e of events) {
+      const to = map.get(e.slide_no)
+      if (to != null)
+        setEventSlide.run(to, e.id)
+      else if (e.slide_no !== 0)
+        orphanEvent.run(now, e.id)
+    }
 
     const rows = db.prepare('SELECT slide_no, drag_id, state, updated_at, source_event_id FROM element_state').all() as Array<{
       slide_no: number
@@ -519,4 +528,76 @@ export function renumberSlides(db: Database.Database, order: Slot[]): void {
     })
   })
   tx()
+}
+
+export interface SlideRemap {
+  /** The new order (`matchSlides`). */
+  order: Slot[]
+  /** Old slides no longer in the deck, by number, with their signatures, to park their state. */
+  removed: Array<{ no: number, signature: string }>
+  /** New slides (`from: null` in `order`), by number, with their signatures, to unpark state. */
+  added: Array<{ no: number, signature: string }>
+}
+
+/**
+ * Renumber slide-keyed state after the markdown's slide list changed (`renumberSlides`), and
+ * renumber `coords` (`slides.coords.yaml`) the same way, returning the new coords.
+ *
+ * Positions of removed slides aren't lost: they're parked by the slide's signature, and restored
+ * (with a `hydrate` event, so undo can't take them away again) when a slide with that signature
+ * is added back.
+ */
+export function remapSlides(db: Database.Database, remap: SlideRemap, coords: CoordsMap): { coords: CoordsMap, restored: string[] } {
+  let next: CoordsMap = {}
+  const restored: string[] = []
+  const tx = db.transaction(() => {
+    const ts = Date.now()
+    const park = db.prepare(`
+      INSERT INTO parked_state(signature, drag_id, state, yaml_pos, parked_at) VALUES (?, ?, ?, ?, ?)
+      ON CONFLICT(signature, drag_id) DO UPDATE SET state = excluded.state, yaml_pos = excluded.yaml_pos, parked_at = excluded.parked_at
+    `)
+    const stateOf = db.prepare('SELECT drag_id, state FROM element_state WHERE slide_no = ?')
+    for (const { no, signature } of remap.removed) {
+      const states = new Map((stateOf.all(no) as Array<{ drag_id: string, state: string }>).map(r => [r.drag_id, r.state]))
+      const yaml = coords[String(no)] ?? {}
+      for (const dragId of new Set([...states.keys(), ...Object.keys(yaml)]))
+        park.run(signature, dragId, states.get(dragId) ?? null, yaml[dragId] ?? null, ts)
+    }
+
+    renumberSlides(db, remap.order)
+    next = reorderCoords(coords, remap.order)
+
+    const parked = db.prepare('SELECT drag_id, state, yaml_pos FROM parked_state WHERE signature = ?')
+    const unpark = db.prepare('DELETE FROM parked_state WHERE signature = ?')
+    const upsert = db.prepare(`
+      INSERT INTO element_state(slide_no, drag_id, state, updated_at, source_event_id) VALUES (?, ?, ?, ?, ?)
+      ON CONFLICT(slide_no, drag_id) DO UPDATE SET state = excluded.state, updated_at = excluded.updated_at, source_event_id = excluded.source_event_id
+    `)
+    for (const { no, signature } of remap.added) {
+      const rows = parked.all(signature) as Array<{ drag_id: string, state: string | null, yaml_pos: string | null }>
+      if (!rows.length)
+        continue
+      const items: EditItem[] = rows.flatMap(r => r.state ? [{ dragId: r.drag_id, before: null, after: JSON.parse(r.state) as ElementSnapshot }] : [])
+      if (items.length) {
+        const info = db.prepare('INSERT INTO events(ts, slide_no, kind, payload, label) VALUES (?, ?, ?, ?, ?)')
+          .run(ts, no, 'hydrate', JSON.stringify({ items }), 'restored-with-slide')
+        for (const item of items)
+          upsert.run(no, item.dragId, JSON.stringify(item.after), ts, Number(info.lastInsertRowid))
+      }
+      for (const r of rows) {
+        if (r.yaml_pos != null)
+          (next[String(no)] ??= {})[r.drag_id] = r.yaml_pos
+      }
+      unpark.run(signature)
+      restored.push(...rows.map(r => `${no}:${r.drag_id}`))
+    }
+  })
+  tx()
+  return { coords: next, restored }
+}
+
+/** Slide numbers that have element state or history. */
+export function slidesWithState(db: Database.Database): Set<number> {
+  const rows = db.prepare('SELECT slide_no FROM element_state UNION SELECT slide_no FROM events WHERE slide_no != 0').all() as Array<{ slide_no: number }>
+  return new Set(rows.map(r => r.slide_no))
 }

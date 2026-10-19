@@ -3,16 +3,18 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { duplicateOrder, moveOrder } from '../packages/slidev/node/slide-order'
+import { duplicateOrder, matchSlides, moveOrder } from '../packages/slidev/node/slide-order'
 import {
   getSnapshot,
   hydrateIfEmpty,
   insertEdit,
   listEvents,
   redo,
+  remapSlides,
   renumberSlides,
   restoreToEvent,
   revertToYaml,
+  slidesWithState,
   undo,
 } from '../packages/slidev/node/state/core'
 import { openStateDb } from '../packages/slidev/node/state/db'
@@ -289,6 +291,59 @@ describe('state/core', () => {
       renumberSlides(db, duplicateOrder(5, 4, 5))
       expect(getSnapshot(db).state).toEqual({ 3: { b: SNAP_C }, 4: { a: SNAP_B }, 5: { a: SNAP_B } })
       expect(listEvents(db).map(e => [e.slideNo, e.items[0].dragId])).toEqual([[3, 'b'], [4, 'a']])
+    })
+  })
+  describe('remapSlides', () => {
+    // Slides by signature, before and after an edit of the markdown.
+    function remapFor(before: string, after: string) {
+      const old = before.split(' ')
+      const now = after.split(' ')
+      const { order, removed, ambiguous } = matchSlides(old.map(signature => ({ signature })), now.map(signature => ({ signature })))
+      expect(ambiguous).toEqual([])
+      return {
+        order,
+        removed: removed.map(no => ({ no, signature: old[no - 1] })),
+        added: order.flatMap((s, i) => s.from == null ? [{ no: i + 1, signature: now[i] }] : []),
+      }
+    }
+
+    it('shifts state and coords past an inserted slide', () => {
+      insertEdit(db, { slideNo: 3, kind: 'move', items: [{ dragId: 'img', before: null, after: SNAP_A }] })
+      const { coords } = remapSlides(db, remapFor('a b c d', 'a b x c d'), { 3: { img: '75,75,50,50' }, 4: { other: '1,2,3,4' } })
+      expect(coords).toEqual({ 4: { img: '75,75,50,50' }, 5: { other: '1,2,3,4' } })
+      expect(getSnapshot(db).state).toEqual({ 4: { img: SNAP_A } })
+      expect(listEvents(db).map(e => [e.slideNo, e.abandonedAt])).toEqual([[4, null]])
+    })
+
+    it('parks a removed slide\'s positions, abandons its history, and restores both positions when it comes back', () => {
+      insertEdit(db, { slideNo: 2, kind: 'move', items: [{ dragId: 'img', before: null, after: SNAP_A }] })
+      insertEdit(db, { slideNo: 3, kind: 'move', items: [{ dragId: 'kept', before: null, after: SNAP_B }] })
+      const yaml = { 2: { img: '75,75,50,50', yamlOnly: '1,2,3,4' }, 3: { kept: '175,175,50,50' } }
+
+      // Cut slide 2 (`b`) ...
+      const cut = remapSlides(db, remapFor('a b c', 'a c'), yaml)
+      expect(cut).toEqual({ coords: { 2: { kept: '175,175,50,50' } }, restored: [] })
+      expect(getSnapshot(db).state).toEqual({ 2: { kept: SNAP_B } })
+      expect(listEvents(db).map(e => [e.slideNo, e.items[0].dragId, e.abandonedAt != null])).toEqual([[2, 'kept', false], [0, 'img', true]])
+
+      // ... and paste it after `c`, in a later save.
+      const paste = remapSlides(db, remapFor('a c', 'a c b'), cut.coords)
+      expect(paste).toEqual({
+        coords: { 2: { kept: '175,175,50,50' }, 3: { img: '75,75,50,50', yamlOnly: '1,2,3,4' } },
+        restored: ['3:img', '3:yamlOnly'],
+      })
+      expect(getSnapshot(db).state).toEqual({ 2: { kept: SNAP_B }, 3: { img: SNAP_A } })
+      const [restoredEvent] = listEvents(db)
+      expect([restoredEvent.slideNo, restoredEvent.kind, restoredEvent.label, restoredEvent.items]).toEqual([3, 'hydrate', 'restored-with-slide', [{ dragId: 'img', before: null, after: SNAP_A }]])
+      // Parked once, restored once.
+      expect(remapSlides(db, remapFor('a c b', 'a c b b2'), paste.coords).restored).toEqual([])
+    })
+
+    it('reports which slides have state or history', () => {
+      insertEdit(db, { slideNo: 2, kind: 'move', items: [{ dragId: 'img', before: null, after: SNAP_A }] })
+      insertEdit(db, { slideNo: 5, kind: 'move', items: [{ dragId: 'img', before: null, after: SNAP_B }] })
+      undo(db)
+      expect([...slidesWithState(db)].sort()).toEqual([2, 5])
     })
   })
 })

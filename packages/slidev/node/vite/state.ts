@@ -2,7 +2,9 @@ import type { ResolvedSlidevOptions } from '@slidev/types'
 import type Database from 'better-sqlite3'
 import type { ServerResponse } from 'node:http'
 import type { Connect, Plugin } from 'vite'
+import type { CoordsMap } from '../coords'
 import type { Slot } from '../slide-order'
+import type { SlideRemap } from '../state/core'
 import type { EditEvent } from '../state/types'
 import { Buffer } from 'node:buffer'
 import {
@@ -12,9 +14,11 @@ import {
   insertEdit,
   listEvents,
   redo,
+  remapSlides,
   renumberSlides,
   restoreToEvent,
   revertToYaml,
+  slidesWithState,
   undo,
 } from '../state/core'
 import { openStateDb } from '../state/db'
@@ -30,7 +34,7 @@ const SSE_HEARTBEAT_MS = 25_000
 // re-fetches state + events — the source is informational.
 interface StateChangeMessage {
   type: 'state-change'
-  source: 'edit' | 'undo' | 'redo' | 'restore' | 'yaml-commit' | 'revert-to-yaml' | 'reorder'
+  source: 'edit' | 'undo' | 'redo' | 'restore' | 'yaml-commit' | 'revert-to-yaml' | 'reorder' | 'remap'
   topActiveEventId: number | null
   triggeringEventId?: number | null
 }
@@ -72,12 +76,37 @@ function sendJson(res: ServerResponse, status: number, body: unknown) {
 }
 
 // Open state plugins by deck root, so the slides loader can renumber slide-keyed state when it
-// reorders or duplicates slides.
-const statePlugins = new Map<string, (order: Slot[]) => Promise<void>>()
+// reorders or duplicates slides, or when an edit of the markdown changes the slide list.
+interface StatePluginHooks {
+  renumber: (order: Slot[]) => Promise<void>
+  remap: (remap: SlideRemap, coords: CoordsMap) => Promise<{ coords: CoordsMap, restored: string[] } | null>
+  slidesWithState: () => Promise<Set<number>>
+  notifyRemapped: () => Promise<void>
+}
+const statePlugins = new Map<string, StatePluginHooks>()
 
 /** Renumber the deck's history database after a slide reorder / duplicate; a no-op without one. */
 export async function renumberStateSlides(userRoot: string, order: Slot[]): Promise<void> {
-  await statePlugins.get(userRoot)?.(order)
+  await statePlugins.get(userRoot)?.renumber(order)
+}
+
+/**
+ * Renumber the deck's history database after the markdown's slide list changed, parking removed
+ * slides' positions (see `remapSlides`). Returns the renumbered `coords`, or `null` without a
+ * database. Clients aren't told until `notifyStateRemapped`, once the new slides are loaded.
+ */
+export async function remapStateSlides(userRoot: string, remap: SlideRemap, coords: CoordsMap): Promise<{ coords: CoordsMap, restored: string[] } | null> {
+  return await statePlugins.get(userRoot)?.remap(remap, coords) ?? null
+}
+
+/** Slide numbers with element state or history in the deck's database (empty without one). */
+export async function stateSlideNumbers(userRoot: string): Promise<Set<number>> {
+  return await statePlugins.get(userRoot)?.slidesWithState() ?? new Set()
+}
+
+/** Tell clients slide-keyed state was renumbered by `remapStateSlides`. */
+export async function notifyStateRemapped(userRoot: string): Promise<void> {
+  await statePlugins.get(userRoot)?.notifyRemapped()
 }
 
 export function createStatePlugin(options: ResolvedSlidevOptions): Plugin {
@@ -118,12 +147,27 @@ export function createStatePlugin(options: ResolvedSlidevOptions): Plugin {
     }
   }
 
-  statePlugins.set(options.userRoot, async (order) => {
-    const handle = await ensureDb()
-    if (!handle)
-      return
-    renumberSlides(handle, order)
-    broadcast({ type: 'state-change', source: 'reorder', topActiveEventId: getSnapshot(handle).topActiveEventId })
+  statePlugins.set(options.userRoot, {
+    async renumber(order) {
+      const handle = await ensureDb()
+      if (!handle)
+        return
+      renumberSlides(handle, order)
+      broadcast({ type: 'state-change', source: 'reorder', topActiveEventId: getSnapshot(handle).topActiveEventId })
+    },
+    async remap(remap, coords) {
+      const handle = await ensureDb()
+      return handle ? remapSlides(handle, remap, coords) : null
+    },
+    async slidesWithState() {
+      const handle = await ensureDb()
+      return handle ? slidesWithState(handle) : new Set()
+    },
+    async notifyRemapped() {
+      const handle = await ensureDb()
+      if (handle)
+        broadcast({ type: 'state-change', source: 'remap', topActiveEventId: getSnapshot(handle).topActiveEventId })
+    },
   })
 
   // Look up the current top active event id without allocating a snapshot. Cheap query.

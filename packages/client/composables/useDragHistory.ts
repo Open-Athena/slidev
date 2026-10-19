@@ -470,6 +470,14 @@ export async function connectStateStream(): Promise<void> {
       void refreshHistoryState()
       return
     }
+    // An edit of the markdown inserted, removed or moved slides, and the server renumbered
+    // slide-keyed state to follow them. Mounted elements are registered (and hold positions)
+    // under their old slide numbers, and HMR may patch a slide's elements in place rather than
+    // remount them, so reload rather than re-key everything live.
+    if (msg.source === 'remap') {
+      location.reload()
+      return
+    }
     // Self-origin dedup for everything else: when this tab triggered the change, our
     // local `topActiveEventId` already matches the broadcast id.
     if (msg.topActiveEventId === topActiveEventId.value)

@@ -89,7 +89,7 @@ export interface CommitResult {
 // local client emits them on every mutation. Identical envelope across both backends.
 export interface StateChangeMessage {
   type: 'state-change'
-  source: 'edit' | 'undo' | 'redo' | 'restore' | 'yaml-commit' | 'revert-to-yaml'
+  source: 'edit' | 'undo' | 'redo' | 'restore' | 'yaml-commit' | 'revert-to-yaml' | 'reorder' | 'remap'
   topActiveEventId: number | null
   triggeringEventId?: number | null
 }

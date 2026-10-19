@@ -1,15 +1,16 @@
 import type { ResolvedSlidevOptions, SlideInfo, SlidePatch, SlidevData, SlidevServerOptions } from '@slidev/types'
 import type { ModuleNode, Plugin, Rolldown, ViteDevServer } from 'vite'
-import type { Slot } from '../slide-order'
+import type { SlideKey, Slot } from '../slide-order'
 import type { VirtualModuleContext } from '../virtual/types'
+import { createHash } from 'node:crypto'
 import { notNullish, range } from '@antfu/utils'
 import * as parser from '@slidev/parser/fs'
 import equal from 'fast-deep-equal'
 import MarkdownExit from 'markdown-exit'
 import YAML from 'yaml'
-import { loadCoords, saveCoordsForSlide, writeCoords } from '../coords'
+import { applyCoords, loadCoords, saveCoordsForSlide, writeCoords } from '../coords'
 import { createDataUtils } from '../options'
-import { duplicateOrder, moveOrder, reorderCoords } from '../slide-order'
+import { duplicateOrder, isIdentityOrder, matchSlides, moveOrder, reorderCoords } from '../slide-order'
 import MarkdownItKatex from '../syntax/katex'
 import markdownItLink from '../syntax/link'
 import { applyNotesAutoRuby, createMakeAbsoluteImportGlob, getBodyJson, updateFrontmatterPatch } from '../utils'
@@ -20,7 +21,7 @@ import { templateMonacoTypes } from '../virtual/monaco-types'
 import { templateSlides, VIRTUAL_SLIDE_PREFIX } from '../virtual/slides'
 import { templateTitleRendererMd } from '../virtual/titles'
 import { regexSlideFacadeId, regexSlideReqPath, regexSlideSourceId } from './common'
-import { renumberStateSlides } from './state'
+import { notifyStateRemapped, remapStateSlides, renumberStateSlides, stateSlideNumbers } from './state'
 
 export function createSlidesLoader(
   options: ResolvedSlidevOptions,
@@ -36,6 +37,8 @@ export function createSlidesLoader(
   const hmrSlidesIndexes = new Set<number>()
   let server: ViteDevServer | undefined
   let skipHmr: { filePath: string, fileContent: string } | null = null
+  // The reorder endpoint's own write of the markdown: it renumbered slide state already.
+  let reorderWrite: { filePath: string, fileContent: string } | null = null
   const makeAbsoluteImportGlob = createMakeAbsoluteImportGlob(options.userRoot)
 
   interface ResolvedSourceIds {
@@ -61,6 +64,59 @@ export function createSlidesLoader(
     if (!server)
       return
     server.watcher.add(Object.keys(data.watchFiles))
+  }
+
+  /**
+   * Slide-numbered state (`slides.coords.yaml`, the history database) follows its slide when an
+   * edit of the markdown inserts, removes or moves slides (`matchSlides`), and `newData`'s applied
+   * positions are redone from the renumbered coords. Returns whether anything was renumbered.
+   * When a slide with state can't be matched with confidence, nothing is touched: renumbering on
+   * a guess could put one slide's positions on another.
+   */
+  async function remapSlideState(before: SlideInfo[], after: SlidevData): Promise<boolean> {
+    const beforeKeys = before.map(slideKey)
+    const afterKeys = after.slides.map(slideKey)
+    const { order, removed, ambiguous } = matchSlides(beforeKeys, afterKeys)
+    if (isIdentityOrder(order, before.length))
+      return false
+    const coords = await loadCoords(options.userRoot)
+    const withState = await stateSlideNumbers(options.userRoot)
+    const hasState = (no: number) => withState.has(no) || Object.keys(coords[String(no)] ?? {}).length > 0
+    const unsure = ambiguous.filter(hasState)
+    if (unsure.length) {
+      console.warn(`[slidev] The slide list changed, but slide${unsure.length > 1 ? 's' : ''} ${unsure.join(', ')} (which ha${unsure.length > 1 ? 've' : 's'} positions or history) can't be told apart from the new slides; positions are left on their old slide numbers.`)
+      return false
+    }
+    const gone = [...removed, ...ambiguous].filter(hasState)
+    const remap = {
+      order,
+      removed: gone.map(no => ({ no, signature: beforeKeys[no - 1].signature })),
+      added: order.flatMap((slot, i) => slot.from == null ? [{ no: i + 1, signature: afterKeys[i].signature }] : []),
+    }
+    const result = await remapStateSlides(options.userRoot, remap, coords)
+    const next = result?.coords ?? reorderCoords(coords, order)
+    if (!equal(coords, next))
+      await writeCoords(options.userRoot, next)
+    // `loadData` applied the coords under the old numbering; apply the renumbered ones instead.
+    for (const slide of after.slides) {
+      const inline = slide.source.frontmatter?.dragPos
+      if (inline)
+        slide.frontmatter.dragPos = { ...inline }
+      else
+        delete slide.frontmatter.dragPos
+    }
+    applyCoords(after, next)
+    const moved = order.flatMap((slot, i) => slot.from != null && slot.from !== i + 1 && hasState(slot.from) ? [`${slot.from} → ${i + 1}`] : [])
+    if (moved.length || gone.length || result?.restored.length) {
+      // eslint-disable-next-line no-console
+      console.log([
+        '[slidev] The slide list changed; renumbered slide positions and history',
+        moved.length ? `moved ${moved.join(', ')}` : '',
+        gone.length ? `parked removed slide${gone.length > 1 ? 's' : ''} ${gone.join(', ')}` : '',
+        result?.restored.length ? `restored ${result.restored.join(', ')}` : '',
+      ].filter(Boolean).join('; '))
+    }
+    return true
   }
 
   function getFrontmatter(pageNo: number) {
@@ -132,7 +188,7 @@ export function createSlidesLoader(
           await renumberStateSlides(options.userRoot, order)
           entry.slides = next
           entry.slides.forEach((s, i) => s.index = i)
-          await parser.save(entry)
+          reorderWrite = { filePath: entry.filepath, fileContent: await parser.save(entry) }
           res.setHeader('Content-Type', 'application/json')
           res.end(JSON.stringify({ order }))
           return
@@ -255,6 +311,12 @@ export function createSlidesLoader(
         return []
       }
 
+      let remapped = false
+      if (reorderWrite && newData.markdownFiles[reorderWrite.filePath]?.raw === reorderWrite.fileContent)
+        reorderWrite = null
+      else
+        remapped = await remapSlideState(data.slides, newData)
+
       const moduleIds = new Set<string>()
 
       const newSourceIds = resolveSourceIds(newData)
@@ -363,6 +425,9 @@ export function createSlidesLoader(
         .filter(i => !i.id?.startsWith('/@id/@vite-icons'))
 
       updateServerWatcher()
+
+      if (remapped)
+        await notifyStateRemapped(options.userRoot)
 
       return moduleEntries
     },
@@ -504,5 +569,14 @@ export function createSlidesLoader(
       ...withoutNotes && { note: '' },
       noteHTML: renderNote(data?.note),
     }
+  }
+}
+
+/** A slide's identity across edits of the markdown (`matchSlides`): its content and frontmatter. */
+function slideKey(slide: SlideInfo): SlideKey {
+  const { dragPos: _, ...frontmatter } = slide.frontmatter ?? {}
+  return {
+    signature: createHash('sha1').update(JSON.stringify([slide.content.trim(), frontmatter])).digest('hex'),
+    title: slide.title?.trim() || undefined,
   }
 }

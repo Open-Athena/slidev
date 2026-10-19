@@ -29,6 +29,18 @@ CREATE TABLE IF NOT EXISTS element_state (
   PRIMARY KEY (slide_no, drag_id)
 );
 
+-- Positions of slides removed from the markdown, by the removed slide's signature (a hash of its
+-- content), so they come back if the slide does (e.g. cut and pasted elsewhere across two saves).
+-- \`state\`: its element_state row, if any; \`yaml_pos\`: its slides.coords.yaml entry, if any.
+CREATE TABLE IF NOT EXISTS parked_state (
+  signature TEXT NOT NULL,
+  drag_id   TEXT NOT NULL,
+  state     TEXT,
+  yaml_pos  TEXT,
+  parked_at INTEGER NOT NULL,
+  PRIMARY KEY (signature, drag_id)
+);
+
 CREATE TABLE IF NOT EXISTS meta (
   key   TEXT PRIMARY KEY,
   value TEXT
