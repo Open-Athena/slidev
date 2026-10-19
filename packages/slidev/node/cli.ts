@@ -424,6 +424,42 @@ cli.command(
 )
 
 cli.command(
+  'deploy',
+  'Deploy the Worker `slidev build --worker` wrote, with wrangler (and, with `publish.worker.auth`, its D1 database, migrations and SESSION_SECRET)',
+  args => args
+    .option('out', {
+      alias: 'o',
+      type: 'string',
+      default: 'dist',
+      describe: 'built deck dir (`slidev build --out`); the Worker is next to it, in `<out>-worker/`',
+    })
+    .option('dry-run', {
+      alias: 'n',
+      type: 'boolean',
+      default: false,
+      describe: 'print the plan without running wrangler (nothing reaches Cloudflare)',
+    })
+    .option('wrangler', {
+      type: 'string',
+      describe: 'wrangler command, e.g. an account-pinning wrapper (default: $SLIDEV_WRANGLER, else the deck\'s wrangler, else `npx wrangler`)',
+    })
+    .strict()
+    .help(),
+  async ({ out, 'dry-run': dryRun, wrangler: wranglerArg }) => {
+    const deploy = await import('./commands/deploy')
+    const cwd = process.cwd()
+    const ctx = await deploy.loadDeployContext(out, cwd)
+    const wrangler = deploy.resolveWrangler(wranglerArg, cwd)
+    if (dryRun) {
+      process.stdout.write(deploy.describePlan(ctx, wrangler))
+      return
+    }
+    await deploy.runDeploy(ctx, { run: deploy.spawnRunner(wrangler, cwd), wrangler, cwd, log: line => console.log(dim(line)) })
+    console.log(`${green('Deployed')} ${ctx.info.name}: ${ctx.info.baseUrl}`)
+  },
+)
+
+cli.command(
   'format [entry..]',
   'Format the markdown file',
   args => commonOptions(args)
