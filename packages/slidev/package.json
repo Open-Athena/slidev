@@ -41,10 +41,14 @@
     "start": "tsx node/cli.ts"
   },
   "peerDependencies": {
+    "@open-athena/auth": "*",
     "playwright-chromium": "^1.10.0",
     "vite-plugin-pwa": "^1.0.0"
   },
   "peerDependenciesMeta": {
+    "@open-athena/auth": {
+      "optional": true
+    },
     "playwright-chromium": {
       "optional": true
     },
@@ -135,6 +139,7 @@
   },
   "devDependencies": {
     "@hedgedoc/markdown-it-plugins": "catalog:prod",
+    "@open-athena/auth": "catalog:dev",
     "@types/better-sqlite3": "catalog:types",
     "@types/picomatch": "catalog:types",
     "@types/plantuml-encoder": "catalog:types",

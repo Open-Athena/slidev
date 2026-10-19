@@ -56,8 +56,11 @@ catalogs:
     '@vue/compiler-sfc': ^3.5.42
   dev:
     '@antfu/eslint-config': ^9.5.1
+    # The `dist` branch, by SHA (an optional peer of @slidev/cli; the Worker's auth gate tests use it).
+    '@open-athena/auth': github:Open-Athena/auth#0e81feafae4fd54676ec1bc2ea1459e96dd6d887
     bumpp: ^12.3.0
     cypress: ^16.0.0
+    esbuild: ^0.28.2
     eslint: ^10.10.0
     eslint-plugin-format: ^2.0.1
     jszip: ^3.10.1

@@ -171,12 +171,18 @@ catalogs:
     '@antfu/eslint-config':
       specifier: ^9.5.1
       version: 9.5.1
+    '@open-athena/auth':
+      specifier: github:Open-Athena/auth#0e81feafae4fd54676ec1bc2ea1459e96dd6d887
+      version: https://codeload.github.com/Open-Athena/auth/tar.gz/0e81feafae4fd54676ec1bc2ea1459e96dd6d887
     bumpp:
       specifier: ^12.3.0
       version: 12.3.0
     cypress:
       specifier: ^16.0.0
       version: 16.1.0
+    esbuild:
+      specifier: ^0.28.2
+      version: 0.28.2
     eslint:
       specifier: ^10.10.0
       version: 10.10.0
@@ -675,6 +681,9 @@ importers:
       '@modelcontextprotocol/client':
         specifier: catalog:prod
         version: 2.0.0
+      '@open-athena/auth':
+        specifier: catalog:dev
+        version: https://codeload.github.com/Open-Athena/auth/tar.gz/0e81feafae4fd54676ec1bc2ea1459e96dd6d887
       '@shikijs/markdown-it':
         specifier: catalog:frontend
         version: 4.4.3
@@ -729,6 +738,9 @@ importers:
       cypress:
         specifier: catalog:dev
         version: 16.1.0
+      esbuild:
+        specifier: catalog:dev
+        version: 0.28.2
       eslint:
         specifier: catalog:dev
         version: 10.10.0(jiti@2.7.0)(supports-color@8.1.1)
@@ -1383,6 +1395,9 @@ importers:
       '@hedgedoc/markdown-it-plugins':
         specifier: catalog:prod
         version: 2.1.4(patch_hash=49e14003b6caa0b7d164cbe71da573809d375babb2012c0a5ac943573e063c90)(markdown-it@14.3.2)
+      '@open-athena/auth':
+        specifier: catalog:dev
+        version: https://codeload.github.com/Open-Athena/auth/tar.gz/0e81feafae4fd54676ec1bc2ea1459e96dd6d887
       '@types/better-sqlite3':
         specifier: catalog:types
         version: 7.6.13
@@ -3478,6 +3493,21 @@ packages:
 
   '@ocavue/utils@1.9.0':
     resolution: {integrity: sha512-fHE+6t6Z0YfFnu5uiaKRRXoIo8NCTVBdT+b9SjMQydDTqTxHpvhNFvXsIUkYlJMyBQZjEpCyGlUfP+wscAmR1w==}
+
+  '@open-athena/auth@https://codeload.github.com/Open-Athena/auth/tar.gz/0e81feafae4fd54676ec1bc2ea1459e96dd6d887':
+    resolution: {gitHosted: true, integrity: sha512-1yukO8t5uZgUYMd+XaOxfVT1UpwGsg/6Xx7GZivNLfpa2kZBk1he+WAIHLOmi38zQ3Lj56U55bWHfc0ctJR9yw==, tarball: https://codeload.github.com/Open-Athena/auth/tar.gz/0e81feafae4fd54676ec1bc2ea1459e96dd6d887}
+    version: 0.1.0-dist.b3eb445
+    peerDependencies:
+      '@cloudflare/workers-types': '*'
+      '@tanstack/react-query': ^5.0.0
+      react: ^18.0.0 || ^19.0.0
+    peerDependenciesMeta:
+      '@cloudflare/workers-types':
+        optional: true
+      '@tanstack/react-query':
+        optional: true
+      react:
+        optional: true
 
   '@ota-meshi/ast-token-store@0.3.0':
     resolution: {integrity: sha512-XRO0zi2NIUKq2lUk3T1ecFSld1fMWRKE6naRFGkgkdeosx7IslyUKNv5Dcb5PJTja9tHJoFu0v/7yEpAkrkrTg==}
@@ -12467,6 +12497,8 @@ snapshots:
     optional: true
 
   '@ocavue/utils@1.9.0': {}
+
+  '@open-athena/auth@https://codeload.github.com/Open-Athena/auth/tar.gz/0e81feafae4fd54676ec1bc2ea1459e96dd6d887': {}
 
   '@ota-meshi/ast-token-store@0.3.0': {}
 
