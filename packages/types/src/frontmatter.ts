@@ -401,6 +401,14 @@ export interface HeadmatterConfig extends TransitionOptions {
    * @default []
    */
   draggableImageTags?: string[]
+  /**
+   * Components that get their own drag / resize box in edit mode, e.g. `['OgPreviews']`, or `true`
+   * for every component in the deck's `components/` directory. They keep their place in the layout
+   * (`dragLayout: flow`), and their height follows their content, so narrowing one reflows it.
+   *
+   * @default []
+   */
+  draggableComponents?: boolean | string[]
 }
 
 export interface Frontmatter extends TransitionOptions {

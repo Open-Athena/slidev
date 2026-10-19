@@ -46,6 +46,18 @@ draggableImageTags: [Scrn] # optional: components whose root element is an image
 
 Under `all`, images keep their place in the layout ([flow layout](#flow-layout)), so images in columns and grids stay put until you move them.
 
+## Draggable Components
+
+To give components their own drag / resize box, list them, or pass `true` for every component in the deck's `components/` directory:
+
+```yaml
+---
+draggableComponents: [OgPreviews, GcsBill] # or `true`
+---
+```
+
+They keep their place in the layout (flow layout, below) until moved, and their height follows their content: resizing changes the width, so a component that wraps its content (e.g. a grid with `repeat(auto-fill, minmax(240px, 1fr))`) reflows to fit. Under the hood each gets `v-drag.flow.autoheight`; the `.autoheight` modifier works on any `v-drag`.
+
 ## Flow Layout
 
 By default, a draggable element is taken out of the layout and positioned on the slide (`position: absolute`). That's right for free-floating elements, but an image in a grid cell or a column would leave its slot, letting its neighbors reflow into the space.

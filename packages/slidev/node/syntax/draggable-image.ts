@@ -17,6 +17,13 @@ export interface DraggableImageOptions {
    * @default []
    */
   tags?: string[]
+  /**
+   * Components (by tag name) that get their own drag / resize box: `v-drag.flow.autoheight`, so
+   * they keep their layout slot and their height follows their content as their width changes.
+   * Independent of `enabled`.
+   * @default []
+   */
+  components?: string[]
 }
 
 /**
@@ -45,7 +52,8 @@ export default function MarkdownItDraggableImage(
   markdownTransformMap: Map<string, MagicString>,
   pluginOptions: DraggableImageOptions = {},
 ) {
-  if (!pluginOptions.enabled)
+  const components = pluginOptions.components ?? []
+  if (!pluginOptions.enabled && !components.length)
     return
 
   const sourceMapConsumers = new WeakMap<MagicString, SourceMapConsumer>()
@@ -67,13 +75,12 @@ export default function MarkdownItDraggableImage(
     return smc
   }
 
-  // Per-slide id allocation, shared by markdown images and HTML tags so ids stay unique.
-  function allocateId(env: any, src: string): string {
+  // Per-slide id allocation, shared by markdown images, HTML tags and components so ids stay unique.
+  function allocateId(env: any, baseId: string): string {
     const slideNo = env.slideNo ?? 1
     env._draggableImageIds = env._draggableImageIds ?? new Map<number, Set<string>>()
     const slideIds: Set<string> = env._draggableImageIds.get(slideNo) ?? new Set()
     env._draggableImageIds.set(slideNo, slideIds)
-    const baseId = `img-${extractImageId(src)}`
     let imgId = baseId
     let counter = 2
     while (slideIds.has(imgId))
@@ -82,16 +89,24 @@ export default function MarkdownItDraggableImage(
     return imgId
   }
 
-  if (pluginOptions.enabled === 'all') {
+  const images = pluginOptions.enabled === 'all' ? ['img', ...pluginOptions.tags ?? []] : []
+  if (images.length || components.length) {
     for (const rule of ['html_block', 'html_inline'] as const) {
       const defaultHtmlRender = md.renderer.rules[rule]
         ?? ((tokens, idx) => tokens[idx].content)
       md.renderer.rules[rule] = function (tokens, idx, opts, env, self) {
-        const html = defaultHtmlRender(tokens, idx, opts, env, self) as string
-        return addVDragToHtmlImages(html, pluginOptions.tags ?? [], src => allocateId(env, src))
+        let html = defaultHtmlRender(tokens, idx, opts, env, self) as string
+        if (images.length)
+          html = addVDrag(html, images, 'v-drag.flow', attrs => allocateId(env, `img-${extractImageId(srcOf(attrs))}`))
+        if (components.length)
+          html = addVDrag(html, components, 'v-drag.flow.autoheight', (_, tag) => allocateId(env, `cmp-${kebab(tag)}`))
+        return html
       }
     }
   }
+
+  if (!pluginOptions.enabled)
+    return
 
   const defaultImageRender: ImageRenderer = md.renderer.rules.image
     ?? ((tokens, idx, options, _env, self) => self.renderToken(tokens, idx, options))
@@ -111,7 +126,7 @@ export default function MarkdownItDraggableImage(
     const title = token.attrGet('title')
 
     // Generate a stable ID for this image based on its source basename, unique within the slide
-    const imgId = allocateId(env, src)
+    const imgId = allocateId(env, `img-${extractImageId(src)}`)
 
     // Calculate markdown source position for persistence
     const smc = getSourceMapConsumer(env.id)
@@ -139,18 +154,33 @@ export default function MarkdownItDraggableImage(
   }
 }
 
+function srcOf(attrs: string): string {
+  return attrs.match(/(?:^|\s):?src\s*=\s*(["'])(.*?)\1/)?.[2] ?? ''
+}
+
+function kebab(tag: string): string {
+  return tag.replace(/([a-z\d])([A-Z])/g, '$1-$2').toLowerCase()
+}
+
+/**
+ * Add `directive="'<id>'"` to each opening tag named in `tags` in a chunk of raw HTML that doesn't
+ * already have a `v-drag`. Quoted attribute values may contain `>` (e.g. `:fn="x => x"`).
+ */
+export function addVDrag(html: string, tags: string[], directive: string, allocateId: (attrs: string, tag: string) => string): string {
+  const names = tags.map(t => t.replace(/[^\w-]/g, ''))
+  const re = new RegExp(`<(${names.join('|')})(?=[\\s/>])((?:[^>"']|"[^"]*"|'[^']*')*)>`, 'g')
+  return html.replace(re, (match, tag: string, attrs: string) => {
+    if (/(?:^|\s)v-drag\b/.test(attrs))
+      return match
+    return `<${tag} ${directive}="'${allocateId(attrs, tag)}'"${attrs}>`
+  })
+}
+
 /**
  * Add `v-drag.flow="'img-<name>'"` to each `<img>` (and each listed component) in a chunk of raw
  * HTML that doesn't already have a `v-drag`. `flow` because hand-written HTML images sit in
  * author-built layouts (grids, columns), which absolute positioning would break.
  */
 export function addVDragToHtmlImages(html: string, tags: string[], allocateId: (src: string) => string): string {
-  const names = ['img', ...tags].map(t => t.replace(/[^\w-]/g, ''))
-  const re = new RegExp(`<(${names.join('|')})(?=[\\s/>])([^>]*)>`, 'g')
-  return html.replace(re, (match, tag: string, attrs: string) => {
-    if (/(?:^|\s)v-drag\b/.test(attrs))
-      return match
-    const src = attrs.match(/(?:^|\s):?src\s*=\s*(["'])(.*?)\1/)?.[2] ?? ''
-    return `<${tag} v-drag.flow="'${allocateId(src)}'"${attrs}>`
-  })
+  return addVDrag(html, ['img', ...tags], 'v-drag.flow', attrs => allocateId(srcOf(attrs)))
 }

@@ -1,6 +1,8 @@
 import type { CodeblockTransformer, ResolvedSlidevOptions } from '@slidev/types'
 import type MagicString from 'magic-string'
 import type MarkdownExit from 'markdown-exit'
+import { existsSync, readdirSync } from 'node:fs'
+import { join } from 'node:path'
 import MarkdownItComark from '@comark/markdown-it'
 import { taskLists as MarkdownItTaskList } from '@hedgedoc/markdown-it-plugins'
 // @ts-expect-error missing types
@@ -36,7 +38,11 @@ export async function useMarkdownItPlugins(
   md.use(MarkdownItTaskList, { enabled: true, lineNumber: true, label: true })
   if (features.katex)
     md.use(MarkdownItKatex, katexOptions)
-  md.use(MarkdownItDraggableImage, markdownTransformMap, { enabled: config.draggableImages, tags: config.draggableImageTags })
+  md.use(MarkdownItDraggableImage, markdownTransformMap, {
+    enabled: config.draggableImages,
+    tags: config.draggableImageTags,
+    components: resolveDraggableComponents(config.draggableComponents, options.userRoot),
+  })
   md.use(MarkdownItVDrag, markdownTransformMap)
   // Source line ranges on text blocks, for in-app text editing (dev + editor only).
   if (options.mode === 'dev' && config.editor !== false)
@@ -46,4 +52,16 @@ export async function useMarkdownItPlugins(
     md.use(MarkdownItComark)
   md.use(MarkdownItStyleScoped)
   md.use(MarkdownItGitHubAlerts as any)
+}
+
+// `draggableComponents: true` means the deck's own components (`<userRoot>/components/*.vue`).
+function resolveDraggableComponents(value: boolean | string[] | undefined, userRoot: string): string[] {
+  if (Array.isArray(value))
+    return value
+  if (value !== true)
+    return []
+  const dir = join(userRoot, 'components')
+  return existsSync(dir)
+    ? readdirSync(dir).filter(f => f.endsWith('.vue')).map(f => f.slice(0, -'.vue'.length))
+    : []
 }

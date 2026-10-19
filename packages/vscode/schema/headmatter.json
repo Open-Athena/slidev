@@ -736,6 +736,22 @@
           "markdownDescription": "Components that render a single image (e.g. `['Scrn']`), made draggable like `<img>` when\n`draggableImages` is `'all'`. The component's root element must be the image.",
           "default": []
         },
+        "draggableComponents": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          ],
+          "description": "Components that get their own drag / resize box in edit mode, e.g. `['OgPreviews']`, or `true` for every component in the deck's `components/` directory. They keep their place in the layout (`dragLayout: flow`), and their height follows their content, so narrowing one reflows it.",
+          "markdownDescription": "Components that get their own drag / resize box in edit mode, e.g. `['OgPreviews']`, or `true`\nfor every component in the deck's `components/` directory. They keep their place in the layout\n(`dragLayout: flow`), and their height follows their content, so narrowing one reflows it.",
+          "default": []
+        },
         "defaults": {
           "$ref": "#/definitions/Frontmatter",
           "description": "Default frontmatter options applied to all slides",

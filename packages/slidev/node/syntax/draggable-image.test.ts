@@ -133,3 +133,27 @@ describe('draggableImages: all', () => {
     expect(result).toBe(src)
   })
 })
+
+describe('draggableComponents', () => {
+  it('gives listed components a `v-drag.flow.autoheight` box, even with draggable images off', async () => {
+    const md = MarkdownExit({ html: true })
+    md.use(MarkdownItDraggableImage, new Map<string, MagicString>(), { enabled: false, components: ['OgPreviews', 'GcsBill'] })
+    const src = [
+      `<OgPreviews :cards="['gcs/a', 'r2/b']" :fmt="c => c > 1" />`,
+      '',
+      '<GcsBill />',
+      '<GcsBill v-drag="\'mine\'" />',
+      '<OtherThing />',
+      '',
+      '![](logo.png)',
+    ].join('\n')
+    const result = await md.renderAsync(src, { id: 'test', slideNo: 1 })
+    expect(result.trim().split('\n')).toEqual([
+      `<OgPreviews v-drag.flow.autoheight="'cmp-og-previews'" :cards="['gcs/a', 'r2/b']" :fmt="c => c > 1" />`,
+      `<GcsBill v-drag.flow.autoheight="'cmp-gcs-bill'" />`,
+      `<GcsBill v-drag="'mine'" />`,
+      '<OtherThing />',
+      '<p><img src="logo.png" alt=""></p>',
+    ])
+  })
+})

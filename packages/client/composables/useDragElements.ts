@@ -177,7 +177,9 @@ export function useDragElement(directive: DirectiveBinding | null, posRaw?: stri
 
   const watchStopHandles: WatchStopHandle[] = [stopWatchBounds]
 
-  const autoHeight = !isArrow && posRaw != null && !Number.isFinite(pos?.[3])
+  // Height follows the content (stored as `NaN` / `_`): set by the stored position, or by the
+  // `.autoheight` modifier (components, whose content reflows when their width changes).
+  const autoHeight = !isArrow && ((posRaw != null && !Number.isFinite(pos?.[3])) || !!directive?.modifiers?.autoheight)
   pos ??= [Number.NaN, Number.NaN, 0]
   const width = ref(pos[2])
   const x0 = ref(pos[0] + pos[2] / 2)
