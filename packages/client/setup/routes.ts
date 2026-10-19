@@ -2,7 +2,7 @@ import type { RouteLocationNormalized, RouteRecordRaw } from 'vue-router'
 import configs from '#slidev/configs'
 import setups from '#slidev/setups/routes'
 import { resolveNumberedSlug } from '../logic/slidePath'
-import { getSlide, slides, slugForSlide } from '../logic/slides'
+import { getSlide, slides, slugAliasesForSlide, slugForSlide } from '../logic/slides'
 
 export default function setupRoutes() {
   const routes: RouteRecordRaw[] = []
@@ -92,16 +92,20 @@ export default function setupRoutes() {
       // Canonical `/<n>-<slug>` form (e.g. `/3-install`). A slug naming exactly one slide wins
       // over the number, so links shared before a slide was inserted earlier in the deck follow
       // their slide (`/3-install` → `/4-install`). A slug no slide has (renamed) or several have
-      // falls back to the number: stale `/3-old-slug` URLs still land on slide 3.
+      // falls back to the number: stale `/3-old-slug` URLs still land on slide 3. Old slugs a slide
+      // keeps as aliases (frontmatter `aliases`, or from an earlier slug rule) resolve like its
+      // own. Either way the URL is rewritten to the slide's current `/<n>-<slug>`.
       name: 'play-slug',
       path: '/:no(\\d+)-:slug([a-z0-9][a-z0-9-]*)',
       component: () => import('../pages/play.vue'),
       beforeEnter: (to) => {
         const no = Number(to.params.no)
-        const target = resolveNumberedSlug(no, String(to.params.slug), slides.value, slugForSlide)
-        if (target === no)
+        const slug = String(to.params.slug)
+        const target = resolveNumberedSlug(no, slug, slides.value, slugForSlide, slugAliasesForSlide)
+        const canonical = slugForSlide(slides.value[target - 1])
+        if (target === no && (!canonical || canonical === slug))
           return true
-        return { path: `/${target}-${to.params.slug}`, query: to.query, hash: to.hash, replace: true }
+        return { path: canonical ? `/${target}-${canonical}` : `/${target}`, query: to.query, hash: to.hash, replace: true }
       },
     },
     {

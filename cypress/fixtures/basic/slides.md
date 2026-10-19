@@ -538,6 +538,8 @@ skip: true
 Skipped.
 
 ---
+aliases: [old-forty]
+---
 
 # Page 40
 

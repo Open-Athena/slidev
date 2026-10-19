@@ -10,6 +10,7 @@ import http from 'node:http'
 import { dirname, relative, resolve, sep } from 'node:path'
 import process from 'node:process'
 import { fileURLToPath } from 'node:url'
+import { slideSlugs, slugify } from '@slidev/parser/utils'
 import connect from 'connect'
 import sirv from 'sirv'
 import { htmlEscape, normalizeSlideParams, shareTags } from '../worker/shared'
@@ -30,6 +31,8 @@ const DEFAULT_OG_QUALITY = 85
 interface SlideOgInfo {
   no: number
   slug: string
+  /** Old slugs that still name the slide (`slideSlugs`): pages and cards are written for them too. */
+  aliases: string[]
   title: string
   description: string
   /** Absolute URL to the canonical interactive slide route. */
@@ -56,32 +59,10 @@ interface SlideOgInfo {
   params: SlideParams
 }
 
-const SLUG_PUNCT_RE = /[^\w\s-]+/g
-const SLUG_SPACE_RE = /[\s_-]+/g
-const SLUG_TRIM_RE = /^-+|-+$/g
-
-export function slugify(s: string): string {
-  return (s ?? '')
-    .normalize('NFKD')
-    // Strip Unicode combining marks via the Unicode property class (works post-NFKD
-    // decomposition: "é" → "e + ́" → "e").
-    .replace(/\p{M}/gu, '')
-    .toLowerCase()
-    .replace(SLUG_PUNCT_RE, ' ')
-    .replace(SLUG_SPACE_RE, '-')
-    .replace(SLUG_TRIM_RE, '')
-    .slice(0, 80) || ''
-}
+export { slugify }
 
 export function pickSlug(slide: SlideInfo, no: number): string {
-  const fm = slide.frontmatter ?? {}
-  return (
-    (typeof fm.slug === 'string' && slugify(fm.slug))
-    || (typeof fm.routeAlias === 'string' && slugify(fm.routeAlias))
-    || (typeof fm.title === 'string' && slugify(fm.title))
-    || (typeof slide.title === 'string' && slugify(slide.title))
-    || `slide-${no}`
-  )
+  return slideSlugs(slide.frontmatter, slide.title).slug || `slide-${no}`
 }
 
 // Strip frontmatter, fenced blocks, components, and basic markdown markers to recover the first
@@ -184,6 +165,7 @@ function planSlide(
   canonicalForm: CanonicalForm,
 ): SlideOgInfo {
   const slug = pickSlug(slide, no)
+  const aliases = slideSlugs(slide.frontmatter, slide.title).aliases
   const title = pickTitle(slide, deckTitle, no)
   const description = pickDescription(slide)
   const imageFilename = `${no}-${slug}.${ext}`
@@ -213,7 +195,7 @@ function planSlide(
   const { params, warnings } = normalizeSlideParams(fm.params)
   for (const w of warnings)
     console.warn(`[Slidev] OG: slide ${no} ${w}; ignoring it`)
-  const info: SlideOgInfo = { no, slug, title, description, canonical, imageUrl, overrideSrc, imageFilename, htmlFilename, contentHash: slideHash, appPath, imageAppPath, params }
+  const info: SlideOgInfo = { no, slug, aliases, title, description, canonical, imageUrl, overrideSrc, imageFilename, htmlFilename, contentHash: slideHash, appPath, imageAppPath, params }
   if (typeof fm.caption === 'string' && fm.caption.trim())
     info.caption = fm.caption.trim()
   if (fm.skipThread)
@@ -569,6 +551,9 @@ export async function generateOgShells(
   // description / baseUrl take effect without invalidating the image cache).
   for (const p of plans) {
     await fs.writeFile(resolve(ogDir, p.htmlFilename), renderShell(p), 'utf-8')
+    // Cards under the slide's old slugs too: posts already shared embed those URLs.
+    for (const alias of p.aliases)
+      await fs.copyFile(resolve(ogDir, p.imageFilename), resolve(ogDir, `${p.no}-${alias}.${p.imageFilename.split('.').pop()}`)).catch(() => {})
   }
 
   // Gallery index at `_og/index.html` — lists every slide thumbnail and links
@@ -604,6 +589,15 @@ export async function generateOgShells(
   }
   const reservedSlugs = new Set(['index', '404'])
   const hasBareSlug = (p: Pick<SlideOgInfo, 'slug'>) => !!p.slug && !reservedSlugs.has(p.slug) && slugCounts.get(p.slug) === 1
+  // A slide's old slugs (aliases) get `/<alias>` too, unless that's any slide's current slug or
+  // another slide's alias.
+  const aliasCounts = new Map<string, number>()
+  for (const p of plans) {
+    for (const a of p.aliases)
+      aliasCounts.set(a, (aliasCounts.get(a) ?? 0) + 1)
+  }
+  const bareAliases = (p: Pick<SlideOgInfo, 'aliases'>) =>
+    p.aliases.filter(a => !reservedSlugs.has(a) && !slugCounts.has(a) && aliasCounts.get(a) === 1)
   let bareSlugCount = 0
   if (existsSync(shellPath)) {
     const baseShell = await fs.readFile(shellPath, 'utf-8')
@@ -620,6 +614,12 @@ export async function generateOgShells(
         await fs.writeFile(resolve(outDir, `${p.slug}.html`), rendered, 'utf-8')
         bareSlugCount++
       }
+      // The same page under the slide's old slugs; its canonical link (and the SPA) point at
+      // the current one.
+      for (const alias of p.aliases)
+        await fs.writeFile(resolve(outDir, `${p.no}-${alias}.html`), rendered, 'utf-8')
+      for (const alias of bareAliases(p))
+        await fs.writeFile(resolve(outDir, `${alias}.html`), rendered, 'utf-8')
     }
   }
 
@@ -638,6 +638,7 @@ export async function generateOgShells(
       publicCards: workerCfg.publicOg,
       card: { size, format, quality },
       hasBareSlug,
+      bareAliases,
     })
     const workerDir = workerDirFor(outDir)
     // Resolved the way wrangler's bundler will, from the Worker's directory.
@@ -809,7 +810,7 @@ export function resolveWorkerConfig(raw: unknown, flag: boolean | undefined, aut
 }
 
 export function buildWorkerManifest(
-  plans: Pick<SlideOgInfo, 'no' | 'slug' | 'title' | 'description' | 'appPath' | 'imageAppPath' | 'contentHash' | 'params'>[],
+  plans: (Pick<SlideOgInfo, 'no' | 'slug' | 'title' | 'description' | 'appPath' | 'imageAppPath' | 'contentHash' | 'params'> & Partial<Pick<SlideOgInfo, 'aliases'>>)[],
   opts: {
     baseUrl: string
     appBase: string
@@ -819,6 +820,8 @@ export function buildWorkerManifest(
     publicCards?: boolean
     card: WorkerManifest['card']
     hasBareSlug: (p: Pick<SlideOgInfo, 'slug'>) => boolean
+    /** Which of a slide's aliases get a bare `/<alias>` (unique, unreserved). */
+    bareAliases?: (p: Pick<SlideOgInfo, 'aliases'>) => string[]
   },
 ): WorkerManifest {
   const publicCards = opts.publicCards !== false
@@ -840,6 +843,8 @@ export function buildWorkerManifest(
       image: p.imageAppPath,
       hash: p.contentHash,
       bareSlug: opts.hasBareSlug(p),
+      ...(p.aliases?.length ? { aliases: p.aliases } : {}),
+      ...(p.aliases?.length && opts.bareAliases?.({ aliases: p.aliases }).length ? { bareAliases: opts.bareAliases({ aliases: p.aliases }) } : {}),
       ...(Object.keys(p.params).length ? { params: p.params } : {}),
     })),
   }

@@ -1,5 +1,6 @@
 import { isNumber, range, uniq } from '@antfu/utils'
 
+export * from './slug'
 export * from './timesplit'
 export * from './yaml-edit'
 

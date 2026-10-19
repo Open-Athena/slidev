@@ -30,6 +30,10 @@ export interface WorkerSlide {
   hash: string
   /** Whether `/<slug>` resolves to this slide (unique, unreserved slugs only). */
   bareSlug: boolean
+  /** Old slugs that still name the slide: `/<n>-<alias>` and `_og/<n>-<alias>.<ext>` resolve. */
+  aliases?: string[]
+  /** Aliases that resolve bare, `/<alias>` (unique among slugs and aliases, unreserved). */
+  bareAliases?: string[]
   params?: SlideParams
 }
 
@@ -134,10 +138,10 @@ export function matchSlide(slides: WorkerSlide[], rel: string): WorkerSlide | un
   const m = r.match(/^(\d+)-(.+)$/)
   if (m) {
     const s = slides.find(s => s.no === Number(m[1]))
-    if (s && s.slug === m[2])
+    if (s && (s.slug === m[2] || s.aliases?.includes(m[2])))
       return s
   }
-  return slides.find(s => s.bareSlug && s.slug === r)
+  return slides.find(s => s.bareSlug && s.slug === r) ?? slides.find(s => s.bareAliases?.includes(r))
 }
 
 /** The slide whose card a path (relative to `base`) names: `_og/3-install.jpg` or `_og/3.jpg`. */
@@ -146,7 +150,7 @@ export function matchCard(manifest: WorkerManifest, rel: string): WorkerSlide | 
   if (!m || m[3] !== manifest.card.format)
     return undefined
   const s = manifest.slides.find(s => s.no === Number(m[1]))
-  if (!s || (m[2] !== undefined && m[2] !== s.slug))
+  if (!s || (m[2] !== undefined && m[2] !== s.slug && !s.aliases?.includes(m[2])))
     return undefined
   return s
 }

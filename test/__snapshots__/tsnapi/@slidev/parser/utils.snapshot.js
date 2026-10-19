@@ -11,4 +11,7 @@ export function parseTimesplits(_) {}
 export function parseTimeString(_) {}
 export function patchYaml(_, _, _) {}
 export function setYamlIn(_, _, _) {}
+export function slideSlugs(_, _) {}
+export function slugify(_) {}
+export function titleText(_) {}
 // #endregion

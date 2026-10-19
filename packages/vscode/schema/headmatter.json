@@ -85,8 +85,23 @@
         },
         "slug": {
           "type": "string",
-          "description": "URL-safe slug used in per-slide OG / share URLs (e.g. `/<n>-<slug>.html`).\n\nDefaults to `routeAlias` if set, else a slugified `title` / first `h1`, else `slide-<n>`.",
-          "markdownDescription": "URL-safe slug used in per-slide OG / share URLs (e.g. `/<n>-<slug>.html`).\n\nDefaults to `routeAlias` if set, else a slugified `title` / first `h1`,\nelse `slide-<n>`."
+          "description": "URL-safe slug for the slide's URL (`/<n>-<slug>`), per-slide pages and share cards.\n\nDefaults to `routeAlias` if set, else the visible text of the `title` / first heading (link text without its target, no HTML), slugified and cut at a word boundary within 80 characters.",
+          "markdownDescription": "URL-safe slug for the slide's URL (`/<n>-<slug>`), per-slide pages and share cards.\n\nDefaults to `routeAlias` if set, else the visible text of the `title` / first heading (link\ntext without its target, no HTML), slugified and cut at a word boundary within 80 characters."
+        },
+        "aliases": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          ],
+          "description": "Old slugs that should still lead to this slide (e.g. from before its title changed): the URL `/<n>-<alias>` or `/<alias>` resolves to the slide and is rewritten to its current slug, and builds write pages and share cards under them too.",
+          "markdownDescription": "Old slugs that should still lead to this slide (e.g. from before its title changed): the URL\n`/<n>-<alias>` or `/<alias>` resolves to the slide and is rewritten to its current slug, and\nbuilds write pages and share cards under them too."
         },
         "description": {
           "type": "string",
@@ -1418,8 +1433,23 @@
         },
         "slug": {
           "type": "string",
-          "description": "URL-safe slug used in per-slide OG / share URLs (e.g. `/<n>-<slug>.html`).\n\nDefaults to `routeAlias` if set, else a slugified `title` / first `h1`, else `slide-<n>`.",
-          "markdownDescription": "URL-safe slug used in per-slide OG / share URLs (e.g. `/<n>-<slug>.html`).\n\nDefaults to `routeAlias` if set, else a slugified `title` / first `h1`,\nelse `slide-<n>`."
+          "description": "URL-safe slug for the slide's URL (`/<n>-<slug>`), per-slide pages and share cards.\n\nDefaults to `routeAlias` if set, else the visible text of the `title` / first heading (link text without its target, no HTML), slugified and cut at a word boundary within 80 characters.",
+          "markdownDescription": "URL-safe slug for the slide's URL (`/<n>-<slug>`), per-slide pages and share cards.\n\nDefaults to `routeAlias` if set, else the visible text of the `title` / first heading (link\ntext without its target, no HTML), slugified and cut at a word boundary within 80 characters."
+        },
+        "aliases": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          ],
+          "description": "Old slugs that should still lead to this slide (e.g. from before its title changed): the URL `/<n>-<alias>` or `/<alias>` resolves to the slide and is rewritten to its current slug, and builds write pages and share cards under them too.",
+          "markdownDescription": "Old slugs that should still lead to this slide (e.g. from before its title changed): the URL\n`/<n>-<alias>` or `/<alias>` resolves to the slide and is rewritten to its current slug, and\nbuilds write pages and share cards under them too."
         },
         "description": {
           "type": "string",

@@ -1,4 +1,5 @@
 import type { SlideRoute } from '@slidev/types'
+import { slideSlugs, slugify } from '@slidev/parser/utils'
 import { tryOnMounted } from '@vueuse/core'
 import { computed, watch } from 'vue'
 import { slides } from '#slidev/slides'
@@ -8,37 +9,21 @@ import { getSlideRoutePath } from './slidePath'
 
 export { slides }
 
-// Slug derivation mirrors `og.ts:pickSlug` (server side) so canonical URLs match
-// the pre-rendered `dist/<n>-<slug>.html` shells. Kept tiny so client + server
-// stay in sync without an extra shared module — if the server-side rule changes,
-// this needs to follow.
-const SLUG_PUNCT_RE = /[^\w\s-]+/g
-const SLUG_SPACE_RE = /[\s_-]+/g
-const SLUG_TRIM_RE = /^-+|-+$/g
+// Slugs come from `@slidev/parser/utils` (`slideSlugs`), which the build uses too, so canonical
+// URLs match the pre-rendered `dist/<n>-<slug>.html` pages.
+export { slugify }
 
-export function slugify(s: string | undefined | null): string {
-  return (s ?? '')
-    .normalize('NFKD')
-    .replace(/\p{M}/gu, '')
-    .toLowerCase()
-    .replace(SLUG_PUNCT_RE, ' ')
-    .replace(SLUG_SPACE_RE, '-')
-    .replace(SLUG_TRIM_RE, '')
-    .slice(0, 80)
+function slugsOf(route: SlideRoute | undefined | null) {
+  return slideSlugs(route?.meta.slide?.frontmatter, route?.meta.slide?.title)
 }
 
 export function slugForSlide(route: SlideRoute | undefined | null): string {
-  if (!route)
-    return ''
-  const fm = route.meta.slide?.frontmatter ?? {}
-  const title = route.meta.slide?.title
-  return (
-    (typeof fm.slug === 'string' && slugify(fm.slug))
-    || (typeof fm.routeAlias === 'string' && slugify(fm.routeAlias))
-    || (typeof fm.title === 'string' && slugify(fm.title))
-    || (typeof title === 'string' && slugify(title))
-    || ''
-  )
+  return route ? slugsOf(route).slug : ''
+}
+
+/** Old slugs that still name the slide (frontmatter `aliases`, the pre-text-title slug). */
+export function slugAliasesForSlide(route: SlideRoute | undefined | null): string[] {
+  return route ? slugsOf(route).aliases : []
 }
 
 export function getSlide(noOrSlug: number | string) {
@@ -49,7 +34,11 @@ export function getSlide(noOrSlug: number | string) {
     if (s.meta.slide?.frontmatter.routeAlias === noOrSlug)
       return true
     return slugForSlide(s) === target
-  })
+  }) ?? onlyOne(slides.value.filter(s => slugAliasesForSlide(s).includes(target)))
+}
+
+function onlyOne<T>(items: T[]): T | undefined {
+  return items.length === 1 ? items[0] : undefined
 }
 
 // Mirrors `og.ts:canonicalPathFor` (server side) so the URL bar after in-deck

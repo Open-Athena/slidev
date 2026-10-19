@@ -546,12 +546,18 @@ export interface Frontmatter extends TransitionOptions {
    */
   routeAlias?: string
   /**
-   * URL-safe slug used in per-slide OG / share URLs (e.g. `/<n>-<slug>.html`).
+   * URL-safe slug for the slide's URL (`/<n>-<slug>`), per-slide pages and share cards.
    *
-   * Defaults to `routeAlias` if set, else a slugified `title` / first `h1`,
-   * else `slide-<n>`.
+   * Defaults to `routeAlias` if set, else the visible text of the `title` / first heading (link
+   * text without its target, no HTML), slugified and cut at a word boundary within 80 characters.
    */
   slug?: string
+  /**
+   * Old slugs that should still lead to this slide (e.g. from before its title changed): the URL
+   * `/<n>-<alias>` or `/<alias>` resolves to the slide and is rewritten to its current slug, and
+   * builds write pages and share cards under them too.
+   */
+  aliases?: string | string[]
   /**
    * Per-slide OG description. If absent, the first paragraph of the slide is used.
    */

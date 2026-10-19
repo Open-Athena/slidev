@@ -22,7 +22,10 @@ export function prettifySlide(_) {}
 export function resolveConfig(_, _, _, _) {}
 export function resolveFonts(_) {}
 export function setYamlIn(_, _, _) {}
+export function slideSlugs(_, _) {}
+export function slugify(_) {}
 export function stringify(_) {}
 export function stringifySlide(_, _) {}
+export function titleText(_) {}
 export function verifyConfig(_, _, _) {}
 // #endregion

@@ -107,6 +107,7 @@ describe('ogManifest', () => {
     const plan = {
       no: 2,
       slug: 'install',
+      aliases: [],
       title: 'Install',
       description: 'pnpm i',
       canonical: `${BASE}/2-install`,

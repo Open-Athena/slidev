@@ -7,6 +7,10 @@ export interface LoadRootsInfo {
   userRoot: string;
   allowedRoots?: string[];
 }
+export interface SlideSlugs {
+  slug: string;
+  aliases: string[];
+}
 export interface SlidevParserOptions {
   noParseYAML?: boolean;
   preserveCR?: boolean;
@@ -57,7 +61,10 @@ export declare function resolveConfig(_: any, _?: SlidevThemeMeta, _?: string, _
 export declare function resolveFonts(_?: FontOptions): ResolvedFontOptions;
 export declare function save(_: SlidevMarkdown): Promise<string>;
 export declare function setYamlIn(_: string, _: Path, _: unknown): string;
+export declare function slideSlugs(_: Record<string, any> | undefined, _: string | undefined): SlideSlugs;
+export declare function slugify(_: string | undefined | null): string;
 export declare function stringify(_: SlidevMarkdown): string;
 export declare function stringifySlide(_: SourceSlideInfo, _?: number): string;
+export declare function titleText(_: string): string;
 export declare function verifyConfig(_: SlidevConfig, _?: SlidevThemeMeta, _?: (_: string) => void): void;
 // #endregion

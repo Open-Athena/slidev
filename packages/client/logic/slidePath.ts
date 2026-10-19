@@ -11,10 +11,21 @@ export function getSlideRoutePath(
 
 /**
  * The slide a `/<n>-<slug>` URL means. Slide numbers shift when slides are inserted or removed
- * before it, but slugs don't, so a slug that names exactly one slide wins; otherwise (a renamed
- * or ambiguous slug) the number does.
+ * before it, but slugs don't, so a slug that names exactly one slide wins: a slide's own slug
+ * first, else one of its aliases (old slugs). Otherwise (an unknown or ambiguous slug) the number
+ * does.
  */
-export function resolveNumberedSlug<T extends { no: number }>(no: number, slug: string, slides: T[], slugOf: (s: T) => string): number {
-  const matches = slides.filter(s => slugOf(s) === slug)
-  return matches.length === 1 ? matches[0].no : no
+export function resolveNumberedSlug<T extends { no: number }>(
+  no: number,
+  slug: string,
+  slides: T[],
+  slugOf: (s: T) => string,
+  aliasesOf: (s: T) => string[] = () => [],
+): number {
+  for (const names of [(s: T) => slugOf(s) === slug, (s: T) => aliasesOf(s).includes(slug)]) {
+    const matches = slides.filter(names)
+    if (matches.length)
+      return matches.length === 1 ? matches[0].no : no
+  }
+  return no
 }
