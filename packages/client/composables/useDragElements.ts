@@ -1,4 +1,5 @@
 import type { CSSProperties, DirectiveBinding, InjectionKey, WatchStopHandle } from 'vue'
+import type { Crop } from './drag-layout'
 import type { EditKind, ElementSnapshot, RegisteredState } from './useDragHistory'
 import { injectLocal, useWindowFocus } from '@vueuse/core'
 import { computed, ref, watch } from 'vue'
@@ -7,7 +8,7 @@ import { slideHeight, slideWidth } from '../env'
 import { makeId } from '../logic/utils'
 import { editMode } from '../state'
 import { directiveInject } from '../utils'
-import { paddingOriginWithin, renderedImageRect } from './drag-layout'
+import { imageFitAsCrop, isBoxDecorated, paddingOriginWithin, renderedImageRect } from './drag-layout'
 // `getVisibleBounds`, `findSnap`, `SNAP_THRESHOLD` moved to `./snap.ts` so the
 // snap math is unit-testable without a Vue runtime / vite virtual modules.
 // Re-exported below for callers that already import them from this module.
@@ -395,9 +396,10 @@ export function useDragElement(directive: DirectiveBinding | null, posRaw?: stri
         if (hasZIndex || hasCrop)
           posStr += `,${Math.round(z)}`
 
-        // Add crop values if any are non-zero
+        // Add crop values if any are non-zero (percentages; 2 decimals, since whole percents of
+        // a large image move its edges by pixels)
         if (hasCrop)
-          posStr += `,${Math.round(cTop)},${Math.round(cRight)},${Math.round(cBottom)},${Math.round(cLeft)}`
+          posStr += `,${[cTop, cRight, cBottom, cLeft].map(c => Math.round(c * 100) / 100).join()}`
 
         if (dataSource === 'directive')
           posStr = `[${posStr}]`
@@ -622,10 +624,12 @@ export function useDragElement(directive: DirectiveBinding | null, posRaw?: stri
           width: bounds.value.width / scale.value,
           height: bounds.value.height / scale.value,
         }
-        // A letterboxed image (`object-fit: contain`, as themes give column images) would
-        // otherwise be edited as its whole box: crop would clip the empty bands, and the
-        // selection would outline space the picture doesn't fill. Shrink the box to the pixels.
+        // An image fitted by CSS (`object-fit` / `object-position`) is handed to the editor as
+        // its crop model: a box at the picture's own AR, cropped to the part that was showing.
+        // That box renders the same under any fit, so selecting changes nothing on screen, and
+        // later moves / resizes / crops act on the picture rather than on CSS that re-fits it.
         const el = container.value
+        let crop: Crop | null = null
         if (el instanceof HTMLImageElement && el.naturalWidth && !rotate.value) {
           const style = getComputedStyle(el)
           const pixels = renderedImageRect(
@@ -634,7 +638,20 @@ export function useDragElement(directive: DirectiveBinding | null, posRaw?: stri
             style.objectFit,
             style.objectPosition,
           )
-          box = { left: box.left + pixels.left, top: box.top + pixels.top, width: pixels.width, height: pixels.height }
+          const overflows = pixels.left < -0.5 || pixels.top < -0.5
+            || pixels.left + pixels.width > box.width + 0.5 || pixels.top + pixels.height > box.height + 0.5
+          const letterboxed = pixels.left > 0.5 || pixels.top > 0.5
+            || pixels.left + pixels.width < box.width - 0.5 || pixels.top + pixels.height < box.height - 0.5
+          // Letterbox bands are visible when the box is decorated (e.g. a background fill behind
+          // a `contain` image): then the box is what's shown, so keep it, and let the CSS fit
+          // keep fitting the picture into it. A flow element keeps its box when the picture
+          // overflows it, since growing the box would reflow its neighbors.
+          const keepBox = (letterboxed && isBoxDecorated(style)) || (flowLayout.value && overflows)
+          if (!keepBox && (overflows || letterboxed)) {
+            const fitted = imageFitAsCrop(box, pixels)
+            box = fitted.box
+            crop = fitted.crop
+          }
         }
         // `y0` of an auto-height element is derived from its measured height; set that first.
         if (autoHeight)
@@ -643,6 +660,12 @@ export function useDragElement(directive: DirectiveBinding | null, posRaw?: stri
         y0.value = box.top + box.height / 2
         width.value = box.width
         height.value = box.height
+        if (crop) {
+          cropTop.value = crop.top
+          cropRight.value = crop.right
+          cropBottom.value = crop.bottom
+          cropLeft.value = crop.left
+        }
       }
       else {
         // A flow image stored wider than its slot (sized before resizes were clamped) renders

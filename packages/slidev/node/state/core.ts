@@ -252,6 +252,8 @@ export function redo(db: Database.Database, eventId?: number): UndoRedoResult | 
   }
 }
 
+const roundCrop = (v: number) => Math.round(v * 100) / 100
+
 // Convert ElementSnapshot → posStr (mirror of client serialization in useDragElements.ts).
 // Output format matches what slides.coords.yaml stores today, so the client-side parser
 // (no changes) keeps working when the YAML is the source of truth.
@@ -263,10 +265,11 @@ export function snapshotToPosStr(s: ElementSnapshot): string {
   const h = Math.round(s.height)
   const r = Math.round(s.rotate)
   const z = Math.round(s.zIndex)
-  const ct = Math.round(s.cropTop)
-  const cr = Math.round(s.cropRight)
-  const cb = Math.round(s.cropBottom)
-  const cl = Math.round(s.cropLeft)
+  // Crop is a percentage of the box; whole percents of a large image would move its edges by pixels.
+  const ct = roundCrop(s.cropTop)
+  const cr = roundCrop(s.cropRight)
+  const cb = roundCrop(s.cropBottom)
+  const cl = roundCrop(s.cropLeft)
   const hasCrop = ct !== 0 || cr !== 0 || cb !== 0 || cl !== 0
   const hasZ = z !== 100
   let out = `${x},${y},${w},${h}`

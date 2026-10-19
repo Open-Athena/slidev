@@ -42,6 +42,10 @@ describe('snapshotToPosStr', () => {
     expect(snapshotToPosStr(base({ cropTop: 5 }))).toBe('200,150,100,60,0,100,5,0,0,0')
   })
 
+  it('keeps crop to 2 decimals: a percent of a large image is several pixels', () => {
+    expect(snapshotToPosStr(base({ cropTop: 17 / 258 * 100, cropBottom: 51 / 258 * 100 }))).toBe('200,150,100,60,0,100,6.59,0,19.77,0')
+  })
+
   it('handles negative rotate', () => {
     expect(snapshotToPosStr(base({ rotate: -90 }))).toBe('200,150,100,60,-90')
   })

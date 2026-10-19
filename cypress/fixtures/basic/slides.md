@@ -476,3 +476,23 @@ dragPos:
 # Page 33
 
 Paste target.
+
+---
+
+# Page 34
+
+<!-- A collage of class-sized absolute images (`object-fit` from a slide `<style>`): selecting one
+must not change what's visible. -->
+<div class="fit-collage">
+<img v-drag.flow="'fit-cover'" data-testid="fit-cover" class="fit-cover" src="/quadrants.svg">
+<img v-drag.flow="'fit-contain'" data-testid="fit-contain" class="fit-contain" src="/quadrants.svg">
+<img v-drag.flow="'fit-fill'" data-testid="fit-fill" class="fit-fill" src="/quadrants.svg">
+</div>
+
+<style>
+.fit-collage { position: absolute; left: 60px; top: 110px; width: 800px; height: 380px; }
+.fit-collage img { position: absolute; object-fit: cover; margin: 0; }
+.fit-cover { left: 0; top: 50%; width: 43%; height: 50%; object-position: 0 25%; }
+.fit-contain { left: 60%; top: 0; width: 23%; height: 55%; object-fit: contain !important; background: #2a2725; }
+.fit-collage img.fit-fill { left: 62%; top: 65%; width: 160px; height: 90px; object-fit: fill; }
+</style>
