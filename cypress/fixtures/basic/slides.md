@@ -461,3 +461,18 @@ After the HTML.
 <div>Left cell</div>
 <div>Right cell</div>
 </div>
+
+---
+dragPos:
+  cp-box: 100,100,100,100
+---
+
+# Page 32
+
+<div v-drag="'cp-box'" class="bg-red-500" data-testid="cp-box">copy me</div>
+
+---
+
+# Page 33
+
+Paste target.

@@ -7,16 +7,19 @@ interface SlideJson {
 }
 
 // ⌘D / ⌘C / ⌘V duplicate selected objects. The clipboard is stubbed (the tests never touch the
-// real one) and a paste is a synthetic `paste` event carrying what ⌘C wrote. Edits fixture
-// slides 14 and 15 (tracked), restored afterwards.
+// real one) and a paste is a synthetic `paste` event carrying what ⌘C wrote. Uses its own fixture
+// slides (32, 33): restoring a slide right after a test's write can lose that race, and a left-over
+// copy must not reach other specs' slides.
 context('duplicate / copy / paste objects', () => {
   const original: Record<number, string> = {}
   const url = (no: number) => `${BASE}/__slidev/slides/${no}.json`
   const content = (no: number) => expectEventually.bind(null, url(no), (s: SlideJson) => s.content)
   let clip = ''
 
-  // `box1`'s line on slide 14, and its copy with a renamed id.
-  const box = (id: string, testid = 'box1') => `<div v-drag="'${id}'" class="cy-drag-box bg-red-500" data-testid="${testid}">100x100</div>`
+  const FROM = 32
+  const TO = 33
+  // `cp-box`'s line on slide 32, and its copy with a renamed id.
+  const box = (id: string) => `<div v-drag="'${id}'" class="bg-red-500" data-testid="cp-box">copy me</div>`
 
   // Position of an element in the history state, as `Left,Top,Width,Height`.
   const expectPos = (no: number, id: string, pos: string) =>
@@ -46,40 +49,40 @@ context('duplicate / copy / paste objects', () => {
   })
 
   before(() => {
-    for (const no of [14, 15])
+    for (const no of [FROM, TO])
       cy.request(url(no)).then(({ body }) => original[no] = (typeof body === 'string' ? JSON.parse(body) : body).content)
   })
 
   afterEach(() => {
-    for (const no of [14, 15])
+    for (const no of [FROM, TO])
       cy.request('POST', url(no), { content: original[no], skipHmr: false })
   })
 
   it('⌘D appends a copy with its own id, 16 px down-right, and selects it; ⌘Z removes it', () => {
-    visit(14)
-    cy.get('[data-testid="box1"]').first().click()
+    visit(FROM)
+    cy.get('[data-testid="cp-box"]').first().click()
     key('d')
-    content(14)(`${original[14]}\n\n${box('box1-copy')}`)
-    // At box1's frontmatter position (100,100,100,100) + 16 px.
-    expectPos(14, 'box1-copy', '116,116,100,100')
-    cy.get('[data-drag-id="box1-copy"]').should('exist')
+    content(FROM)(`${original[FROM]}\n\n${box('cp-box-copy')}`)
+    // At cp-box's frontmatter position (100,100,100,100) + 16 px.
+    expectPos(FROM, 'cp-box-copy', '116,116,100,100')
+    cy.get('[data-drag-id="cp-box-copy"]').should('exist')
     cy.get('#drag-control-container').should('exist')
     cy.get('body').type('{cmd}z')
-    content(14)(original[14])
+    content(FROM)(original[FROM])
   })
 
   it('⌘C copies the markup; ⌘V on another slide pastes it there, at the same position', () => {
-    visit(14)
-    cy.get('[data-testid="box1"]').click()
+    visit(FROM)
+    cy.get('[data-testid="cp-box"]').click()
     key('c')
-    cy.wrap(null).should(() => expect(clip).to.eq(box('box1')))
+    cy.wrap(null).should(() => expect(clip).to.eq(box('cp-box')))
     // Deselect, then go to the next slide in-app (a page load would drop the copy).
     cy.get('body').type('{esc}')
     cy.get('#slide-content').click(5, 5)
     cy.get('body').type('{rightArrow}')
-    cy.location('pathname').should('eq', '/15')
+    cy.location('pathname').should('eq', `/${TO}`)
     paste()
-    content(15)(`${original[15].replace(/\s+$/, '')}\n\n${box('box1-copy')}`)
-    expectPos(15, 'box1-copy', '100,100,100,100')
+    content(TO)(`${original[TO].replace(/\s+$/, '')}\n\n${box('cp-box-copy')}`)
+    expectPos(TO, 'cp-box-copy', '100,100,100,100')
   })
 })
