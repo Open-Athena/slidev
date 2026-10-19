@@ -3,6 +3,7 @@ import { renderSVG } from 'uqr'
 import { computed, ref } from 'vue'
 import { useSlideContext } from '../context'
 import { configs } from '../env'
+import { deckQrUrlForm } from '../logic/qr-form'
 import { getSlide, slugForSlide } from '../logic/slides'
 import { editMode } from '../state'
 
@@ -83,7 +84,7 @@ const resolved = computed(() => ({
   position: (props.position ?? slideQrCfg.value.position ?? deckQrCfg.value.position ?? 'br') as Position,
   size: (props.size ?? slideQrCfg.value.size ?? deckQrCfg.value.size ?? 96) as number,
   showText: props.showText ?? slideQrCfg.value.showText ?? deckQrCfg.value.showText ?? false,
-  urlForm: (props.urlForm ?? slideQrCfg.value.url ?? deckQrCfg.value.url ?? 'n') as UrlForm,
+  urlForm: (props.urlForm ?? slideQrCfg.value.url ?? deckQrUrlForm.value ?? deckQrCfg.value.url ?? 'n') as UrlForm,
   ecc: (props.ecc ?? slideQrCfg.value.ecc ?? deckQrCfg.value.ecc ?? 'L') as Ecc,
   uppercase: props.uppercase ?? slideQrCfg.value.uppercase ?? deckQrCfg.value.uppercase ?? false,
 }))
@@ -171,6 +172,7 @@ const forms = computed(() => (['n', 'n-slug', 'slug'] as const)
 const canEditForm = computed(() => __DEV__ && editMode.value && !props.url)
 
 async function setDeckUrlForm(form: Exclude<UrlForm, 'canonical'>) {
+  deckQrUrlForm.value = form
   const res = await fetch('/__slidev/slides/1.json')
   if (!res.ok)
     throw new Error(`Failed to fetch the headmatter (${res.status})`)
@@ -179,7 +181,8 @@ async function setDeckUrlForm(form: Exclude<UrlForm, 'canonical'>) {
   const post = await fetch('/__slidev/slides/1.json', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
-    body: JSON.stringify({ frontmatter: { qr: { ...qr, url: form } }, skipHmr: false }),
+    // `skipHmr`: a headmatter change would reload the page; `deckQrUrlForm` applies it in place.
+    body: JSON.stringify({ frontmatter: { qr: { ...qr, url: form } }, skipHmr: true }),
   })
   if (!post.ok)
     throw new Error(`Failed to save \`qr.url\` (${post.status})`)
