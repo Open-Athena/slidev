@@ -118,13 +118,50 @@
         },
         "caption": {
           "type": "string",
-          "description": "Optional caption used by future thread-publishing tools (BlueSky, Mastodon). Harmless to set today; not used by the build itself.",
-          "markdownDescription": "Optional caption used by future thread-publishing tools (BlueSky, Mastodon).\nHarmless to set today; not used by the build itself."
+          "description": "Text of this slide's post when the deck is published as a thread (`slidev publish bluesky`). Defaults to the slide's OG title. Markdown links (`[text](url)`) and bare URLs become links in the post.",
+          "markdownDescription": "Text of this slide's post when the deck is published as a thread (`slidev publish\nbluesky`). Defaults to the slide's OG title. Markdown links (`[text](url)`) and bare URLs\nbecome links in the post."
         },
         "skipOg": {
           "type": "boolean",
           "description": "Skip this slide from OG-shell + image generation (and from social threads).",
           "markdownDescription": "Skip this slide from OG-shell + image generation (and from social threads)."
+        },
+        "skipThread": {
+          "type": "boolean",
+          "description": "Omit this slide from published threads (`slidev publish bluesky`), keeping its OG shell and image.",
+          "markdownDescription": "Omit this slide from published threads (`slidev publish bluesky`), keeping its OG shell\nand image."
+        },
+        "params": {
+          "type": "object",
+          "additionalProperties": {
+            "anyOf": [
+              {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "values": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "default": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "values"
+                ]
+              }
+            ]
+          },
+          "description": "URL params this slide reads (e.g. a view-mode toggle), so the Worker deploy target (`publish.worker`) can give `/<n>?m=heatmap` its own share card. The Worker canonicalizes them: unknown params and values are dropped, defaults are dropped, the rest sorted.",
+          "markdownDescription": "URL params this slide reads (e.g. a view-mode toggle), so the Worker deploy target\n(`publish.worker`) can give `/<n>?m=heatmap` its own share card. The Worker canonicalizes\nthem: unknown params and values are dropped, defaults are dropped, the rest sorted."
         },
         "zoom": {
           "type": "number",

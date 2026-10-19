@@ -95,13 +95,50 @@
         },
         "caption": {
           "type": "string",
-          "description": "Optional caption used by future thread-publishing tools (BlueSky, Mastodon). Harmless to set today; not used by the build itself.",
-          "markdownDescription": "Optional caption used by future thread-publishing tools (BlueSky, Mastodon).\nHarmless to set today; not used by the build itself."
+          "description": "Text of this slide's post when the deck is published as a thread (`slidev publish bluesky`). Defaults to the slide's OG title. Markdown links (`[text](url)`) and bare URLs become links in the post.",
+          "markdownDescription": "Text of this slide's post when the deck is published as a thread (`slidev publish\nbluesky`). Defaults to the slide's OG title. Markdown links (`[text](url)`) and bare URLs\nbecome links in the post."
         },
         "skipOg": {
           "type": "boolean",
           "description": "Skip this slide from OG-shell + image generation (and from social threads).",
           "markdownDescription": "Skip this slide from OG-shell + image generation (and from social threads)."
+        },
+        "skipThread": {
+          "type": "boolean",
+          "description": "Omit this slide from published threads (`slidev publish bluesky`), keeping its OG shell and image.",
+          "markdownDescription": "Omit this slide from published threads (`slidev publish bluesky`), keeping its OG shell\nand image."
+        },
+        "params": {
+          "type": "object",
+          "additionalProperties": {
+            "anyOf": [
+              {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "values": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "default": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "values"
+                ]
+              }
+            ]
+          },
+          "description": "URL params this slide reads (e.g. a view-mode toggle), so the Worker deploy target (`publish.worker`) can give `/<n>?m=heatmap` its own share card. The Worker canonicalizes them: unknown params and values are dropped, defaults are dropped, the rest sorted.",
+          "markdownDescription": "URL params this slide reads (e.g. a view-mode toggle), so the Worker deploy target\n(`publish.worker`) can give `/<n>?m=heatmap` its own share card. The Worker canonicalizes\nthem: unknown params and values are dropped, defaults are dropped, the rest sorted."
         },
         "zoom": {
           "type": "number",
@@ -620,6 +657,18 @@
               "description": "Canonical URL form for per-slide share links.\n\n- `'n-slug'` (default): `/3-install` — slide number + slug for ordering + semantics.\n- `'n'`: `/3` — slidev's original convention; slug surfaces only in QR / share UI.\n- `'slug'`: `/install` — renumber-resistant; loses ordering signal in the URL.\n\nAll three URL forms keep resolving regardless of this setting (the build emits `dist/<n>.html`, `dist/<n>-<slug>.html`, and `dist/<slug>.html`); this only changes which one ends up in `<link rel=canonical>`, `og:url`, the URL bar after in-deck nav, and the `y` yank.",
               "markdownDescription": "Canonical URL form for per-slide share links.\n\n- `'n-slug'` (default): `/3-install` — slide number + slug for ordering + semantics.\n- `'n'`: `/3` — slidev's original convention; slug surfaces only in QR / share UI.\n- `'slug'`: `/install` — renumber-resistant; loses ordering signal in the URL.\n\nAll three URL forms keep resolving regardless of this setting (the build emits\n`dist/<n>.html`, `dist/<n>-<slug>.html`, and `dist/<slug>.html`); this only\nchanges which one ends up in `<link rel=canonical>`, `og:url`, the URL bar after\nin-deck nav, and the `y` yank."
             },
+            "bluesky": {
+              "type": "object",
+              "properties": {
+                "handle": {
+                  "type": "string",
+                  "description": "Account to post as when neither `--handle` nor `BSKY_HANDLE` is given.",
+                  "markdownDescription": "Account to post as when neither `--handle` nor `BSKY_HANDLE` is given."
+                }
+              },
+              "description": "Defaults for `slidev publish bluesky`.",
+              "markdownDescription": "Defaults for `slidev publish bluesky`."
+            },
             "ogImage": {
               "type": "object",
               "properties": {
@@ -650,6 +699,47 @@
               },
               "description": "Per-slide OG image generation knobs (used by `slidev build`).",
               "markdownDescription": "Per-slide OG image generation knobs (used by `slidev build`)."
+            },
+            "worker": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "name": {
+                      "type": "string",
+                      "description": "Worker name in the generated `wrangler.jsonc`; default the slugified deck title.",
+                      "markdownDescription": "Worker name in the generated `wrangler.jsonc`; default the slugified deck title."
+                    },
+                    "renderer": {
+                      "type": "string",
+                      "enum": [
+                        "browser",
+                        "none"
+                      ],
+                      "description": "How cards for non-default URL states are made: `'browser'` renders them with Cloudflare Browser Rendering (needs `@cloudflare/puppeteer` installed in the deck), `'none'` serves the default card. Default: `'browser'` when `@cloudflare/puppeteer` is installed.",
+                      "markdownDescription": "How cards for non-default URL states are made: `'browser'` renders them with Cloudflare\nBrowser Rendering (needs `@cloudflare/puppeteer` installed in the deck), `'none'` serves\nthe default card. Default: `'browser'` when `@cloudflare/puppeteer` is installed."
+                    }
+                  }
+                }
+              ],
+              "description": "Also emit a Cloudflare Worker (Workers + static assets) into `<outDir>/_worker/`, with a `wrangler.jsonc` template. It stamps per-URL share tags into slide pages (including the slide's declared `params`) and serves or renders the card for that exact URL. Same as `slidev build --worker`.",
+              "markdownDescription": "Also emit a Cloudflare Worker (Workers + static assets) into `<outDir>/_worker/`, with a\n`wrangler.jsonc` template. It stamps per-URL share tags into slide pages (including the\nslide's declared `params`) and serves or renders the card for that exact URL.\nSame as `slidev build --worker`."
+            },
+            "ogAlwaysStamp": {
+              "type": "boolean",
+              "description": "With `worker`: stamp per-URL tags into every slide request, not only those from link unfurlers (matched by user agent).",
+              "markdownDescription": "With `worker`: stamp per-URL tags into every slide request, not only those from link\nunfurlers (matched by user agent)."
+            },
+            "publicPaths": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "With `worker`: app paths (`/foo`, or prefix globs like `/public/*`) that an auth `gate` passed to `createWorker` must let through. `/_og/*` is always public.",
+              "markdownDescription": "With `worker`: app paths (`/foo`, or prefix globs like `/public/*`) that an auth `gate`\npassed to `createWorker` must let through. `/_og/*` is always public."
             }
           },
           "description": "Settings for sharing / publishing a deck. Required to emit per-slide OG shells (because OG `<meta>` URLs need to be absolute).",
@@ -1282,13 +1372,50 @@
         },
         "caption": {
           "type": "string",
-          "description": "Optional caption used by future thread-publishing tools (BlueSky, Mastodon). Harmless to set today; not used by the build itself.",
-          "markdownDescription": "Optional caption used by future thread-publishing tools (BlueSky, Mastodon).\nHarmless to set today; not used by the build itself."
+          "description": "Text of this slide's post when the deck is published as a thread (`slidev publish bluesky`). Defaults to the slide's OG title. Markdown links (`[text](url)`) and bare URLs become links in the post.",
+          "markdownDescription": "Text of this slide's post when the deck is published as a thread (`slidev publish\nbluesky`). Defaults to the slide's OG title. Markdown links (`[text](url)`) and bare URLs\nbecome links in the post."
         },
         "skipOg": {
           "type": "boolean",
           "description": "Skip this slide from OG-shell + image generation (and from social threads).",
           "markdownDescription": "Skip this slide from OG-shell + image generation (and from social threads)."
+        },
+        "skipThread": {
+          "type": "boolean",
+          "description": "Omit this slide from published threads (`slidev publish bluesky`), keeping its OG shell and image.",
+          "markdownDescription": "Omit this slide from published threads (`slidev publish bluesky`), keeping its OG shell\nand image."
+        },
+        "params": {
+          "type": "object",
+          "additionalProperties": {
+            "anyOf": [
+              {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "values": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "default": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "values"
+                ]
+              }
+            ]
+          },
+          "description": "URL params this slide reads (e.g. a view-mode toggle), so the Worker deploy target (`publish.worker`) can give `/<n>?m=heatmap` its own share card. The Worker canonicalizes them: unknown params and values are dropped, defaults are dropped, the rest sorted.",
+          "markdownDescription": "URL params this slide reads (e.g. a view-mode toggle), so the Worker deploy target\n(`publish.worker`) can give `/<n>?m=heatmap` its own share card. The Worker canonicalizes\nthem: unknown params and values are dropped, defaults are dropped, the rest sorted."
         },
         "zoom": {
           "type": "number",
