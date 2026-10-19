@@ -8,7 +8,7 @@ import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import process from 'node:process'
 import { afterAll, beforeEach, describe, expect, it } from 'vitest'
-import { deployPlan, describePlan, findDatabaseId, hasSecret, resolveWrangler, runDeploy, setDatabaseId } from '../packages/slidev/node/commands/deploy'
+import { deployPlan, describePlan, findDatabaseId, formatCommand, hasSecret, resolveWrangler, runDeploy, setDatabaseId } from '../packages/slidev/node/commands/deploy'
 import { DATABASE_ID_PLACEHOLDER, renderWranglerConfig } from '../packages/slidev/node/commands/og'
 
 const CLI = resolve('packages/slidev/bin/slidev.mjs')
@@ -229,7 +229,7 @@ describe('runDeploy (stub wrangler)', { timeout: 30000 }, () => {
       'Setting `SESSION_SECRET` (generated)',
       '\nGoogle sign-in, by hand (until then, the sign-in page says it isn\'t configured, and share links still work):\n'
       + '  1. In the Google Cloud console, create an OAuth client (Web application) with JavaScript origin https://talk.example and redirect URI https://talk.example/auth/google/callback.\n'
-      + `  2. \`${f.wrangler} secret put GOOGLE_CLIENT_ID -c dist-worker/wrangler.jsonc\` and \`${f.wrangler} secret put GOOGLE_CLIENT_SECRET -c dist-worker/wrangler.jsonc\`.\n`
+      + `  2. \`${formatCommand([...f.wrangler.split(' '), 'secret', 'put', 'GOOGLE_CLIENT_ID', '-c', 'dist-worker/wrangler.jsonc'])}\` and \`${formatCommand([...f.wrangler.split(' '), 'secret', 'put', 'GOOGLE_CLIENT_SECRET', '-c', 'dist-worker/wrangler.jsonc'])}\`.\n`
       + '  (`@open-athena/auth`\'s `scripts/provision-oauth-client.mjs` stores these for Pages projects; it doesn\'t take a Worker yet.)',
     ])
   })

@@ -75,6 +75,11 @@ export function stepArgs(step: DeployStep): string[] | undefined {
 const D1_LIST = ['d1', 'list', '--json']
 const secretList = (config: string) => ['secret', 'list', '-c', config, '--format', 'json']
 
+// Paths as printed (and passed to wrangler) with `/` separators, on Windows too: the messages
+// read the same everywhere, and Node and wrangler accept them.
+const slash = (p: string) => p.replace(/\\/g, '/')
+const rel = (from: string, to: string) => slash(relative(from, to))
+
 function quote(arg: string): string {
   return /^[\w@%+=:,./-]+$/.test(arg) ? arg : `'${arg.replace(/'/g, `'\\''`)}'`
 }
@@ -180,7 +185,7 @@ export function resolveWrangler(flag: string | undefined, cwd: string, env: Node
   while (true) {
     const bin = resolve(dir, 'node_modules', '.bin', 'wrangler')
     if (existsSync(bin))
-      return [relative(cwd, bin) || bin]
+      return [rel(cwd, bin) || slash(bin)]
     const parent = dirname(dir)
     if (parent === dir)
       break
@@ -199,12 +204,12 @@ export async function loadDeployContext(out: string, cwd = process.cwd()): Promi
   const workerDir = workerDirFor(outDir)
   const infoPath = resolve(workerDir, 'deploy.json')
   if (!existsSync(infoPath))
-    throw new Error(`[Slidev] deploy: no ${relative(cwd, infoPath)}; build the Worker first (\`slidev build --worker\`, or \`publish.worker\` in the headmatter)`)
+    throw new Error(`[Slidev] deploy: no ${rel(cwd, infoPath)}; build the Worker first (\`slidev build --worker\`, or \`publish.worker\` in the headmatter)`)
   const info = JSON.parse(await fs.readFile(infoPath, 'utf-8')) as WorkerDeployInfo
   return {
     info,
-    workerDir: relative(cwd, workerDir) || '.',
-    outDir: relative(cwd, outDir) || '.',
+    workerDir: rel(cwd, workerDir) || '.',
+    outDir: rel(cwd, outDir) || '.',
     hasRedirects: existsSync(resolve(outDir, '_redirects')),
   }
 }
@@ -231,7 +236,7 @@ export async function runDeploy(
   if (ctx.info.auth) {
     const migrations = resolve(cwd, ctx.workerDir, ctx.info.auth.migrationsDir)
     if (!existsSync(migrations))
-      throw new Error(`[Slidev] deploy: \`@open-athena/auth\`'s migrations aren't at ${relative(cwd, migrations)}; install \`@open-athena/auth\` in the deck and rebuild`)
+      throw new Error(`[Slidev] deploy: \`@open-athena/auth\`'s migrations aren't at ${rel(cwd, migrations)}; install \`@open-athena/auth\` in the deck and rebuild`)
   }
   let databaseId: string | null = null
   for (const step of deployPlan(ctx)) {
