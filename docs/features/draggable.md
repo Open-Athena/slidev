@@ -48,7 +48,7 @@ Under `all`, images keep their place in the layout ([flow layout](#flow-layout))
 
 ## Draggable Components
 
-To give components their own drag / resize box, list them, or pass `true` for every component in the deck's `components/` directory:
+To give components their own drag / resize box, list them, or pass `true` for every component in the deck's `components/` directory whose template has a single root element (a directive can't attach to a multi-root component):
 
 ```yaml
 ---
