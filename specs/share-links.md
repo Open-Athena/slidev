@@ -31,3 +31,33 @@ Slidev already builds each slide as its own chunk (`slides.md__slidev_<n>`), so 
 - Unit: the wrappers' request shapes; the share URL (slide's canonical path + `key`, existing query kept).
 - Worker (Miniflare, as `test/og-worker-auth.test.ts`): an admin session mints via `api/auth/grants`; the minted `?key=` on a slide URL redeems and lands there; a non-admin gets 403; the dev sign-in works only for localhost.
 - E2E against `wrangler dev`, or Cypress with the auth routes stubbed: the button only for admins; mint fills the link and QR; revoke from the table.
+
+## As built (Phase 1)
+
+### Gating
+- Build-time defines `__SLIDEV_FEATURE_AUTH__` / `__SLIDEV_AUTH_SCOPE__` (`node/options.ts` `authScopeFor`), from `publish.worker.auth` or `slidev build --auth` (now passed into `resolveOptions` with `--worker`). `resolveWorkerConfig` moved to `node/worker-config.ts` (re-exported from `commands/og.ts`) so `options.ts` can use it without the OG pipeline.
+- Off: no `whoami` request, nothing rendered, the dialog chunk is never loaded. On: `Controls.vue` asks `api/auth/whoami` once (`probeAuth`) and lazily loads `ShareLinkDialog.vue` only when the answer has `*` or `admin` (`canMintLinks`).
+- In the dev server the flag follows the headmatter too, but the dev server has no auth routes, so `whoami` gets the SPA's HTML and nobody is an admin. `SLIDEV_AUTH_UI=1` forces the flag on in dev (scope `deck`) without a gate: the Cypress fixture's `dev` script sets it, and its spec stubs every `api/auth/*` route.
+
+### Client
+- `logic/auth-client.ts`: `createAuthClient({ basePath, fetch })` with `whoami`, `logout`, `grants.{mint,list,update,revoke,disable,enable,rotate,activity}`, `log`; `AuthClientError { status, body }` for non-2xx (and for a non-JSON answer); `shareUrl(token, target)`; `canMintLinks`, `holderOf`. Shaped like `~/c/oa/auth/specs/client-module.md`; swap for `@open-athena/auth/client` when it ships.
+- `logic/share-link.ts`: `landingUrl` (the slide's `getSlidePath` under `BASE_URL` / `#/`, with the current query minus `key`; or the deck's start), `mintInputFor` (the form → `POST grants`), date helpers.
+- `composables/useShareLinks.ts`: `authWhoami`, `canShare`, `showShareDialog`, `shareTab`, `probeAuth`, `toggleShareDialog(tab?)`. `toggleShareDialog` and `canShare` are exported from `@slidev/client`.
+- Entry points: a nav-bar `IconButton` (`i-carbon:link`, `shortcut="share_link"`), `⇧Y` (next to `y`, which copies the plain URL), and two context-menu items ("Get link…", "Manage share links"). All admin-only, none in embeds.
+- `ShareLinkDialog.vue` (in `Modal`), two tabs:
+  - **New link**: the explanation, "Opens at" (this slide / the deck's start), name (`subjectName`), email (also `allowlist: true`, as disky does), note, expiry in days (default 30, blank = never), unlimited uses (else `maxRedeems`). Always sends `avatar: null`: there's no avatar UI, and without it the Worker would fetch the email's Gravatar. Result: the URL, a Copy button (`navigator.clipboard`, then a `showNotice`), the QR (`uqr`'s `renderSVG`, as `SlideQR`), "Make another".
+  - **Links**: newest first; holder (+ email), note (click to edit, `PATCH {note}`), uses (`redeems[ / maxRedeems]`), last used, expiry (click for a date input, `PATCH {expiresAt}` at the end of that local day; cleared = never), created, Activity (expands `grants/:id/activity`; a 501 says there's no access log), Revoke (confirm; `POST …/revoke`). Revoked links are hidden behind "show revoked (n)".
+
+### Worker
+- `DEV_ADMIN_EMAIL` (`node/worker/auth.ts`): on a request whose hostname is `localhost`, `127.0.0.1` or `[::1]`, with no session and no `?key=`, `gate.signIn(DEV_ADMIN_EMAIL)`. The cookie is threaded into the request; API answers get `Set-Cookie` appended; a page GET answers 302 to itself with `Set-Cookie`; assets just pass. The policy still applies (an address it doesn't admit gets nothing). Mentioned in the generated `wrangler.jsonc`'s comment and the docs.
+
+### Tests
+- `test/share-links.test.ts` (10): every wrapper's method / path / headers / body against a recording `fetch`; 401 / 403 / 404 / 501 and a non-JSON answer as `AuthClientError`; `canMintLinks`; `shareUrl` (query and hash kept, an old `key` replaced); `landingUrl` (base, hash routing, query kept minus `key`, deck start); `mintInputFor` (defaults, trimming / lowercasing, caps, bad input); `holderOf`, `endOfDay`.
+- `test/og-worker-auth.test.ts` (+4, now 22): an admin mints through `POST api/auth/grants`, the `?key=` on `/2-chart?m=heatmap` redeems and lands there, the list shows one use, activity answers, revoke makes the key fail with its notice; a staff account gets 403 and an anonymous one 401; with `DEV_ADMIN_EMAIL`, `localhost` and `127.0.0.1` are signed in (whoami, page 302 + cookie, mint), while `https://deck.example` (even with `Host: localhost` headers) gets 401 and no cookie.
+- `cypress/e2e/examples/share-links.spec.ts` (4, auth routes stubbed, clipboard stubbed): no button or `⇧Y` for anonymous or staff, a button for admins; mint at `/3?m=heatmap` sends the exact body and shows `…/3?m=heatmap&key=…`, the QR and a copy; mint to the deck's start with email and a cap; the table hides revoked links, edits a note, and revokes.
+- Not run: `wrangler dev` against the built Worker (Miniflare covers the same code path).
+
+### Open
+- The link grants the whole deck; Phase 2 (per-slide scopes) remains.
+- The email checkbox isn't separate: an email always means `allowlist: true` (disky's behaviour). Revoking the link leaves the allowlist row.
+- No rotate / disable in the table yet (the wrappers exist).

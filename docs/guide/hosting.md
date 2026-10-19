@@ -254,6 +254,29 @@ What the Worker does:
 
 Other options: `scope` (the scope a session needs; default `deck`), `database` (the D1 database's name; default `<worker name>-auth`) and `databaseId`.
 
+#### Share links from the deck {#share-links}
+
+Signed in as an admin (an address in `admins`), the deck's controls get a **Get link** button (the link icon; also <kbd>⇧</kbd><kbd>Y</kbd> and the right-click menu). Its dialog mints a share link:
+
+- A link signs whoever holds it in to the **whole deck**. "Opens at this slide" (the default) only picks where it lands, and the preview card it unfurls to; the slide's current URL state (its query) is kept. Or pick the deck's start.
+- **Name**: who it's for, shown as the holder in the links table. **Email** (optional) binds the link to that address and adds it to the allowlist, so they can also sign in with Google later; revoking the link doesn't remove it. **Note**: for you. **Expires after** (default 30 days; blank: never) and **unlimited uses** (or a number of sign-ins).
+- The link (the slide's URL plus `?key=…`), a copy button and its QR code. It's only shown once.
+
+The dialog's **Links** tab lists the links: holder, note (click to edit), uses, last used, expiry (click to change), created, per-link activity (views, addresses, countries, most-viewed paths) and **Revoke**, which also signs out whoever used the link. Revoked links are hidden unless you tick "show revoked".
+
+The button only appears for admins of a deck built with `auth`; a deck without it never asks who's signed in. For decks with their own command palette, `toggleShareDialog()` (and `canShare`) are exported from `@slidev/client`.
+
+To try it locally without Google or Cloudflare, run the built Worker with `wrangler dev` (a local D1) and a dev sign-in:
+
+```bash
+$ slidev build --auth open-athena
+$ npx wrangler d1 migrations apply <database> --local -c dist-worker/wrangler.jsonc
+$ printf 'SESSION_SECRET=%s\nDEV_ADMIN_EMAIL=you@example.org\n' "$(openssl rand -base64 32)" > dist-worker/.dev.vars
+$ npx wrangler dev -c dist-worker/wrangler.jsonc
+```
+
+With `DEV_ADMIN_EMAIL` set, requests to `localhost` / `127.0.0.1` are signed in as that address (it must be an admin, a `staffDomain` account or on the allowlist; use an `admins` address to get **Get link**). It never applies off localhost, and it's a `.dev.vars` setting: don't set it on a deployed Worker.
+
 #### `slidev deploy` {#slidev-deploy}
 
 `slidev deploy` deploys `dist-worker/` with wrangler. For a deck behind auth, it first creates the D1 database if it's missing (and writes its id into the generated `wrangler.jsonc`), and applies the library's migrations. After deploying, it sets `SESSION_SECRET` if it isn't set, with a generated value piped to wrangler on stdin. The Worker answers 503 until the secret is set, rather than let anyone in.
