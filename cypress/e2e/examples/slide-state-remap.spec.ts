@@ -3,7 +3,7 @@ import { expectEventually } from '../../poll'
 const BASE = Cypress.config('baseUrl')!
 const SOURCE = 'cypress/fixtures/basic/slides.md'
 // The image-fit collage slide (see `image-fit.spec.ts`); its `fit-fill` image gets moved here.
-const SLIDE = 32
+const SLIDE = 34
 const HEADING = `# Page ${SLIDE}`
 
 // Element state is keyed by slide number. Editing `slides.md` to insert, remove or move slides
