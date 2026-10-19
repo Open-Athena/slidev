@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { shallowRef } from 'vue'
 import { useNav } from '../composables/useNav'
+import { canShare, probeAuth } from '../composables/useShareLinks'
 import { configs } from '../env'
 import { showInfoDialog, showRecordingDialog } from '../state'
 import ContextMenu from './ContextMenu.vue'
@@ -15,6 +16,15 @@ const DrawingControls = shallowRef<any>()
 if (drawingEnabled)
   import('../internals/DrawingControls.vue').then(v => DrawingControls.value = v.default)
 
+// "Get link" (auth-gated decks only): ask who's signed in, and load the dialog for admins.
+const ShareLinkDialog = shallowRef<any>()
+if (__SLIDEV_FEATURE_AUTH__ && !isEmbedded.value) {
+  void probeAuth().then(() => {
+    if (canShare.value)
+      import('./ShareLinkDialog.vue').then(v => ShareLinkDialog.value = v.default)
+  })
+}
+
 const WebCamera = shallowRef<any>()
 const RecordingDialog = shallowRef<any>()
 if (__SLIDEV_FEATURE_RECORD__) {
@@ -28,6 +38,7 @@ if (__SLIDEV_FEATURE_RECORD__) {
   <QuickOverview />
   <Goto />
   <InsertImageDialog />
+  <ShareLinkDialog v-if="ShareLinkDialog" />
   <WebCamera v-if="WebCamera" />
   <RecordingDialog v-if="RecordingDialog" v-model="showRecordingDialog" />
   <InfoDialog v-if="configs.info" v-model="showInfoDialog" />

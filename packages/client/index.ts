@@ -7,6 +7,7 @@
 export { useDarkMode } from './composables/useDarkMode'
 export { useDrawings } from './composables/useDrawings'
 export { useNav } from './composables/useNav'
+export { canShare, toggleShareDialog } from './composables/useShareLinks'
 
 export { useSlideContext } from './context'
 

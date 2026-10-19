@@ -8,6 +8,7 @@ import { deleteSelectedElements } from '../composables/useDeleteElement'
 import { commitToYaml, redo as historyRedo, undo as historyUndo, toggleAutosave } from '../composables/useDragHistory'
 import { hasSelection } from '../composables/useMultiSelect'
 import { useNav } from '../composables/useNav'
+import { canShare, toggleShareDialog } from '../composables/useShareLinks'
 import { configs } from '../env'
 import { getSlidePath } from '../logic/slides'
 import setupShortcuts from '../setup/shortcuts'
@@ -32,6 +33,7 @@ export function registerShortcuts() {
   registerShortcutDisplay('toggle_fullscreen', ['f'])
   registerShortcutDisplay('toggle_history', ['h'])
   registerShortcutDisplay('copy_url', ['y'])
+  registerShortcutDisplay('share_link', ['⇧Y'])
   registerShortcutDisplay('undo', ['⌘Z'])
   registerShortcutDisplay('redo', ['⇧⌘Z'])
   registerShortcutDisplay('save', ['⌘S'])
@@ -52,6 +54,12 @@ export function registerShortcuts() {
     if (typeof navigator !== 'undefined' && navigator.clipboard) {
       void navigator.clipboard.writeText(url)
     }
+  })
+
+  // ⇧Y: "Get link" (a share link, minted), next to `y`'s plain URL. Admins of auth-gated decks.
+  strokeShortcut('Y', () => {
+    if (canShare.value)
+      toggleShareDialog('new')
   })
 
   // Backspace / Delete on a selected v-drag element removes its source line(s)

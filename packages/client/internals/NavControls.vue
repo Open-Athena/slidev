@@ -4,6 +4,7 @@ import CustomNavControls from '#slidev/custom-nav-controls'
 import { commitToYaml, describeEntry, downloadCoordsYaml, canRedo as historyCanRedo, canUndo as historyCanUndo, isDirty as historyIsDirty, redo as historyRedo, undo as historyUndo, lastYamlCommitEventId, revertToYaml, topActiveEventId, topRedoEntry, topUndoEntry } from '../composables/useDragHistory'
 import { useDrawings } from '../composables/useDrawings'
 import { useNav } from '../composables/useNav'
+import { canShare, toggleShareDialog } from '../composables/useShareLinks'
 import { slidesDrawer, toggleSlidesDrawer } from '../composables/useSlidesDrawer'
 import { isSlideSkipped, skippedCount, toggleSkipSkipped, toggleSlideSkip } from '../composables/useSlideSkip'
 import { configs } from '../env'
@@ -263,6 +264,16 @@ if (__SLIDEV_FEATURE_RECORD__)
           <div class="i-carbon:document-pdf" />
         </IconButton>
       </template>
+
+      <IconButton
+        v-if="canShare && !isEmbedded"
+        title="Get link: a share link to this deck, for someone"
+        shortcut="share_link"
+        data-testid="share-link"
+        @click="toggleShareDialog('new')"
+      >
+        <div class="i-carbon:link" />
+      </IconButton>
 
       <IconButton
         v-if="!isPresenter && configs.info && !isEmbedded"

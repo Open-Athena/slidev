@@ -7,6 +7,7 @@ import setups from '#slidev/setups/context-menu'
 import { toggleAutosave } from '../composables/useDragHistory'
 import { useDrawings } from '../composables/useDrawings'
 import { useNav } from '../composables/useNav'
+import { canShare, toggleShareDialog } from '../composables/useShareLinks'
 import { isSlideSkipped, skippedCount, toggleSkipSkipped, toggleSlideSkip } from '../composables/useSlideSkip'
 import { autosave, editMode, fullscreen, showEditor, skipSkipped, toggleOverview } from '../state'
 
@@ -86,6 +87,16 @@ export default () => {
         icon: 'i-carbon:apps',
         label: 'Show slide overview',
         action: toggleOverview,
+      },
+      canShare.value && !isEmbedded.value && {
+        icon: 'i-carbon:link',
+        label: 'Get link…',
+        action: () => toggleShareDialog('new'),
+      },
+      canShare.value && !isEmbedded.value && {
+        icon: 'i-carbon:list',
+        label: 'Manage share links',
+        action: () => toggleShareDialog('links'),
       },
       skippedCount.value > 0 && {
         icon: skipSkipped.value ? 'i-carbon:skip-forward-outline' : 'i-carbon:skip-forward-filled',
