@@ -185,7 +185,8 @@ describe('resolveWrangler', () => {
   })
 })
 
-describe('runDeploy (stub wrangler)', () => {
+// Each step spawns a node process, which is slow while other test files run.
+describe('runDeploy (stub wrangler)', { timeout: 30000 }, () => {
   const run = async (f: Fixture, info: WorkerDeployInfo) => {
     const { spawnRunner, loadDeployContext } = await import('../packages/slidev/node/commands/deploy')
     const wrangler = f.wrangler.split(' ')
@@ -253,7 +254,8 @@ describe('runDeploy (stub wrangler)', () => {
   })
 })
 
-describe('`slidev deploy` CLI', () => {
+// Loading the built CLI takes seconds under a parallel test run.
+describe('`slidev deploy` CLI', { timeout: 60000 }, () => {
   it('prints the plan on `--dry-run`, and runs nothing', () => {
     const f = fixture(authInfo)
     expect(slidev(f, ['--dry-run'])).toBe(describePlan({ info: authInfo, workerDir: 'dist-worker', outDir: 'dist', hasRedirects: false }, f.wrangler.split(' ')))
