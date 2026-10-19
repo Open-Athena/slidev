@@ -60,6 +60,18 @@ Options:
 - `--download` (`boolean`, default: `false`): allow the download of the slides as a PDF inside the SPA
 - `--theme`, `-t` (`string`): override theme
 - `--without-notes` (`boolean`, default: `false`): exclude speaker notes from the SPA
+- `--worker` (`boolean`): also write a Cloudflare Worker (`dist-worker/`, with a `wrangler.jsonc`) that serves per-slide share tags and cards; same as `publish.worker` (see <LinkInline link="guide/hosting#cloudflare-workers" />)
+- `--auth` (`'open-athena'`): put that Worker behind `@open-athena/auth`; implies `--worker`, same as `publish.worker.auth`
+
+## `slidev deploy` {#deploy}
+
+Deploy the Worker `slidev build --worker` wrote, with wrangler. With `publish.worker.auth`, it also creates the D1 database if it's missing, applies the auth migrations, and sets `SESSION_SECRET` if it isn't set. See <LinkInline link="guide/hosting#slidev-deploy" />.
+
+Options:
+
+- `--out`, `-o` (`string`, default: `dist`): the build output; the Worker is in `<out>-worker/`
+- `--dry-run`, `-n` (`boolean`, default: `false`): print the plan without running wrangler
+- `--wrangler` (`string`): the wrangler command (default: `$SLIDEV_WRANGLER`, else the deck's `wrangler`, else `npx wrangler`)
 
 ## `slidev export [...entry]` {#export}
 

@@ -212,6 +212,61 @@ When the build runs with Zephyr enabled, your app is deployed and Zephyr Cloud r
 Zephyr Cloud is a bit different from most hosting providers: every `build` run triggers a deployment.
 :::
 
+### Cloudflare Workers {#cloudflare-workers}
+
+`slidev build --worker` (or `publish.worker: true` in the headmatter) also writes a [Cloudflare Worker](https://developers.cloudflare.com/workers/static-assets/) next to the build output, in `dist-worker/`. It needs `publish.baseUrl`. The Worker serves `dist/` as static assets, stamps per-slide (and per-URL-state) share tags into slide pages for link unfurlers, and serves each slide's share card at `/_og/<n>-<slug>.jpg`.
+
+```bash
+$ slidev build --worker
+$ npx wrangler dev -c dist-worker/wrangler.jsonc   # try it locally
+$ slidev deploy                                     # deploy it
+```
+
+`dist-worker/wrangler.jsonc` is a template, rewritten on every build. In this mode the build doesn't write `dist/_redirects`; the config's `not_found_handling` does the SPA fallback instead.
+
+#### Behind sign-in {#cloudflare-workers-auth}
+
+With `auth: open-athena`, the Worker puts the deck behind [`@open-athena/auth`](https://github.com/Open-Athena/auth). Install it in the deck (it's an optional peer dependency of `@slidev/cli`); its `dist` branch is consumed by SHA:
+
+```bash
+$ pnpm add 'github:Open-Athena/auth#0e81feafae4fd54676ec1bc2ea1459e96dd6d887'
+```
+
+```yaml
+---
+publish:
+  baseUrl: https://talk.example.org
+  worker:
+    auth: open-athena # or `slidev build --auth open-athena`
+    staffDomain: example.org # accounts at this domain (or a list of domains) get in
+    admins: [me@example.org] # always get in, and can mint share links
+    publicOg: true # default: cards and slide share tags stay public
+---
+```
+
+What the Worker does:
+
+- **Signed in** (a `staffDomain` account, an address on the D1 allowlist, or an admin): everything.
+- **Share links**: `?key=<token>` is redeemed for a session cookie, and the page reloads without the key. Admins mint links through the library's `/api/auth/*` routes.
+- **Google sign-in** at `/auth/google`, once `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` are set. Without them, the sign-in page says sign-in isn't configured, and share links still work.
+- **Signed out**: a slide URL gets its share tags (so link previews work) and a sign-in prompt, with none of the deck's scripts or styles. Other pages get their HTML with every script and stylesheet removed. Anything else (the JS bundles, images, …) is a 401.
+- **Public**: the `/_og/*` cards, favicons, and `publish.publicPaths`. With `publicOg: false`, the cards are gated too, and signed-out pages carry no share tags.
+
+Other options: `scope` (the scope a session needs; default `deck`), `database` (the D1 database's name; default `<worker name>-auth`) and `databaseId`.
+
+#### `slidev deploy` {#slidev-deploy}
+
+`slidev deploy` deploys `dist-worker/` with wrangler. For a deck behind auth, it first creates the D1 database if it's missing (and writes its id into the generated `wrangler.jsonc`), and applies the library's migrations. After deploying, it sets `SESSION_SECRET` if it isn't set, with a generated value piped to wrangler on stdin. The Worker answers 503 until the secret is set, rather than let anyone in.
+
+```bash
+$ slidev deploy --dry-run   # print the plan; runs nothing
+$ slidev deploy --wrangler 'scripts/cf.sh wrangler'
+```
+
+`--wrangler` (or `$SLIDEV_WRANGLER`) sets the wrangler command, e.g. a wrapper that pins the account. The default is the deck's own `wrangler`, else `npx wrangler`.
+
+One step stays manual: Google's OAuth client. Create one (Web application) in the Google Cloud console, with your deck's origin and the redirect URI `<origin>/auth/google/callback`, then `wrangler secret put GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET`. `slidev deploy` prints these at the end.
+
 ### Host on Docker {#docker}
 
 If you need a rapid way to run a presentation with containers, you can use the prebuilt [docker image](https://hub.docker.com/r/tangramor/slidev) maintained by [tangramor](https://github.com/tangramor), or build your own.
