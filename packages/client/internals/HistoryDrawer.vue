@@ -79,6 +79,7 @@ const KIND_ICON: Record<string, string> = {
   delete: 'i-carbon:trash-can',
   text: 'i-carbon:text-font',
   cols: 'i-carbon:column',
+  skip: 'i-carbon:skip-forward',
   restore: 'i-carbon:reset',
   hydrate: 'i-carbon:db2-database',
 }
@@ -90,6 +91,8 @@ function summarize(e: EditEvent): string {
     const short = after.length > 60 ? `${after.slice(0, 57)}…` : after
     return `“${short.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/`/g, '&#96;')}”`
   }
+  if (e.kind === 'skip')
+    return e.source?.frontmatter?.after ? 'skipped' : 'not skipped'
   // Column resizes: the new split.
   if (e.kind === 'cols') {
     const fm = e.source?.frontmatter

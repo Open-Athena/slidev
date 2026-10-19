@@ -265,6 +265,10 @@ export function createSlidesLoader(
               }
             }
             if (Object.keys(rest).length > 0) {
+              // The hot update compares against `slide.frontmatter`, which is patched here
+              // first, so it wouldn't see the change: flag the slide like a content edit.
+              if (!equal(pick(slide.frontmatter, Object.keys(rest)), rest))
+                hmrSlidesIndexes.add(idx)
               updateFrontmatterPatch(slide.source, rest)
               Object.assign(slide.frontmatter, rest)
             }
@@ -585,4 +589,9 @@ function slideKey(slide: SlideInfo): SlideKey {
     signature: createHash('sha1').update(JSON.stringify([slide.content.trim(), frontmatter])).digest('hex'),
     title: slide.title?.trim() || undefined,
   }
+}
+
+// `keys` of `obj`, with absent ones as `null` (how a frontmatter patch spells "remove").
+function pick(obj: Record<string, any>, keys: string[]): Record<string, any> {
+  return Object.fromEntries(keys.map(k => [k, obj[k] ?? null]))
 }

@@ -16,7 +16,7 @@ export interface ElementSnapshot {
   cropLeft: number
 }
 
-export type EditKind = 'move' | 'resize' | 'rotate' | 'crop' | 'zorder' | 'restore' | 'hydrate' | 'delete' | 'text' | 'cols'
+export type EditKind = 'move' | 'resize' | 'rotate' | 'crop' | 'zorder' | 'restore' | 'hydrate' | 'delete' | 'text' | 'cols' | 'skip'
 
 export interface EditItem {
   dragId: string

@@ -11,7 +11,7 @@ import { injectionClicksContext, injectionCurrentPage, injectionRenderContext, i
 import { configs, slidesTitle } from '../env'
 import { getSlidePath } from '../logic/slides'
 import { makeId } from '../logic/utils'
-import { hmrSkipTransition, syncDirections } from '../state'
+import { hmrSkipTransition, skipSkipped, syncDirections } from '../state'
 import { initDrawingState } from '../state/drawings'
 import { initSharedState, onPatch, patch } from '../state/shared'
 
@@ -97,6 +97,13 @@ export default function setupRoot() {
   const router = useRouter()
   router.afterEach(updateSharedState)
   watch(clicksContext, updateSharedState)
+  watch(skipSkipped, (value) => {
+    const shouldSend = isPresenter.value
+      ? syncDirections.value.presenterSend
+      : syncDirections.value.viewerSend
+    if (shouldSend && !isNotesViewer.value && !isPrintMode.value)
+      patch('skipSkipped', value)
+  })
 
   onPatch((state) => {
     const shouldReceive = isPresenter.value
@@ -104,6 +111,8 @@ export default function setupRoot() {
       : syncDirections.value.viewerReceive
     if (!shouldReceive)
       return
+    if (state.skipSkipped != null && state.skipSkipped !== skipSkipped.value)
+      skipSkipped.value = state.skipSkipped
     if (!hasPrimarySlide.value || isPrintMode.value)
       return
     if (state.lastUpdate?.type === syncType.value)

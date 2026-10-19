@@ -1,7 +1,7 @@
 // Shared shapes between dev-server state module and the client. Keep in sync with
 // `packages/client/composables/useDragHistory.ts`.
 
-export type EditKind = 'move' | 'resize' | 'rotate' | 'crop' | 'zorder' | 'restore' | 'hydrate' | 'delete' | 'text' | 'cols'
+export type EditKind = 'move' | 'resize' | 'rotate' | 'crop' | 'zorder' | 'restore' | 'hydrate' | 'delete' | 'text' | 'cols' | 'skip'
 
 /**
  * Source-line splice metadata for `delete` events. The server records the

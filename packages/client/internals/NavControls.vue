@@ -5,9 +5,10 @@ import { commitToYaml, describeEntry, downloadCoordsYaml, canRedo as historyCanR
 import { useDrawings } from '../composables/useDrawings'
 import { useNav } from '../composables/useNav'
 import { slidesDrawer, toggleSlidesDrawer } from '../composables/useSlidesDrawer'
+import { isSlideSkipped, skippedCount, toggleSkipSkipped, toggleSlideSkip } from '../composables/useSlideSkip'
 import { configs } from '../env'
 import { isColorSchemaConfigured, isDark, toggleDark } from '../logic/dark'
-import { activeElement, breakpoints, cursorStyle, editMode, fullscreen, hasViewerCssFilter, presenterLayout, showEditor, showHistoryDrawer, showInfoDialog, showPresenterCursor, toggleOverview, togglePresenterCursor, togglePresenterLayout } from '../state'
+import { activeElement, breakpoints, cursorStyle, editMode, fullscreen, hasViewerCssFilter, presenterLayout, showEditor, showHistoryDrawer, showInfoDialog, showPresenterCursor, skipSkipped, toggleOverview, togglePresenterCursor, togglePresenterLayout } from '../state'
 import { downloadPDF } from '../utils'
 import IconButton from './IconButton.vue'
 import MenuButton from './MenuButton.vue'
@@ -293,9 +294,34 @@ if (__SLIDEV_FEATURE_RECORD__)
 
       <VerticalDivider v-if="!isEmbedded" />
 
-      <div class="px2 my-auto">
+      <IconButton
+        v-if="__DEV__ && editMode && !isEmbedded"
+        :title="isSlideSkipped(currentSlideNo) ? 'Don\'t skip this slide' : 'Skip this slide when presenting'"
+        :active="isSlideSkipped(currentSlideNo)"
+        data-testid="toggle-slide-skip"
+        @click="toggleSlideSkip(currentSlideNo)"
+      >
+        <div class="i-carbon:skip-forward-outline" />
+      </IconButton>
+      <IconButton
+        v-if="skippedCount > 0 && !isEmbedded"
+        :title="skipSkipped ? `Skipping ${skippedCount} skipped slide${skippedCount === 1 ? '' : 's'}: click to show them` : `Showing skipped slides: click to skip them`"
+        shortcut="toggle_skip_skipped"
+        :active="skipSkipped"
+        data-testid="toggle-skip-skipped"
+        @click="toggleSkipSkipped"
+      >
+        <div :class="skipSkipped ? 'i-carbon:skip-forward-filled' : 'i-carbon:skip-forward-outline'" />
+      </IconButton>
+
+      <div class="px2 my-auto flex items-center gap-1.5" data-testid="slide-counter">
+        <span
+          v-if="isSlideSkipped(currentSlideNo)"
+          class="text-xs px-1 rounded border border-current opacity-70"
+          data-testid="skipped-badge"
+        >skipped</span>
         <span class="text-lg">{{ currentSlideNo }}</span>
-        <span class="opacity-50 text-sm"> / {{ total }}</span>
+        <span class="opacity-50 text-sm"> / {{ total }}<template v-if="skippedCount > 0"> · {{ skippedCount }} skipped</template></span>
       </div>
 
       <CustomNavControls />

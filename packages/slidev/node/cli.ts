@@ -762,6 +762,10 @@ function exportOptions<T>(args: Argv<T>) {
       type: 'boolean',
       describe: 'export pages for every clicks',
     })
+    .option('with-skipped', {
+      type: 'boolean',
+      describe: 'include slides marked `skip: true` (left out by default)',
+    })
     .option('executable-path', {
       type: 'string',
       describe: 'executable to override playwright bundled browser',

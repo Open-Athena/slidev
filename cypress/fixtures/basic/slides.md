@@ -504,3 +504,39 @@ must not change what's visible. -->
 Insert target
 
 <Youtube :id="'dQw4w9WgXcQ'" />
+
+---
+
+# Page 36
+
+Before the skipped slides (`skip-slides.spec.ts`).
+
+---
+skip: true
+---
+
+# Page 37
+
+Skipped.
+
+---
+class: skip-target
+---
+
+# Page 38
+
+Kept; the spec marks it skipped and undoes that.
+
+---
+skip: true
+---
+
+# Page 39
+
+Skipped.
+
+---
+
+# Page 40
+
+After the skipped slides.

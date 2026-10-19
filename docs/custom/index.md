@@ -152,6 +152,8 @@ background: undefined # or string (e.g. 'https://cover.sli.dev' or '/image.png')
 disabled: false
 # the same as `disabled`
 hide: false
+# keep the slide, but step over it while presenting (⇧S toggles); see /features/skip-slides
+skip: false
 # hide the slide for the <Toc> components
 hideInToc: false
 # defines the layout component applied to the slide

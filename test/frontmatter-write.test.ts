@@ -56,3 +56,44 @@ describe('frontmatter writes change only the touched key', () => {
     expect(await edit(undefined, '\n# Disky, edited\n')).toBe(deck.replace('# Disky\n', '# Disky, edited\n'))
   })
 })
+
+describe('a key added to a slide and removed again leaves it byte-identical', () => {
+  const twoSlides = lines(
+    '---',
+    'title: Deck',
+    '---',
+    '',
+    '# One',
+    '',
+    '---',
+    '',
+    '# Two',
+    '',
+    '---',
+    'layout: center',
+    '---',
+    '',
+    '# Three',
+    '',
+  )
+
+  async function patchSlide(md: string, idx: number, patch: Record<string, any>) {
+    const parsed = await parse(md, 'slides.md')
+    const slide = parsed.slides[idx]
+    updateFrontmatterPatch(slide, patch)
+    prettifySlide(slide)
+    return stringify(parsed)
+  }
+
+  it('a slide without frontmatter: the block is added, then dropped', async () => {
+    const marked = await patchSlide(twoSlides, 1, { skip: true })
+    expect(marked).toBe(twoSlides.replace('---\n\n# Two\n', '---\nskip: true\n---\n\n# Two\n'))
+    expect(await patchSlide(marked, 1, { skip: null })).toBe(twoSlides)
+  })
+
+  it('a slide with frontmatter: one line is added, then removed', async () => {
+    const marked = await patchSlide(twoSlides, 2, { skip: true })
+    expect(marked).toBe(twoSlides.replace('layout: center\n', 'layout: center\nskip: true\n'))
+    expect(await patchSlide(marked, 2, { skip: null })).toBe(twoSlides)
+  })
+})

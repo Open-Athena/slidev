@@ -7,6 +7,7 @@ import TitleRenderer from '#slidev/title-renderer'
 import { createFixedClicks } from '../composables/useClicks'
 import { CLICKS_MAX } from '../constants'
 import { slideAspect } from '../env'
+import { isSkippedRoute } from '../logic/skip'
 import DrawingPreview from './DrawingPreview.vue'
 import SlideContainer from './SlideContainer.vue'
 import SlideWrapper from './SlideWrapper.vue'
@@ -25,7 +26,8 @@ const props = defineProps<{
 const emit = defineEmits<{ select: [no: number, ev: MouseEvent] }>()
 
 const title = computed(() => props.route.meta?.slide?.title?.trim() || '')
-const label = computed(() => `Slide ${props.route.no}${title.value ? `: ${title.value}` : ''}${props.active ? ', current slide' : ''}`)
+const skipped = computed(() => isSkippedRoute(props.route))
+const label = computed(() => `Slide ${props.route.no}${title.value ? `: ${title.value}` : ''}${skipped.value ? ', skipped' : ''}${props.active ? ', current slide' : ''}`)
 
 // Mounting every slide at once is expensive (iframes, Mermaid, Monaco…), so a live preview is
 // only rendered while it's within a screenful of the drawer's visible area, and unmounted again
@@ -46,14 +48,14 @@ const previewHeight = computed(() => props.previewWidth / slideAspect.value)
     ref="button"
     type="button"
     class="slidev-thumb"
-    :class="{ active, live: mode === 'live' }"
+    :class="{ active, live: mode === 'live', skipped }"
     :data-slide-no="route.no"
     :aria-current="active ? 'true' : undefined"
     :aria-label="label"
     :tabindex="focusable ? 0 : -1"
     @click="emit('select', route.no, $event)"
   >
-    <span class="slidev-thumb-no">{{ route.no }}</span>
+    <span class="slidev-thumb-no">{{ route.no }}<span v-if="skipped" class="slidev-thumb-skip i-carbon:skip-forward-outline" /></span>
     <span
       v-if="mode === 'live'"
       class="slidev-thumb-preview"
@@ -111,6 +113,14 @@ const previewHeight = computed(() => props.previewWidth / slideAspect.value)
   text-align: right;
   opacity: 0.55;
   font-variant-numeric: tabular-nums;
+}
+.slidev-thumb.skipped > :not(.slidev-thumb-no) {
+  opacity: 0.45;
+}
+.slidev-thumb-skip {
+  display: block;
+  margin: 0.125rem 0 0 auto;
+  font-size: 0.75rem;
 }
 .slidev-thumb.active .slidev-thumb-no {
   opacity: 1;

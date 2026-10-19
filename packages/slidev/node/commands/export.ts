@@ -607,6 +607,7 @@ export function getExportOptions(args: ExportArgs, options: ResolvedSlidevOption
     ...clearUndefined({
       waitUntil: args['wait-until'],
       withClicks: args['with-clicks'],
+      withSkipped: args['with-skipped'],
       executablePath: args['executable-path'],
       withToc: args['with-toc'],
       perSlide: args['per-slide'],
@@ -623,6 +624,7 @@ export function getExportOptions(args: ExportArgs, options: ResolvedSlidevOption
     range,
     dark,
     withClicks,
+    withSkipped,
     executablePath,
     withToc,
     perSlide,
@@ -634,7 +636,7 @@ export function getExportOptions(args: ExportArgs, options: ResolvedSlidevOption
     output: outFilename,
     slides: options.data.slides,
     total: options.data.slides.length,
-    range,
+    range: withSkipped ? range : rangeWithoutSkipped(options.data.slides, range),
     format: (format || 'pdf') as 'pdf' | 'png' | 'pptx' | 'pptx-editable' | 'md',
     timeout: timeout ?? 30000,
     wait: wait ?? 0,
@@ -687,4 +689,16 @@ async function importPlaywright(): Promise<typeof import('playwright-chromium')>
   catch { }
 
   throw new Error('The exporting for Slidev is powered by Playwright, please install it via `npm i -D playwright-chromium`')
+}
+
+/**
+ * `range` (default: every slide) minus the slides marked `skip: true`, as a range string; `range`
+ * itself when no slide in it is skipped.
+ */
+export function rangeWithoutSkipped(slides: Array<{ frontmatter: Record<string, any> }>, range?: string): string | undefined {
+  const pages = parseRangeString(slides.length, range)
+  const kept = pages.filter(no => slides[no - 1]?.frontmatter.skip !== true)
+  if (kept.length === 0)
+    throw new Error('Every slide to export is marked `skip: true`; pass --with-skipped to export them')
+  return kept.length === pages.length ? range : kept.join(',')
 }

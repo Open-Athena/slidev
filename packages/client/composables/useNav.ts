@@ -10,9 +10,10 @@ import { slides } from '#slidev/slides'
 import { CLICKS_MAX, injectionSlidevContext } from '../constants'
 import { configs } from '../env'
 import { useRouteQuery } from '../logic/route'
+import { neighborSlideNo } from '../logic/skip'
 import { getSlide, getSlidePath } from '../logic/slides'
 import { getCurrentTransition } from '../logic/transition'
-import { hmrSkipTransition } from '../state'
+import { hmrSkipTransition, skipSkipped } from '../state'
 import { createClicksContextBase } from './useClicks'
 import { useTocTree } from './useTocTree'
 
@@ -111,10 +112,14 @@ export function useNavBase(
   const clicks = computed(() => clicksContext.value.current)
   const clicksStart = computed(() => clicksContext.value.clicksStart)
   const clicksTotal = computed(() => clicksContext.value.total)
-  const nextRoute = computed(() => slides.value[Math.min(slides.value.length, currentSlideNo.value + 1) - 1])
-  const prevRoute = computed(() => slides.value[Math.max(1, currentSlideNo.value - 1) - 1])
-  const hasNext = computed(() => currentSlideNo.value < slides.value.length || clicks.value < clicksTotal.value)
-  const hasPrev = computed(() => currentSlideNo.value > 1 || clicks.value > 0)
+  // Print / export walks every slide; its range already leaves skipped ones out.
+  const skipping = computed(() => skipSkipped.value && !isPrint.value)
+  const nextSlideNo = computed(() => neighborSlideNo(slides.value, currentSlideNo.value, 1, skipping.value))
+  const prevSlideNo = computed(() => neighborSlideNo(slides.value, currentSlideNo.value, -1, skipping.value))
+  const nextRoute = computed(() => slides.value[(nextSlideNo.value ?? slides.value.length) - 1])
+  const prevRoute = computed(() => slides.value[(prevSlideNo.value ?? 1) - 1])
+  const hasNext = computed(() => nextSlideNo.value != null || clicks.value < clicksTotal.value)
+  const hasPrev = computed(() => prevSlideNo.value != null || clicks.value > 0)
 
   const currentTransition = computed(() => isPrint.value ? undefined : getCurrentTransition(navDirection.value, currentSlideRoute.value, prevRoute.value))
 
@@ -159,9 +164,9 @@ export function useNavBase(
 
   async function nextSlide(lastClicks = false) {
     clicksDirection.value = 1
-    if (currentSlideNo.value < slides.value.length) {
+    if (nextSlideNo.value != null) {
       await go(
-        currentSlideNo.value + 1,
+        nextSlideNo.value,
         lastClicks && !isPrint.value ? CLICKS_MAX : undefined,
       )
     }
@@ -169,9 +174,9 @@ export function useNavBase(
 
   async function prevSlide(lastClicks = false) {
     clicksDirection.value = -1
-    if (currentSlideNo.value > 1) {
+    if (prevSlideNo.value != null) {
       await go(
-        currentSlideNo.value - 1,
+        prevSlideNo.value,
         lastClicks && !isPrint.value ? CLICKS_MAX : undefined,
       )
     }

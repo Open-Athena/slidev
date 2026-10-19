@@ -3,7 +3,8 @@ import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { dropPosition, reorderSlides } from '../composables/slide-reorder'
 import { useNav } from '../composables/useNav'
 import { clampDrawerWidth, drawerFocusRequested, slidesDrawer, toggleSlidesDrawer } from '../composables/useSlidesDrawer'
-import { editMode } from '../state'
+import { isSlideSkipped, skippedCount, toggleSkipSkipped, toggleSlideSkip } from '../composables/useSlideSkip'
+import { editMode, skipSkipped } from '../state'
 import IconButton from './IconButton.vue'
 import SlideThumbnail from './SlideThumbnail.vue'
 
@@ -131,6 +132,8 @@ const previewWidth = computed(() => Math.max(60, slidesDrawer.width - 64))
 // Reordering (dev + edit mode): drag a thumb onto another's upper / lower half. Same dev-server
 // endpoint as the overview's; slide 1 holds the deck's headmatter, so it stays first.
 const canReorder = computed(() => __DEV__ && editMode.value)
+// Marking slides skipped edits their frontmatter, like reordering: dev + edit mode.
+const markable = canReorder
 const dragFrom = ref<number | null>(null)
 const dropAt = ref<{ no: number, after: boolean } | null>(null)
 
@@ -180,6 +183,16 @@ function onDragend() {
         Slides
       </h2>
       <IconButton
+        v-if="skippedCount > 0"
+        :title="skipSkipped ? `Skipping ${skippedCount} skipped slide${skippedCount === 1 ? '' : 's'}: click to show them` : 'Showing skipped slides: click to skip them'"
+        shortcut="toggle_skip_skipped"
+        :active="skipSkipped"
+        class="text-base"
+        @click="toggleSkipSkipped"
+      >
+        <div :class="skipSkipped ? 'i-carbon:skip-forward-filled' : 'i-carbon:skip-forward-outline'" />
+      </IconButton>
+      <IconButton
         :title="slidesDrawer.mode === 'live' ? 'Show titles' : 'Show previews'"
         class="text-base"
         data-testid="drawer-mode"
@@ -199,7 +212,7 @@ function onDragend() {
       <li
         v-for="route of slides"
         :key="route.no"
-        class="relative"
+        class="relative group"
         :draggable="canReorder && route.no !== 1"
         :class="{
           'opacity-40': dragFrom === route.no,
@@ -219,6 +232,16 @@ function onDragend() {
           :scroll-root="list"
           :focusable="route.no === focusNo"
           @select="onSelect"
+        />
+        <button
+          v-if="markable"
+          type="button"
+          class="slidev-thumb-skip-toggle absolute right-1 top-1 p-0.5 rounded opacity-0 group-hover:opacity-80 focus-visible:opacity-100 hover:bg-gray-400/20"
+          :class="isSlideSkipped(route.no) ? 'i-carbon:skip-forward-filled' : 'i-carbon:skip-forward-outline'"
+          :aria-label="isSlideSkipped(route.no) ? `Don't skip slide ${route.no}` : `Skip slide ${route.no} when presenting`"
+          :data-testid="`skip-toggle-${route.no}`"
+          tabindex="-1"
+          @click.stop="toggleSlideSkip(route.no)"
         />
       </li>
     </ol>

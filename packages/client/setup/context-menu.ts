@@ -6,7 +6,8 @@ import { computed } from 'vue'
 import setups from '#slidev/setups/context-menu'
 import { useDrawings } from '../composables/useDrawings'
 import { useNav } from '../composables/useNav'
-import { fullscreen, showEditor, toggleOverview } from '../state'
+import { isSlideSkipped, skippedCount, toggleSkipSkipped, toggleSlideSkip } from '../composables/useSlideSkip'
+import { editMode, fullscreen, showEditor, skipSkipped, toggleOverview } from '../state'
 
 // @unocss-include
 
@@ -84,6 +85,16 @@ export default () => {
         icon: 'i-carbon:apps',
         label: 'Show slide overview',
         action: toggleOverview,
+      },
+      skippedCount.value > 0 && {
+        icon: skipSkipped.value ? 'i-carbon:skip-forward-outline' : 'i-carbon:skip-forward-filled',
+        label: skipSkipped.value ? 'Show skipped slides' : 'Skip skipped slides',
+        action: toggleSkipSkipped,
+      },
+      __DEV__ && editMode.value && {
+        icon: 'i-carbon:skip-forward-outline',
+        label: isSlideSkipped(currentPage.value) ? 'Don\'t skip this slide' : 'Skip this slide',
+        action: () => toggleSlideSkip(currentPage.value),
       },
       isPresenter.value && {
         icon: 'i-carbon:presentation-file',

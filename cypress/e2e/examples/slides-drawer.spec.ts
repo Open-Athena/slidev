@@ -4,7 +4,7 @@ const BASE = Cypress.config('baseUrl')!
 const SOURCE = 'cypress/fixtures/basic/slides.md'
 const KEY = 'slidev-slides-drawer'
 // The fixture deck's slide count; other specs' fixtures append slides, so keep this current.
-const LAST = 35
+const LAST = 40
 
 const drawer = () => cy.get('nav[aria-label="Slide index"]')
 const thumb = (no: number) => cy.get(`.slidev-thumb[data-slide-no="${no}"]`)
@@ -58,6 +58,11 @@ context('slides drawer', () => {
         'Slide 33: Page 33',
         'Slide 34: Page 34',
         'Slide 35: Page 35',
+        'Slide 36: Page 36',
+        'Slide 37: Page 37, skipped',
+        'Slide 38: Page 38',
+        'Slide 39: Page 39, skipped',
+        'Slide 40: Page 40',
       ])
       // Visible text: number + rendered title, or a placeholder for an untitled slide.
       expect([0, 1, 22].map(i => ['.slidev-thumb-no', '.slidev-thumb-title'].map(c => $t[i].querySelector(c)!.textContent!.trim()))).to.deep.eq([

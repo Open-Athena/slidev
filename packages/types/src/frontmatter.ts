@@ -489,6 +489,12 @@ export interface Frontmatter extends TransitionOptions {
    */
   disabled?: boolean
   /**
+   * Skip the slide when presenting: it stays in the deck (numbers and URLs don't change), but
+   * next / previous step over it while "skip skipped slides" is on (⇧S). Exports leave it out
+   * unless `--with-skipped` is passed.
+   */
+  skip?: boolean
+  /**
    * Hide the slide for the `<Toc>` components
    *
    * See https://sli.dev/builtin/components#toc

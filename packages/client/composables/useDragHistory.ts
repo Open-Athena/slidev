@@ -28,7 +28,7 @@ export type {
 // kinds — restore/hydrate are internal-only and produced by the client backends, never
 // pushed by UI code. Keeps our public API expressive while letting the IStateClient layer
 // handle every kind uniformly.
-export type EditKind = 'move' | 'resize' | 'rotate' | 'crop' | 'zorder' | 'delete' | 'text' | 'cols'
+export type EditKind = 'move' | 'resize' | 'rotate' | 'crop' | 'zorder' | 'delete' | 'text' | 'cols' | 'skip'
 
 // Source-line splice context carried on `delete` events so undo can re-insert what the
 // delete removed (and redo can re-remove it). Mirrors `DeleteSourceContext` in state-client.
@@ -372,6 +372,11 @@ export async function pushColsEdit(slideNo: number, source: DeleteSource): Promi
   await postEdit(slideNo, 'cols', [], source)
 }
 
+/** A slide's `skip` frontmatter flipped (`before` / `after`: `true`, or `null` for unset). */
+export async function pushSkipEdit(slideNo: number, before: true | null, after: true | null): Promise<void> {
+  await postEdit(slideNo, 'skip', [], { lineRange: [0, 0], lines: [], frontmatter: { key: 'skip', before, after } })
+}
+
 async function applyFrontmatterChange(slideNo: number, change: FrontmatterChange, direction: 'undo' | 'redo'): Promise<void> {
   const value = direction === 'undo' ? change.before : change.after
   const post = await fetch(`/__slidev/slides/${slideNo}.json`, {
@@ -553,7 +558,7 @@ export async function undo(): Promise<void> {
   // the restored snapshot from `historyInitialState`.
   if (result.event.kind === 'delete' && result.event.source)
     await applyDeleteSplice(result.event.slideNo, result.event.source, 'insert')
-  if ((result.event.kind === 'text' || result.event.kind === 'cols') && result.event.source)
+  if ((result.event.kind === 'text' || result.event.kind === 'cols' || result.event.kind === 'skip') && result.event.source)
     await applySourceChange(result.event.slideNo, result.event.source, 'undo')
   topActiveEventId.value = result.topActiveEventId
   await fetchTopEvents()
@@ -575,7 +580,7 @@ export async function redo(): Promise<void> {
   // dropped `element_state`; we just need the source to match.
   if (result.event.kind === 'delete' && result.event.source)
     await applyDeleteSplice(result.event.slideNo, result.event.source, 'remove')
-  if ((result.event.kind === 'text' || result.event.kind === 'cols') && result.event.source)
+  if ((result.event.kind === 'text' || result.event.kind === 'cols' || result.event.kind === 'skip') && result.event.source)
     await applySourceChange(result.event.slideNo, result.event.source, 'redo')
   topActiveEventId.value = result.topActiveEventId
   await fetchTopEvents()
@@ -694,6 +699,7 @@ const KIND_LABEL: Record<string, string> = {
   delete: 'delete',
   text: 'text edit',
   cols: 'column resize',
+  skip: 'skip',
   hydrate: 'hydrate',
   restore: 'restore',
 }
@@ -704,6 +710,8 @@ export function describeEntry(entry: Event | null): string {
   const what = KIND_LABEL[entry.kind] ?? entry.kind
   if (entry.kind === 'cols')
     return `${what} on slide ${entry.slideNo}`
+  if (entry.kind === 'skip')
+    return `${entry.source?.frontmatter?.after ? 'marking' : 'unmarking'} slide ${entry.slideNo} skipped`
   const target = entry.kind === 'text'
     ? `lines ${entry.source?.lineRange.map(n => n + 1).join('–') ?? '?'}`
     : entry.items.length === 1

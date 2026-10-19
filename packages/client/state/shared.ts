@@ -6,6 +6,8 @@ export interface SharedState {
   page: number
   clicks: number
   clicksTotal: number
+  /** "Skip skipped slides" (slides marked `skip: true`), so presenter and audience step alike. */
+  skipSkipped?: boolean
 
   timer: {
     status: 'stopped' | 'running' | 'paused'

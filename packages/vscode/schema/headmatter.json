@@ -63,6 +63,11 @@
           "description": "Same as `hide`, completely hide and disable the slide",
           "markdownDescription": "Same as `hide`, completely hide and disable the slide"
         },
+        "skip": {
+          "type": "boolean",
+          "description": "Skip the slide when presenting: it stays in the deck (numbers and URLs don't change), but next / previous step over it while \"skip skipped slides\" is on (⇧S). Exports leave it out unless `--with-skipped` is passed.",
+          "markdownDescription": "Skip the slide when presenting: it stays in the deck (numbers and URLs don't change), but\nnext / previous step over it while \"skip skipped slides\" is on (⇧S). Exports leave it out\nunless `--with-skipped` is passed."
+        },
         "hideInToc": {
           "type": "boolean",
           "description": "Hide the slide for the `<Toc>` components\n\nSee https://sli.dev/builtin/components#toc",
@@ -1334,6 +1339,11 @@
           "type": "boolean",
           "description": "Same as `hide`, completely hide and disable the slide",
           "markdownDescription": "Same as `hide`, completely hide and disable the slide"
+        },
+        "skip": {
+          "type": "boolean",
+          "description": "Skip the slide when presenting: it stays in the deck (numbers and URLs don't change), but next / previous step over it while \"skip skipped slides\" is on (⇧S). Exports leave it out unless `--with-skipped` is passed.",
+          "markdownDescription": "Skip the slide when presenting: it stays in the deck (numbers and URLs don't change), but\nnext / previous step over it while \"skip skipped slides\" is on (⇧S). Exports leave it out\nunless `--with-skipped` is passed."
         },
         "hideInToc": {
           "type": "boolean",

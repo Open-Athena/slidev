@@ -33,6 +33,8 @@ export interface ResolvedDrawingsOptions {
 
 export interface ResolvedExportOptions extends Omit<ExportArgs, 'entry' | 'theme'> {
   withClicks?: boolean
+  /** Include slides marked `skip: true` (left out by default). */
+  withSkipped?: boolean
   executablePath?: string
   withToc?: boolean
 }

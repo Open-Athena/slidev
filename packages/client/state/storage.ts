@@ -68,6 +68,8 @@ export const showHistoryDrawer = useLocalStorage('slidev-show-history-drawer', f
 // (or viewing a published deck) can't accidentally move things; toggled with `e` or the nav-bar
 // pencil. Synced across tabs, so the presenter and audience windows agree.
 export const editMode = useLocalStorage('slidev-edit-mode', false)
+/** Next / previous step over slides marked `skip: true` (⇧S toggles; synced to other windows). */
+export const skipSkipped = useLocalStorage('slidev-skip-skipped', true)
 export const isEditorVertical = useLocalStorage('slidev-editor-vertical', false, { listenToStorageChanges: false })
 export const editorWidth = useLocalStorage('slidev-editor-width', isClient ? window.innerWidth * 0.4 : 318, { listenToStorageChanges: false })
 export const editorHeight = useLocalStorage('slidev-editor-height', isClient ? window.innerHeight * 0.4 : 300, { listenToStorageChanges: false })

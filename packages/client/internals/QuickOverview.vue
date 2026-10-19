@@ -6,6 +6,7 @@ import { showNotice } from '../composables/notice'
 import { dropPosition, reorderSlides } from '../composables/slide-reorder'
 import { createFixedClicks } from '../composables/useClicks'
 import { useNav } from '../composables/useNav'
+import { isSlideSkipped, toggleSlideSkip } from '../composables/useSlideSkip'
 import { CLICKS_MAX } from '../constants'
 import { pathPrefix } from '../env'
 import { currentOverviewPage, overviewRowCount } from '../logic/overview'
@@ -215,7 +216,10 @@ watchEffect(() => {
         >
           <div
             class="inline-block border rounded overflow-hidden bg-main hover:border-primary transition"
-            :class="(focus(idx + 1) || currentOverviewPage === idx + 1) ? 'border-primary' : 'border-main'"
+            :class="[
+              (focus(idx + 1) || currentOverviewPage === idx + 1) ? 'border-primary' : 'border-main',
+              isSlideSkipped(route.no) ? 'opacity-45' : '',
+            ]"
             @click="go(route.no)"
           >
             <SlideContainer
@@ -244,6 +248,19 @@ watchEffect(() => {
             <span v-else class="opacity-50">
               {{ idx + 1 }}
             </span>
+            <button
+              v-if="canReorder"
+              type="button"
+              class="block mt-1 p-0.5 rounded hover:bg-gray-400/20"
+              :class="isSlideSkipped(route.no) ? 'i-carbon:skip-forward-filled opacity-90' : 'i-carbon:skip-forward-outline opacity-40'"
+              :aria-label="isSlideSkipped(route.no) ? `Don't skip slide ${route.no}` : `Skip slide ${route.no} when presenting`"
+              @click.stop="toggleSlideSkip(route.no)"
+            />
+            <div
+              v-else-if="isSlideSkipped(route.no)"
+              class="mt-1 i-carbon:skip-forward-outline opacity-60"
+              :aria-label="`Slide ${route.no} is skipped`"
+            />
           </div>
         </div>
       </div>
