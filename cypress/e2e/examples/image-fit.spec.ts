@@ -9,6 +9,10 @@ const SLIDE = 34
 // after selecting, after a nudge there and back, and after a reload from the stored state.
 context('image fit is preserved by the drag editor', () => {
   function visit() {
+    // The slide at exactly 1× (980×552), on any screen: at a fractional scale, positions land on
+    // fractional device pixels, and the editor's inline geometry can rasterize the picture half a
+    // device pixel off from the CSS layout's.
+    cy.viewport(980, 552)
     cy.visit(`${BASE}/${SLIDE}`, {
       onBeforeLoad: win => win.localStorage.setItem('slidev-edit-mode', 'true'),
     }).wait(500)
@@ -42,8 +46,31 @@ context('image fit is preserved by the drag editor', () => {
     return ctx.getImageData(0, 0, img.width, img.height)
   }
 
-  // A horizontal edge of a visible box, in slide px: `y`, spanning `x0`–`x1`.
-  interface Edge { y: number, x0: number, x1: number }
+  // A visible rectangle's edges, in CSS px relative to the slide's top-left.
+  interface Rect { left: number, top: number, right: number, bottom: number }
+
+  // The rectangles whose edges show for an image before it's selected: its box (clipping a
+  // `cover` picture, or showing a `contain` box's background), and for `contain` the letterboxed
+  // picture inside it.
+  function visibleRects(id: string): Cypress.Chainable<{ rects: Rect[], slideWidth: number }> {
+    return cy.get('#slide-content').then(($slide) => {
+      const slide = $slide[0].getBoundingClientRect()
+      const img = Cypress.$(`[data-testid="${id}"]`)[0] as HTMLImageElement
+      const r = img.getBoundingClientRect()
+      const box = { left: r.left - slide.left, top: r.top - slide.top, right: r.right - slide.left, bottom: r.bottom - slide.top }
+      const rects = [box]
+      const style = getComputedStyle(img)
+      if (style.objectFit === 'contain') {
+        const scale = Math.min(r.width / img.naturalWidth, r.height / img.naturalHeight)
+        const [w, h] = [img.naturalWidth * scale, img.naturalHeight * scale]
+        const [px, py] = style.objectPosition.split(' ').map(v => Number.parseFloat(v) / 100)
+        const left = box.left + (r.width - w) * px
+        const top = box.top + (r.height - h) * py
+        rects.push({ left, top, right: left + w, bottom: top + h })
+      }
+      return { rects, slideWidth: slide.width }
+    })
+  }
 
   // Pixels (device px of the screenshot) whose color differs in any channel.
   function diff(a: string, b: string): Cypress.Chainable<{ differing: Array<[number, number]>, width: number }> {
@@ -58,41 +85,41 @@ context('image fit is preserved by the drag editor', () => {
     }), { log: false })
   }
 
-  // The screenshots must match pixel for pixel, except for anti-aliasing on `edges`: a crop's
-  // `clip-path` edge isn't snapped to device pixels the way a box's own edge is, so the one device
-  // pixel row it falls in blends differently.
-  function expectSame(before: string, after: string, label: string, edges: Edge[] = []) {
+  // The screenshots must match pixel for pixel, except on the device pixel line each visible edge
+  // falls on: the editor stores positions in whole slide px (an edge at a fractional CSS position
+  // can move by half a px), and a crop's `clip-path` edge isn't snapped to device pixels the way a
+  // box's own edge is. Which edges blend differently depends on the screen's scale (local runs and
+  // CI differ), so every visible edge is allowed.
+  function expectSame(before: string, after: string, label: string, visible: { rects: Rect[], slideWidth: number }) {
     diff(before, after).then(({ differing, width }) => {
-      const k = width / 980
-      const onEdge = ([x, y]: [number, number]) => edges.some(e =>
-        Math.abs(y + 0.5 - e.y * k) <= 1 && x >= e.x0 * k - 1 && x <= e.x1 * k + 1)
+      const k = width / visible.slideWidth
+      const near = (v: number, edge: number) => Math.abs(v + 0.5 - edge * k) <= 1.5
+      const within = (v: number, from: number, to: number) => v >= from * k - 1.5 && v <= to * k + 1.5
+      const onEdge = ([x, y]: [number, number]) => visible.rects.some(r =>
+        ((near(y, r.top) || near(y, r.bottom)) && within(x, r.left, r.right))
+        || ((near(x, r.left) || near(x, r.right)) && within(y, r.top, r.bottom)))
       const elsewhere = differing.filter(p => !onEdge(p))
-      cy.task('log', `${label}: ${differing.length} pixels differ, ${elsewhere.length} off the crop edges`)
+      cy.task('log', `${label} (×${k.toFixed(3)}): ${differing.length} pixels differ, ${elsewhere.length} off the visible edges`)
       expect(elsewhere, label).to.deep.eq([])
     })
   }
 
-  // The cover image's visible box (`.fit-cover` in the collage at (60, 110)): its top and bottom
-  // edges are where the editor's crop clips the picture.
-  const coverEdges: Edge[] = [{ y: 300, x0: 60, x1: 404 }, { y: 490, x0: 60, x1: 404 }]
-  const edgesOf: Record<string, Edge[]> = { 'fit-cover': coverEdges, 'fit-contain': [], 'fit-fill': [] }
-
   for (const id of ['fit-cover', 'fit-contain', 'fit-fill']) {
     it(`\`${id}\`: selecting, nudging there and back, and reloading leave the slide unchanged`, () => {
       visit()
-      shot(`${id}-before`).then((before) => {
+      visibleRects(id).then(visible => shot(`${id}-before`).then((before) => {
         cy.get(`[data-testid="${id}"]`).click()
         cy.get('#drag-control-container').should('have.attr', 'data-drag-id', id)
-        shot(`${id}-selected`).then(selected => expectSame(before, selected, `${id} selected`, edgesOf[id]))
+        shot(`${id}-selected`).then(selected => expectSame(before, selected, `${id} selected`, visible))
 
         cy.get('body').type('{leftArrow}')
         cy.get('body').type('{rightArrow}')
-        shot(`${id}-nudged`).then(nudged => expectSame(before, nudged, `${id} nudged ← →`, edgesOf[id]))
+        shot(`${id}-nudged`).then(nudged => expectSame(before, nudged, `${id} nudged ← →`, visible))
 
         expectEventually(`${BASE}/__slidev/state`, (body: { state: Record<string, Record<string, unknown>> }) => body.state[String(SLIDE)]?.[id] != null, true)
         visit()
-        shot(`${id}-reloaded`).then(reloaded => expectSame(before, reloaded, `${id} reloaded`, edgesOf[id]))
-      })
+        shot(`${id}-reloaded`).then(reloaded => expectSame(before, reloaded, `${id} reloaded`, visible))
+      }))
     })
   }
 
