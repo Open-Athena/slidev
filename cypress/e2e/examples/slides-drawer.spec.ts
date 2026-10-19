@@ -3,6 +3,8 @@ import { expectEventually } from '../../poll'
 const BASE = Cypress.config('baseUrl')!
 const SOURCE = 'cypress/fixtures/basic/slides.md'
 const KEY = 'slidev-slides-drawer'
+// The fixture deck's slide count; other specs' fixtures append slides, so keep this current.
+const LAST = 33
 
 const drawer = () => cy.get('nav[aria-label="Slide index"]')
 const thumb = (no: number) => cy.get(`.slidev-thumb[data-slide-no="${no}"]`)
@@ -18,7 +20,7 @@ context('slides drawer', () => {
 
     cy.get('body').type('{shift}T')
     drawer().should('exist')
-    cy.get('.slidev-thumb').should('have.length', 31)
+    cy.get('.slidev-thumb').should('have.length', LAST)
     cy.get('.slidev-thumb').then(($t) => {
       expect($t.toArray().map(t => t.getAttribute('aria-label'))).to.deep.eq([
         'Slide 1: Page 1',
@@ -52,6 +54,8 @@ context('slides drawer', () => {
         'Slide 29: Page 29',
         'Slide 30: Page 30',
         'Slide 31: Page 31',
+        'Slide 32: Page 32',
+        'Slide 33: Page 33',
       ])
       // Visible text: number + rendered title, or a placeholder for an untitled slide.
       expect([0, 1, 22].map(i => ['.slidev-thumb-no', '.slidev-thumb-title'].map(c => $t[i].querySelector(c)!.textContent!.trim()))).to.deep.eq([
@@ -148,14 +152,14 @@ context('slides drawer', () => {
     cy.get('.slidev-thumb-preview').should('have.length', 0)
     cy.get('[data-testid="drawer-mode"]').click()
     stored().should('deep.eq', { visible: true, width: 200, mode: 'live' })
-    cy.get('.slidev-thumb-preview').should('have.length', 31)
+    cy.get('.slidev-thumb-preview').should('have.length', LAST)
     // The slides whose preview is mounted must be one contiguous run, starting at `first` or
     // ending at `last`, and not all of them. (A `should` callback on the query, so it retries.)
     const expectMountedRun = (end: 'first' | 'last') => cy.get('.slidev-thumb').should(($t) => {
       const nos = $t.toArray().filter(t => t.querySelector('.slidev-slide-content')).map(t => +t.dataset.slideNo!)
-      const start = end === 'first' ? 1 : 32 - nos.length
+      const start = end === 'first' ? 1 : LAST + 1 - nos.length
       expect(nos).to.deep.eq(Array.from({ length: nos.length }, (_, i) => start + i))
-      expect(nos.length).to.be.within(4, 30)
+      expect(nos.length).to.be.within(4, LAST - 1)
     })
     // Previews are 136 px wide (200 px drawer), so ~90 px per thumb: the first slides are within
     // reach, the last ones aren't.
@@ -164,9 +168,9 @@ context('slides drawer', () => {
     cy.screenshot('slides-drawer-live', { capture: 'viewport' })
 
     // Jumping to the end scrolls the current thumb into view: now it's the other way around.
-    cy.visit(`${BASE}/31`)
+    cy.visit(`${BASE}/${LAST}`)
     waitForSlide()
-    thumb(31).should('have.attr', 'aria-current', 'true')
+    thumb(LAST).should('have.attr', 'aria-current', 'true')
     expectMountedRun('last')
   })
 

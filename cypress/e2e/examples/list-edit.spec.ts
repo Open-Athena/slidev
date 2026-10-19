@@ -25,7 +25,8 @@ context('list editing', () => {
 
   // Edit an item (double-click on its first line), caret at its start or end.
   function edit(text: string, caret: 'start' | 'end' = 'end') {
-    cy.get(`li[data-slidev-md^="${LINE[text]},"]`).dblclick(8, 8)
+    // A task item's text is in a `<label>` (its checkbox sits where (8, 8) would land).
+    cy.get(`li[data-slidev-md^="${LINE[text]},"]`).then($li => cy.wrap($li.find('> label')[0] ?? $li[0]).dblclick(8, 8))
     cy.focused().should('have.attr', 'contenteditable', 'true').type(caret === 'end' ? '{moveToEnd}' : '{moveToStart}')
   }
 
