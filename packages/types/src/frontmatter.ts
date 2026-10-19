@@ -331,10 +331,10 @@ export interface HeadmatterConfig extends TransitionOptions {
       quality?: number
     }
     /**
-     * Also emit a Cloudflare Worker (Workers + static assets) into `<outDir>/_worker/`, with a
+     * Also emit a Cloudflare Worker (Workers + static assets) into `<outDir>-worker/`, with a
      * `wrangler.jsonc` template. It stamps per-URL share tags into slide pages (including the
      * slide's declared `params`) and serves or renders the card for that exact URL.
-     * Same as `slidev build --worker`.
+     * Same as `slidev build --worker`; `slidev deploy` deploys it.
      */
     worker?: boolean | {
       /** Worker name in the generated `wrangler.jsonc`; default the slugified deck title. */
@@ -345,6 +345,35 @@ export interface HeadmatterConfig extends TransitionOptions {
        * the default card. Default: `'browser'` when `@cloudflare/puppeteer` is installed.
        */
       renderer?: 'browser' | 'none'
+      /**
+       * Put the deck behind an auth provider (same as `slidev build --auth <provider>`).
+       * `'open-athena'` gates every request with `@open-athena/auth` (install it in the deck):
+       * Google sign-in for `staffDomain` accounts, the D1 allowlist and `admins`, plus share links
+       * (`?key=`). Signed-out visitors get a sign-in page that keeps the slide's share tags but
+       * none of the deck's scripts.
+       */
+      auth?: 'open-athena'
+      /** With `auth`: email domain(s) whose accounts may view the deck. */
+      staffDomain?: string | string[]
+      /** With `auth`: addresses that always get in, as admins (they can mint share links). */
+      admins?: string[]
+      /**
+       * With `auth`: keep the `/_og/*` cards, and the share tags of slide pages, public, so link
+       * previews work for signed-out viewers and unfurlers.
+       *
+       * @default true
+       */
+      publicOg?: boolean
+      /**
+       * With `auth`: the scope a session needs to view the deck.
+       *
+       * @default 'deck'
+       */
+      scope?: string
+      /** With `auth`: the D1 database's name. Default `<worker name>-auth`. */
+      database?: string
+      /** With `auth`: the D1 database's id. Default: `slidev deploy` looks it up, creating it if missing. */
+      databaseId?: string
     }
     /**
      * With `worker`: stamp per-URL tags into every slide request, not only those from link
@@ -353,7 +382,8 @@ export interface HeadmatterConfig extends TransitionOptions {
     ogAlwaysStamp?: boolean
     /**
      * With `worker`: app paths (`/foo`, or prefix globs like `/public/*`) that an auth `gate`
-     * passed to `createWorker` must let through. `/_og/*` is always public.
+     * (`worker.auth`, or one passed to `createWorker`) lets through. `/_og/*` is public unless
+     * `worker.publicOg` is `false`.
      */
     publicPaths?: string[]
   }

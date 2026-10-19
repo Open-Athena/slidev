@@ -28,4 +28,6 @@ export interface BuildArgs extends ExportArgs {
   'without-notes'?: boolean
   /** Also emit the Cloudflare Worker deploy target (`publish.worker`). */
   'worker'?: boolean
+  /** Put the Worker deploy target behind an auth provider (`publish.worker.auth`); implies `worker`. */
+  'auth'?: string
 }

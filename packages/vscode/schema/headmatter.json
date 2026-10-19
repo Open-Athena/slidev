@@ -726,12 +726,63 @@
                       ],
                       "description": "How cards for non-default URL states are made: `'browser'` renders them with Cloudflare Browser Rendering (needs `@cloudflare/puppeteer` installed in the deck), `'none'` serves the default card. Default: `'browser'` when `@cloudflare/puppeteer` is installed.",
                       "markdownDescription": "How cards for non-default URL states are made: `'browser'` renders them with Cloudflare\nBrowser Rendering (needs `@cloudflare/puppeteer` installed in the deck), `'none'` serves\nthe default card. Default: `'browser'` when `@cloudflare/puppeteer` is installed."
+                    },
+                    "auth": {
+                      "type": "string",
+                      "const": "open-athena",
+                      "description": "Put the deck behind an auth provider (same as `slidev build --auth <provider>`). `'open-athena'` gates every request with `@open-athena/auth` (install it in the deck): Google sign-in for `staffDomain` accounts, the D1 allowlist and `admins`, plus share links (`?key=`). Signed-out visitors get a sign-in page that keeps the slide's share tags but none of the deck's scripts.",
+                      "markdownDescription": "Put the deck behind an auth provider (same as `slidev build --auth <provider>`).\n`'open-athena'` gates every request with `@open-athena/auth` (install it in the deck):\nGoogle sign-in for `staffDomain` accounts, the D1 allowlist and `admins`, plus share links\n(`?key=`). Signed-out visitors get a sign-in page that keeps the slide's share tags but\nnone of the deck's scripts."
+                    },
+                    "staffDomain": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        }
+                      ],
+                      "description": "With `auth`: email domain(s) whose accounts may view the deck.",
+                      "markdownDescription": "With `auth`: email domain(s) whose accounts may view the deck."
+                    },
+                    "admins": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      },
+                      "description": "With `auth`: addresses that always get in, as admins (they can mint share links).",
+                      "markdownDescription": "With `auth`: addresses that always get in, as admins (they can mint share links)."
+                    },
+                    "publicOg": {
+                      "type": "boolean",
+                      "description": "With `auth`: keep the `/_og/*` cards, and the share tags of slide pages, public, so link previews work for signed-out viewers and unfurlers.",
+                      "markdownDescription": "With `auth`: keep the `/_og/*` cards, and the share tags of slide pages, public, so link\npreviews work for signed-out viewers and unfurlers.",
+                      "default": true
+                    },
+                    "scope": {
+                      "type": "string",
+                      "description": "With `auth`: the scope a session needs to view the deck.",
+                      "markdownDescription": "With `auth`: the scope a session needs to view the deck.",
+                      "default": "deck"
+                    },
+                    "database": {
+                      "type": "string",
+                      "description": "With `auth`: the D1 database's name. Default `<worker name>-auth`.",
+                      "markdownDescription": "With `auth`: the D1 database's name. Default `<worker name>-auth`."
+                    },
+                    "databaseId": {
+                      "type": "string",
+                      "description": "With `auth`: the D1 database's id. Default: `slidev deploy` looks it up, creating it if missing.",
+                      "markdownDescription": "With `auth`: the D1 database's id. Default: `slidev deploy` looks it up, creating it if missing."
                     }
                   }
                 }
               ],
-              "description": "Also emit a Cloudflare Worker (Workers + static assets) into `<outDir>/_worker/`, with a `wrangler.jsonc` template. It stamps per-URL share tags into slide pages (including the slide's declared `params`) and serves or renders the card for that exact URL. Same as `slidev build --worker`.",
-              "markdownDescription": "Also emit a Cloudflare Worker (Workers + static assets) into `<outDir>/_worker/`, with a\n`wrangler.jsonc` template. It stamps per-URL share tags into slide pages (including the\nslide's declared `params`) and serves or renders the card for that exact URL.\nSame as `slidev build --worker`."
+              "description": "Also emit a Cloudflare Worker (Workers + static assets) into `<outDir>-worker/`, with a `wrangler.jsonc` template. It stamps per-URL share tags into slide pages (including the slide's declared `params`) and serves or renders the card for that exact URL. Same as `slidev build --worker`; `slidev deploy` deploys it.",
+              "markdownDescription": "Also emit a Cloudflare Worker (Workers + static assets) into `<outDir>-worker/`, with a\n`wrangler.jsonc` template. It stamps per-URL share tags into slide pages (including the\nslide's declared `params`) and serves or renders the card for that exact URL.\nSame as `slidev build --worker`; `slidev deploy` deploys it."
             },
             "ogAlwaysStamp": {
               "type": "boolean",
@@ -743,8 +794,8 @@
               "items": {
                 "type": "string"
               },
-              "description": "With `worker`: app paths (`/foo`, or prefix globs like `/public/*`) that an auth `gate` passed to `createWorker` must let through. `/_og/*` is always public.",
-              "markdownDescription": "With `worker`: app paths (`/foo`, or prefix globs like `/public/*`) that an auth `gate`\npassed to `createWorker` must let through. `/_og/*` is always public."
+              "description": "With `worker`: app paths (`/foo`, or prefix globs like `/public/*`) that an auth `gate` (`worker.auth`, or one passed to `createWorker`) lets through. `/_og/*` is public unless `worker.publicOg` is `false`.",
+              "markdownDescription": "With `worker`: app paths (`/foo`, or prefix globs like `/public/*`) that an auth `gate`\n(`worker.auth`, or one passed to `createWorker`) lets through. `/_og/*` is public unless\n`worker.publicOg` is `false`."
             }
           },
           "description": "Settings for sharing / publishing a deck. Required to emit per-slide OG shells (because OG `<meta>` URLs need to be absolute).",

@@ -8,8 +8,9 @@
 //   per-slide share tags stamped into the static shell, computed for that URL's params;
 // - `/_og/<n>-<slug>.<ext>` serves the pre-rendered card when the URL has no (non-default)
 //   params, else a card rendered on demand and kept in the Cache API;
-// - an optional `gate` hook blocks everything but `publicPaths`, and unfurlers that it blocks get
-//   a meta-only page instead of the SPA.
+// - an optional `gate` hook blocks everything but `publicPaths` (any method, any path), and
+//   unfurlers that it blocks on a slide URL get a meta-only page instead of the SPA (while
+//   `publicCards`). `createAuthWorker` (`worker/auth.ts`) is a gate built on `@open-athena/auth`.
 
 import type { ShareInfo, SlideParams } from './shared'
 import { canonicalizeParams, htmlEscape, matchesPathPattern, shareTags } from './shared'
@@ -40,8 +41,14 @@ export interface WorkerManifest {
   base: string
   /** Stamp tags for every slide request, not only unfurlers (`publish.ogAlwaysStamp`). */
   alwaysStamp: boolean
-  /** App paths reachable without passing the `gate` (always includes `/_og/*`). */
+  /** App paths reachable without passing the `gate` (includes `/_og/*` while `publicCards`). */
   publicPaths: string[]
+  /**
+   * Whether cards, and the share tags of the slides a gate blocks, are public. When `false`,
+   * `/_og/*` goes through the gate like everything else, and blocked unfurlers get the gate's
+   * response.
+   */
+  publicCards: boolean
   card: {
     size: [number, number]
     format: 'jpg' | 'png'
@@ -86,8 +93,23 @@ export interface RenderRequest {
 /** Renders a card, or returns `null` when it can't (e.g. its binding isn't configured). */
 export type CardRenderer = (req: RenderRequest) => Promise<Uint8Array | ArrayBuffer | null>
 
-/** Return a `Response` to block the request (401, a login redirect, …), or nothing to let it through. */
-export type Gate = (request: Request, env: WorkerEnv, ctx: ExecutionContext) => Response | undefined | Promise<Response | undefined>
+/** What `createWorker` knows about a request when it asks the gate. */
+export interface GateInfo {
+  /** The slide a GET / HEAD of a slide URL names. */
+  slide?: WorkerSlide
+  /** That slide's share info for the URL's (canonical) params. */
+  share?: ShareInfo
+  /** Whether the user agent looks like a link unfurler. */
+  unfurler: boolean
+  /** Vite `base`, with a trailing slash. */
+  base: string
+}
+
+/**
+ * Return a `Response` to block the request (401, a login redirect, …), or nothing to let it
+ * through. Responses to requests it lets through are marked `Cache-Control: private`.
+ */
+export type Gate = (request: Request, env: WorkerEnv, ctx: ExecutionContext, info: GateInfo) => Response | undefined | Promise<Response | undefined>
 
 export interface WorkerOptions {
   renderer?: CardRenderer
@@ -189,8 +211,11 @@ export function stampShell(response: Response, info: ShareInfo): Response {
     .transform(res)
 }
 
-/** A page with only the share tags (no SPA), for unfurlers the gate turned away. */
-export function metaOnlyShell(info: ShareInfo): Response {
+/**
+ * A page with only the share tags (no SPA), for unfurlers the gate turned away. `body` is HTML
+ * for its `<body>` (e.g. a sign-in prompt).
+ */
+export function metaOnlyShell(info: ShareInfo, body = ''): Response {
   const tags = shareTags(info)
     .filter(t => !t.ifPresent)
     .map(t => `<meta ${t.attr}="${t.key}" content="${htmlEscape(t.value)}">`)
@@ -203,7 +228,7 @@ export function metaOnlyShell(info: ShareInfo): Response {
 ${tags}
 <link rel="canonical" href="${htmlEscape(info.url)}">
 </head>
-<body></body>
+<body>${body}</body>
 </html>
 `
   return new Response(html, { headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-cache' } })
@@ -266,34 +291,57 @@ async function serveCard(
   return res
 }
 
+/**
+ * Mark a response the gate let through as private, so no shared cache between the Worker and the
+ * browser keeps a copy for someone else. Revalidation (ETags) still works.
+ */
+function privatize(response: Response): Response {
+  if (response.status === 101)
+    return response
+  const headers = new Headers(response.headers)
+  headers.set('Cache-Control', 'private, no-cache')
+  return new Response(response.body, { status: response.status, statusText: response.statusText, headers })
+}
+
 export function createWorker(manifest: WorkerManifest, options: WorkerOptions = {}) {
   const base = manifest.base.replace(/\/*$/, '/')
   const unfurlers = options.unfurlers ?? UNFURLER_RE
   const publicPaths = manifest.publicPaths
+  // Manifests from before `publicCards` existed had public cards.
+  const publicCards = manifest.publicCards !== false
   return {
     async fetch(request: Request, env: WorkerEnv, ctx: ExecutionContext): Promise<Response> {
       const url = new URL(request.url)
-      if ((request.method !== 'GET' && request.method !== 'HEAD') || !url.pathname.startsWith(base))
+      const isGet = request.method === 'GET' || request.method === 'HEAD'
+      const inBase = url.pathname.startsWith(base)
+      if (!options.gate && (!isGet || !inBase))
         return env.ASSETS.fetch(request)
-      const rel = url.pathname.slice(base.length)
-      const appPath = `/${rel}`
+      const rel = inBase ? url.pathname.slice(base.length) : undefined
+      const appPath = rel === undefined ? undefined : `/${rel}`
 
-      const card = matchCard(manifest, rel)
-      if (card)
+      const card = isGet && rel !== undefined ? matchCard(manifest, rel) : undefined
+      if (card && publicCards)
         return serveCard(request, env, ctx, manifest, card, options)
 
-      const slide = matchSlide(manifest.slides, rel)
+      const slide = isGet && rel !== undefined ? matchSlide(manifest.slides, rel) : undefined
       const isUnfurler = unfurlers.test(request.headers.get('User-Agent') ?? '')
       const info = () => shareInfoFor(manifest, slide!, canonicalizeParams(slide!.params, url.searchParams))
 
-      if (options.gate && !publicPaths.some(p => matchesPathPattern(appPath, p))) {
+      let gated = false
+      if (options.gate && !(appPath !== undefined && publicPaths.some(p => matchesPathPattern(appPath, p)))) {
         const token = env.SLIDEV_RENDER_TOKEN
         const isRender = !!token && request.headers.get(RENDER_TOKEN_HEADER) === token
-        const blocked = isRender ? undefined : await options.gate(request, env, ctx)
-        if (blocked)
-          return slide && isUnfurler ? metaOnlyShell(info()) : blocked
+        if (!isRender) {
+          const blocked = await options.gate(request, env, ctx, { slide, share: slide && info(), unfurler: isUnfurler, base })
+          if (blocked)
+            return slide && isUnfurler && publicCards ? metaOnlyShell(info()) : blocked
+          gated = true
+        }
       }
+      const done = (res: Response | Promise<Response>) => gated ? Promise.resolve(res).then(privatize) : res
 
+      if (card)
+        return done(serveCard(request, env, ctx, manifest, card, options))
       if (slide && (manifest.alwaysStamp || isUnfurler)) {
         // Unconditional: a 304 for the unstamped file says nothing about the stamped one.
         const headers = new Headers(request.headers)
@@ -301,10 +349,10 @@ export function createWorker(manifest: WorkerManifest, options: WorkerOptions = 
         headers.delete('If-Modified-Since')
         const shell = await env.ASSETS.fetch(new Request(new URL(slide.path, url.origin), { headers }))
         if (shell.ok && (shell.headers.get('Content-Type') ?? '').includes('text/html'))
-          return stampShell(shell, info())
-        return shell
+          return done(stampShell(shell, info()))
+        return done(shell)
       }
-      return env.ASSETS.fetch(request)
+      return done(env.ASSETS.fetch(request))
     },
   }
 }

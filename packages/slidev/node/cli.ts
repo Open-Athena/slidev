@@ -384,6 +384,11 @@ cli.command(
       type: 'boolean',
       describe: 'also emit a Cloudflare Worker (+ wrangler.jsonc) that stamps per-URL OG tags and renders cards on demand (needs publish.baseUrl)',
     })
+    .option('auth', {
+      type: 'string',
+      choices: ['open-athena'],
+      describe: 'put the Worker behind an auth provider (publish.worker.auth; implies --worker): open-athena = @open-athena/auth, installed in the deck',
+    })
     .option('router-mode', {
       type: 'string',
       choices: ['hash', 'history', 'memory'],

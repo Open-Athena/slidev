@@ -16,6 +16,9 @@ import { htmlEscape, normalizeSlideParams, shareTags } from '../worker/shared'
 
 export { htmlEscape }
 
+// Behind a gate, these stay public too (browsers fetch favicons without the deck's cookie).
+export const AUTH_PUBLIC_PATHS = ['/favicon.ico', '/favicon.svg', '/favicon.png', '/apple-touch-icon*']
+
 // 1200×675 = exact 16:9 — matches the slide canvas, so the OG export has no
 // pillarbox margins in a different bg color than the slide. Platforms that
 // strictly want 1.91:1 (FB/LinkedIn) center-crop ~22 px equivalent; the slide
@@ -394,7 +397,11 @@ export async function generateOgShells(
   if (!baseUrl) {
     // OG shells need absolute URLs; without `publish.baseUrl` we'd emit broken meta tags.
     // Skip silently for unconfigured decks rather than fail the build.
-    if (resolveWorkerConfig(cfg.publish?.worker, args.worker))
+    const worker = resolveWorkerConfig(cfg.publish?.worker, args.worker, args.auth)
+    // A gated deck mustn't end up deployed with a stale (or no) gate, so this one is fatal.
+    if (worker?.auth)
+      throw new Error('[Slidev] Worker: `auth` needs `publish.baseUrl` in the headmatter')
+    if (worker)
       console.warn('[Slidev] Worker: needs `publish.baseUrl` in the headmatter; not writing it')
     return
   }
@@ -616,7 +623,7 @@ export async function generateOgShells(
     }
   }
 
-  const workerCfg = resolveWorkerConfig(cfg.publish?.worker, args.worker)
+  const workerCfg = resolveWorkerConfig(cfg.publish?.worker, args.worker, args.auth)
   if (workerCfg) {
     if (cfg.routerMode === 'hash')
       console.warn('[Slidev] Worker: with `routerMode: hash`, slide URLs never reach the Worker, so only the `_og/*` cards are served per request')
@@ -624,7 +631,11 @@ export async function generateOgShells(
       baseUrl,
       appBase,
       alwaysStamp: !!cfg.publish?.ogAlwaysStamp,
-      publicPaths: Array.isArray(cfg.publish?.publicPaths) ? cfg.publish.publicPaths.map(String) : [],
+      publicPaths: [
+        ...(workerCfg.auth ? AUTH_PUBLIC_PATHS : []),
+        ...(Array.isArray(cfg.publish?.publicPaths) ? cfg.publish.publicPaths.map(String) : []),
+      ],
+      publicCards: workerCfg.publicOg,
       card: { size, format, quality },
       hasBareSlug,
     })
@@ -634,9 +645,25 @@ export async function generateOgShells(
     const renderer = workerCfg.renderer ?? (hasPuppeteer ? 'browser' : 'none')
     if (renderer === 'browser' && !hasPuppeteer)
       console.warn('[Slidev] Worker: `renderer: browser` needs `@cloudflare/puppeteer` installed in the deck, to bundle the Worker')
-    await writeWorkerBundle(outDir, manifest, { name: workerCfg.name ?? (slugify(deckTitle) || 'slidev-deck'), renderer })
+    const name = workerCfg.name ?? (slugify(deckTitle) || 'slidev-deck')
+    let auth: WorkerBundleAuth | undefined
+    if (workerCfg.auth) {
+      const authPkg = findPackageDir(workerDir, '@open-athena/auth')
+      if (!authPkg)
+        console.warn('[Slidev] Worker: `auth: open-athena` needs `@open-athena/auth` installed in the deck, to bundle the Worker and migrate its database')
+      if (!workerCfg.auth.staffDomains.length && !workerCfg.auth.admins.length)
+        console.warn('[Slidev] Worker: `auth` with neither `staffDomain` nor `admins`: only accounts on the D1 allowlist can sign in, and nobody can mint share links')
+      auth = {
+        ...workerCfg.auth,
+        title: deckTitle,
+        database: workerCfg.auth.database ?? `${name}-auth`,
+        migrationsDir: relative(workerDir, resolve(authPkg ?? resolve(workerDir, '../node_modules/@open-athena/auth'), 'migrations')).split(sep).join('/'),
+      }
+    }
+    await writeWorkerBundle(outDir, manifest, { name, renderer, auth, baseUrl })
+    const cfgPath = `${relative(process.cwd(), workerDir)}/wrangler.jsonc`
     // eslint-disable-next-line no-console
-    console.log(`[Slidev] Worker: wrote ${workerDir} (renderer: ${renderer}); run it with \`wrangler dev -c ${relative(process.cwd(), workerDir)}/wrangler.jsonc\` (or \`deploy\`)`)
+    console.log(`[Slidev] Worker: wrote ${workerDir} (renderer: ${renderer}${auth ? ', auth: open-athena' : ''}); run it with \`wrangler dev -c ${cfgPath}\`, deploy it with \`slidev deploy\``)
   }
 
   // eslint-disable-next-line no-console
@@ -720,22 +747,65 @@ export function workerDirFor(outDir: string): string {
 // The Workers runtime version the generated `wrangler.jsonc` asks for.
 const WORKER_COMPATIBILITY_DATE = '2026-07-01'
 
+/** `publish.worker.auth`: the deck behind `@open-athena/auth`. */
+export interface WorkerAuthConfig {
+  provider: 'open-athena'
+  /** Email domains whose (Google) accounts get the deck's scope. */
+  staffDomains: string[]
+  /** Addresses that always get in, with every scope (they can mint share links). */
+  admins: string[]
+  /** The scope a session needs; default `deck`. */
+  scope: string
+  /** D1 database name; default `<worker name>-auth`. */
+  database?: string
+  /** D1 database id; default looked up (or created) by `slidev deploy`. */
+  databaseId?: string
+}
+
 export interface WorkerConfig {
   /** Worker name in the generated `wrangler.jsonc`; default the slugified deck title. */
   name?: string
   /** See `publish.worker.renderer`; `undefined` = detect. */
   renderer?: 'browser' | 'none'
+  /** Cards (and blocked slides' share tags) stay public behind a gate; default `true`. */
+  publicOg: boolean
+  auth?: WorkerAuthConfig
 }
 
-/** `publish.worker` (`true` or an object), overridden by `--worker` / `--no-worker`; `null` when off. */
-export function resolveWorkerConfig(raw: unknown, flag: boolean | undefined): WorkerConfig | null {
-  if (flag === false || (!flag && !raw))
+export const AUTH_PROVIDERS = ['open-athena'] as const
+
+function stringList(v: unknown): string[] {
+  return (Array.isArray(v) ? v : typeof v === 'string' ? v.split(',') : []).map(x => String(x).trim()).filter(Boolean)
+}
+
+/**
+ * `publish.worker` (`true` or an object), overridden by `--worker` / `--no-worker`; `null` when
+ * off. `--auth <provider>` (`authFlag`) sets `auth` and turns the Worker on, unless `--no-worker`.
+ * Throws on an unknown `auth` provider rather than build an ungated deck.
+ */
+export function resolveWorkerConfig(raw: unknown, flag: boolean | undefined, authFlag?: string): WorkerConfig | null {
+  if (flag === false || (!flag && !raw && !authFlag))
     return null
   const obj = raw && typeof raw === 'object' ? raw as Record<string, unknown> : {}
-  return {
+  const provider = authFlag ?? obj.auth
+  if (provider != null && provider !== false && !(AUTH_PROVIDERS as readonly unknown[]).includes(provider))
+    throw new Error(`[Slidev] Worker: unknown \`auth\` provider ${JSON.stringify(provider)}; supported: ${AUTH_PROVIDERS.join(', ')}`)
+  const config: WorkerConfig = {
     name: typeof obj.name === 'string' ? obj.name : undefined,
     renderer: obj.renderer === 'browser' || obj.renderer === 'none' ? obj.renderer : undefined,
+    publicOg: obj.publicOg !== false,
   }
+  if (provider) {
+    config.auth = {
+      provider: provider as WorkerAuthConfig['provider'],
+      staffDomains: stringList(obj.staffDomain),
+      admins: stringList(obj.admins),
+      scope: typeof obj.scope === 'string' && obj.scope ? obj.scope : 'deck',
+      database: typeof obj.database === 'string' ? obj.database : undefined,
+      databaseId: typeof obj.databaseId === 'string' ? obj.databaseId : undefined,
+    }
+  }
+  return config
 }
 
 export function buildWorkerManifest(
@@ -745,17 +815,21 @@ export function buildWorkerManifest(
     appBase: string
     alwaysStamp: boolean
     publicPaths: string[]
+    /** Default `true`. */
+    publicCards?: boolean
     card: WorkerManifest['card']
     hasBareSlug: (p: Pick<SlideOgInfo, 'slug'>) => boolean
   },
 ): WorkerManifest {
+  const publicCards = opts.publicCards !== false
   return {
     version: 1,
     // App paths already include the Vite base, so only a path prefix in `baseUrl` stays in front.
     baseUrl: opts.baseUrl.replace(/\/+$/, ''),
     base: opts.appBase || '/',
     alwaysStamp: opts.alwaysStamp,
-    publicPaths: [...new Set(['/_og/*', ...opts.publicPaths])],
+    publicPaths: [...new Set([...(publicCards ? ['/_og/*'] : []), ...opts.publicPaths])],
+    publicCards,
     card: opts.card,
     slides: plans.map(p => ({
       no: p.no,
@@ -771,15 +845,25 @@ export function buildWorkerManifest(
   }
 }
 
-/** `_worker/deck.js`: the manifest, plus the renderer wiring. */
-export function renderWorkerDeck(manifest: WorkerManifest, renderer: 'browser' | 'none'): string {
+/** What `writeWorkerBundle` needs to put the deck behind `@open-athena/auth`. */
+export interface WorkerBundleAuth extends WorkerAuthConfig {
+  /** Shown on the sign-in page. */
+  title: string
+  database: string
+  /** `@open-athena/auth`'s `migrations/`, relative to the Worker's directory. */
+  migrationsDir: string
+}
+
+/** `_worker/deck.js`: the manifest, plus the renderer (and auth) wiring. */
+export function renderWorkerDeck(manifest: WorkerManifest, renderer: 'browser' | 'none', auth?: Pick<WorkerBundleAuth, 'provider' | 'scope' | 'title'>): string {
   const browser = renderer === 'browser'
+  const authOptions = auth && { provider: auth.provider, scope: auth.scope, title: auth.title }
   return `// Generated by \`slidev build --worker\`; rewritten on every build.
 ${browser ? `import puppeteer from '@cloudflare/puppeteer'\nimport { browserRenderer } from './runtime.js'\n` : ''}
 export const manifest = ${JSON.stringify(manifest, null, 2)}
 
 export const renderer = ${browser ? 'browserRenderer(puppeteer)' : 'undefined'}
-`
+${authOptions ? `\nexport const auth = ${JSON.stringify(authOptions, null, 2)}\n` : ''}`
 }
 
 // The entry's only export is the handler: workerd reads every named export of the main module
@@ -790,19 +874,54 @@ export const WORKER_ENTRY = `// Generated by \`slidev build --worker\`; rewritte
 //
 //   import { manifest, renderer } from './dist-worker/deck.js'
 //   import { createWorker } from './dist-worker/runtime.js'
-//   export default createWorker(manifest, { renderer, gate: (request, env, ctx) => ... })
+//   export default createWorker(manifest, { renderer, gate: (request, env, ctx, info) => ... })
 //
 // \`gate\` returns a Response (401, a login redirect, ...) for requests it blocks, or nothing.
 // \`manifest.publicPaths\` (\`/_og/*\` plus \`publish.publicPaths\`) skip it, and unfurlers it
-// blocks get a meta-only page, never the SPA.
+// blocks get a meta-only page, never the SPA. Or set \`publish.worker.auth: open-athena\`.
 import { manifest, renderer } from './deck.js'
 import { createWorker } from './runtime.js'
 
 export default createWorker(manifest, { renderer })
 `
 
+// `@open-athena/auth` comes from the deck's `node_modules` (wrangler bundles it), and is handed to
+// the runtime, which has no npm imports of its own.
+export const AUTH_WORKER_ENTRY = `// Generated by \`slidev build --worker\` (\`publish.worker.auth: open-athena\`); rewritten on
+// every build. The deck behind \`@open-athena/auth\`: see \`createAuthWorker\` in \`runtime.js\`.
+import { allowlistPolicy, authRoutes, createGate, domainPolicy, firstMatch, hasScope } from '@open-athena/auth'
+import { d1Allowlist, d1AuditQuery, d1AuditSink, d1GrantStore, d1RequestStore } from '@open-athena/auth/d1'
+import { GOOGLE, oidcCallback, oidcStart } from '@open-athena/auth/oidc'
+import { auth, manifest, renderer } from './deck.js'
+import { createAuthWorker } from './runtime.js'
+
+export default createAuthWorker(manifest, {
+  renderer,
+  auth,
+  lib: {
+    allowlistPolicy,
+    authRoutes,
+    createGate,
+    domainPolicy,
+    firstMatch,
+    hasScope,
+    d1Allowlist,
+    d1AuditQuery,
+    d1AuditSink,
+    d1GrantStore,
+    d1RequestStore,
+    GOOGLE,
+    oidcCallback,
+    oidcStart,
+  },
+})
+`
+
+/** Stands in for the D1 id in `wrangler.jsonc` until `slidev deploy` resolves it. */
+export const DATABASE_ID_PLACEHOLDER = 'set-by-slidev-deploy'
+
 /** `assetsDir` is the build output, relative to the Worker's directory. */
-export function renderWranglerConfig(name: string, renderer: 'browser' | 'none', assetsDir: string): string {
+export function renderWranglerConfig(name: string, renderer: 'browser' | 'none', assetsDir: string, auth?: WorkerBundleAuth): string {
   const browser = renderer === 'browser'
     ? `,
   // Browser Rendering, for cards of non-default URL states.
@@ -810,6 +929,28 @@ export function renderWranglerConfig(name: string, renderer: 'browser' | 'none',
     : `
   // To render cards for non-default URL states, install \`@cloudflare/puppeteer\` in the deck and
   // rebuild (or set \`publish.worker.renderer: browser\`), which adds a \`browser\` binding here.`
+  const authBlock = auth
+    ? `,
+  // \`@open-athena/auth\`'s database: share links, the allowlist, the access log.
+  // Secrets (\`wrangler secret put\`; \`.dev.vars\` for \`wrangler dev\`): SESSION_SECRET (\`slidev deploy\`
+  // sets it when it's missing); GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET for Google sign-in (without
+  // them, only share links work).
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": ${JSON.stringify(auth.database)},
+      // \`slidev deploy\` fills this in (creating the database if it's missing), unless
+      // \`publish.worker.databaseId\` sets it. \`wrangler dev\` doesn't need it.
+      "database_id": ${JSON.stringify(auth.databaseId ?? DATABASE_ID_PLACEHOLDER)},
+      "migrations_dir": ${JSON.stringify(auth.migrationsDir)}
+    }
+  ],
+  "vars": {
+    // Who gets in: accounts at these (comma-separated) domains, the D1 allowlist, and the admins.
+    "STAFF_DOMAIN": ${JSON.stringify(auth.staffDomains.join(','))},
+    "ADMIN_EMAILS": ${JSON.stringify(auth.admins.join(','))}
+  }`
+    : ''
   return `// Generated by \`slidev build --worker\`. A template: copy it next to the deck to customize it
 // (routes, more bindings), keeping \`main\` and \`assets.directory\` pointed at this directory and
 // the build output.
@@ -825,9 +966,31 @@ export function renderWranglerConfig(name: string, renderer: 'browser' | 'none',
     "run_worker_first": true,
     "html_handling": "auto-trailing-slash",
     "not_found_handling": "single-page-application"
-  }${browser}
+  }${authBlock}${browser}
 }
 `
+}
+
+/** `dist-worker/deploy.json`: what `slidev deploy` reads. */
+export interface WorkerDeployInfo {
+  version: 1
+  /** The Worker's name. */
+  name: string
+  /** `publish.baseUrl`. */
+  baseUrl: string
+  /** Vite `base`. */
+  base: string
+  /** The wrangler config, relative to the Worker's directory. */
+  config: string
+  /** The build output, relative to the Worker's directory. */
+  assets: string
+  auth?: {
+    provider: WorkerAuthConfig['provider']
+    database: string
+    databaseId?: string
+    /** `@open-athena/auth`'s `migrations/`, relative to the Worker's directory. */
+    migrationsDir: string
+  }
 }
 
 function workerRuntimePath(): string {
@@ -843,26 +1006,51 @@ function workerRuntimePath(): string {
 export async function writeWorkerBundle(
   outDir: string,
   manifest: WorkerManifest,
-  opts: { name: string, renderer: 'browser' | 'none' },
+  opts: { name: string, renderer: 'browser' | 'none', baseUrl?: string, auth?: WorkerBundleAuth },
 ): Promise<void> {
   const dir = workerDirFor(outDir)
   await fs.mkdir(dir, { recursive: true })
   await fs.copyFile(workerRuntimePath(), resolve(dir, 'runtime.js'))
-  await fs.writeFile(resolve(dir, 'deck.js'), renderWorkerDeck(manifest, opts.renderer), 'utf-8')
-  await fs.writeFile(resolve(dir, 'index.js'), WORKER_ENTRY, 'utf-8')
+  await fs.writeFile(resolve(dir, 'deck.js'), renderWorkerDeck(manifest, opts.renderer, opts.auth), 'utf-8')
+  await fs.writeFile(resolve(dir, 'index.js'), opts.auth ? AUTH_WORKER_ENTRY : WORKER_ENTRY, 'utf-8')
   const assetsDir = relative(dir, resolve(outDir)).split(sep).join('/')
-  await fs.writeFile(resolve(dir, 'wrangler.jsonc'), renderWranglerConfig(opts.name, opts.renderer, assetsDir), 'utf-8')
+  await fs.writeFile(resolve(dir, 'wrangler.jsonc'), renderWranglerConfig(opts.name, opts.renderer, assetsDir, opts.auth), 'utf-8')
+  const deploy: WorkerDeployInfo = {
+    version: 1,
+    name: opts.name,
+    baseUrl: opts.baseUrl ?? manifest.baseUrl,
+    base: manifest.base,
+    config: 'wrangler.jsonc',
+    assets: assetsDir,
+    ...(opts.auth
+      ? {
+          auth: {
+            provider: opts.auth.provider,
+            database: opts.auth.database,
+            ...(opts.auth.databaseId ? { databaseId: opts.auth.databaseId } : {}),
+            migrationsDir: opts.auth.migrationsDir,
+          },
+        }
+      : {}),
+  }
+  await fs.writeFile(resolve(dir, 'deploy.json'), `${JSON.stringify(deploy, null, 2)}\n`, 'utf-8')
 }
 
 /** Whether `name` resolves from `root` through `node_modules` dirs, as a bundler would find it. */
 function findPackage(root: string, name: string): boolean {
+  return !!findPackageDir(root, name)
+}
+
+/** The directory `name` resolves to from `root` through `node_modules` dirs (not following symlinks). */
+export function findPackageDir(root: string, name: string): string | undefined {
   let dir = resolve(root)
   while (true) {
-    if (existsSync(resolve(dir, 'node_modules', name, 'package.json')))
-      return true
+    const candidate = resolve(dir, 'node_modules', name)
+    if (existsSync(resolve(candidate, 'package.json')))
+      return candidate
     const parent = dirname(dir)
     if (parent === dir)
-      return false
+      return undefined
     dir = parent
   }
 }

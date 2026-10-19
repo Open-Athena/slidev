@@ -96,6 +96,7 @@ const manifest: WorkerManifest = {
   base: '/',
   alwaysStamp: false,
   publicPaths: ['/_og/*'],
+  publicCards: true,
   card: { size: [1200, 675], format: 'jpg', quality: 85 },
   slides,
 }
@@ -223,12 +224,49 @@ describe('resolveWorkerConfig', () => {
     ]).toEqual([
       null,
       null,
-      { name: undefined, renderer: undefined },
-      { name: undefined, renderer: undefined },
-      { name: 'talk', renderer: 'none' },
-      { name: undefined, renderer: undefined },
+      { name: undefined, renderer: undefined, publicOg: true },
+      { name: undefined, renderer: undefined, publicOg: true },
+      { name: 'talk', renderer: 'none', publicOg: true },
+      { name: undefined, renderer: undefined, publicOg: true },
       null,
     ])
+  })
+
+  it('reads `auth` and its options, from the headmatter or `--auth` (which implies `--worker`)', () => {
+    const auth = { provider: 'open-athena', staffDomains: [], admins: [], scope: 'deck', database: undefined, databaseId: undefined }
+    expect([
+      resolveWorkerConfig(undefined, undefined, 'open-athena'),
+      resolveWorkerConfig(true, undefined, 'open-athena'),
+      resolveWorkerConfig({ auth: 'open-athena' }, undefined),
+      resolveWorkerConfig({
+        auth: 'open-athena',
+        staffDomain: 'openathena.ai',
+        admins: ['a@x.test', ' b@x.test '],
+        publicOg: false,
+        scope: 'talk',
+        database: 'talk-db',
+        databaseId: 'abc',
+      }, undefined),
+      resolveWorkerConfig({ auth: 'open-athena', staffDomain: ['a.test', 'b.test'] }, undefined),
+      resolveWorkerConfig(undefined, false, 'open-athena'),
+    ]).toEqual([
+      { name: undefined, renderer: undefined, publicOg: true, auth },
+      { name: undefined, renderer: undefined, publicOg: true, auth },
+      { name: undefined, renderer: undefined, publicOg: true, auth },
+      {
+        name: undefined,
+        renderer: undefined,
+        publicOg: false,
+        auth: { provider: 'open-athena', staffDomains: ['openathena.ai'], admins: ['a@x.test', 'b@x.test'], scope: 'talk', database: 'talk-db', databaseId: 'abc' },
+      },
+      { name: undefined, renderer: undefined, publicOg: true, auth: { ...auth, staffDomains: ['a.test', 'b.test'] } },
+      null,
+    ])
+  })
+
+  it('refuses an unknown auth provider rather than build an ungated deck', () => {
+    expect(() => resolveWorkerConfig({ auth: 'okta' }, undefined)).toThrow('[Slidev] Worker: unknown `auth` provider "okta"; supported: open-athena')
+    expect(() => resolveWorkerConfig(true, undefined, 'okta')).toThrow('[Slidev] Worker: unknown `auth` provider "okta"; supported: open-athena')
   })
 })
 
@@ -246,5 +284,17 @@ describe('buildWorkerManifest', () => {
       card: manifest.card,
       hasBareSlug: p => p.slug === 'intro',
     })).toEqual({ ...manifest, publicPaths: ['/_og/*', '/about'] })
+  })
+
+  it('leaves `/_og/*` out of the public paths without `publicCards`', () => {
+    expect(buildWorkerManifest([], {
+      baseUrl: 'https://deck.example',
+      appBase: '/',
+      alwaysStamp: false,
+      publicPaths: ['/about'],
+      publicCards: false,
+      card: manifest.card,
+      hasBareSlug: () => false,
+    })).toEqual({ ...manifest, publicPaths: ['/about'], publicCards: false, slides: [] })
   })
 })
