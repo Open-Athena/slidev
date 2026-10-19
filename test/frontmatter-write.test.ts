@@ -8,6 +8,8 @@ const deck = lines(
   '---',
   'theme: open-athena',
   'title: "Deep Dive: Disky & Friends"',
+  // Longer than the 80 columns YAML serializers fold at.
+  'description: A fork of sli.dev that adds direct manipulation — click any image to drag, resize, rotate, reorder, or crop.',
   'draggableImageTags: [Scrn]',
   'publish:',
   '  baseUrl: https://disky-deep-dive.oa.dev   # `BASE_URL=… pnpm build` overrides',

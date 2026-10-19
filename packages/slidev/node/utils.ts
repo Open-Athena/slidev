@@ -5,6 +5,7 @@ import { createHash } from 'node:crypto'
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { slash } from '@antfu/utils'
+import { patchYaml } from '@slidev/parser/utils'
 import { createJiti } from 'jiti'
 import { dirname, join, relative, win32 } from 'pathe'
 import YAML from 'yaml'
@@ -91,47 +92,17 @@ export function generateCoollabsFontsUrl(options: ResolvedFontOptions) {
 /**
  * Update frontmatter patch and preserve the comments
  */
+// Patch a slide's frontmatter by editing its YAML text in place (`patchYaml`): only the changed
+// keys' text is replaced or added, so comments, quoting, flow / block style and long lines
+// elsewhere stay byte for byte. `null` deletes a key.
 export function updateFrontmatterPatch(source: SourceSlideInfo, frontmatter: Record<string, any>) {
-  let doc = source.frontmatterDoc
-  if (!doc) {
-    source.frontmatterStyle = 'frontmatter'
-    source.frontmatterDoc = doc = new YAML.Document({})
-  }
-  if (!YAML.isMap(doc.contents))
-    doc.contents = doc.createNode({})
-  for (const [key, value] of Object.entries(frontmatter)) {
+  const raw = source.frontmatterRaw ?? source.frontmatterDoc?.toString() ?? ''
+  const next = patchYaml(raw, frontmatter)
+  for (const [key, value] of Object.entries(frontmatter))
     source.frontmatter[key] = value
-    patchNode(doc, [key], value)
-  }
-}
-
-function isPlainObject(v: unknown): v is Record<string, unknown> {
-  return typeof v === 'object' && v !== null && !Array.isArray(v)
-}
-
-// Set `path` to `value` touching as little of the document as possible: unchanged values are
-// left alone, and an object patched onto an existing map updates only the keys that differ, so
-// the rest keeps its style (flow `[a]` vs block lists, quoting, comments).
-function patchNode(doc: YAML.Document, path: string[], value: unknown): void {
-  if (value == null) {
-    doc.deleteIn(path)
-    return
-  }
-  const node = doc.getIn(path, true)
-  if (isPlainObject(value) && YAML.isMap(node)) {
-    for (const [k, v] of Object.entries(value))
-      patchNode(doc, [...path, k], v)
-    for (const item of [...node.items]) {
-      const k = YAML.isScalar(item.key) ? String(item.key.value) : String(item.key)
-      if (!(k in value))
-        doc.deleteIn([...path, k])
-    }
-    return
-  }
-  const current = YAML.isNode(node) ? node.toJSON() : node
-  if (JSON.stringify(current) === JSON.stringify(value))
-    return
-  doc.setIn(path, YAML.isScalar(node) && !isPlainObject(value) && !Array.isArray(value) ? value : doc.createNode(value))
+  source.frontmatterStyle ??= 'frontmatter'
+  source.frontmatterRaw = next
+  source.frontmatterDoc = YAML.parseDocument(next)
 }
 
 export function getBodyJson(req: Connect.IncomingMessage) {

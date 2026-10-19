@@ -17,6 +17,7 @@ export interface TimesplitOutput {
 // #endregion
 
 // #region Functions
+export declare function deleteYamlIn(_: string, _: Path): string;
 export declare function linesCorrespond(_: string, _: string): boolean;
 export declare function mergeEditedLines(_: string, _: string, _: string): string;
 export declare function parseAspectRatio(_: string | number): number;
@@ -26,4 +27,6 @@ export declare function parseTimeString(_: string | number): {
   seconds: number;
   relative: boolean;
 };
+export declare function patchYaml(_: string, _: Record<string, unknown>, _?: Path): string;
+export declare function setYamlIn(_: string, _: Path, _: unknown): string;
 // #endregion

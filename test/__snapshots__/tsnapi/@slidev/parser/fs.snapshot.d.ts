@@ -30,6 +30,7 @@ export type LoadedSlidevData = Omit<SlidevData, 'config' | 'themeMeta'>;
 // #endregion
 
 // #region Functions
+export declare function deleteYamlIn(_: string, _: Path): string;
 export declare function detectFeatures(_: string): SlidevDetectedFeatures;
 export declare function extractImagesUsage(_: string, _: Record<string, any>): string[];
 export declare function getDefaultConfig(): SlidevConfig;
@@ -49,11 +50,13 @@ export declare function parseTimeString(_: string | number): {
   seconds: number;
   relative: boolean;
 };
+export declare function patchYaml(_: string, _: Record<string, unknown>, _?: Path): string;
 export declare function prettify(_: SlidevMarkdown): SlidevMarkdown;
 export declare function prettifySlide(_: SourceSlideInfo): SourceSlideInfo;
 export declare function resolveConfig(_: any, _?: SlidevThemeMeta, _?: string, _?: boolean): SlidevConfig;
 export declare function resolveFonts(_?: FontOptions): ResolvedFontOptions;
 export declare function save(_: SlidevMarkdown): Promise<string>;
+export declare function setYamlIn(_: string, _: Path, _: unknown): string;
 export declare function stringify(_: SlidevMarkdown): string;
 export declare function stringifySlide(_: SourceSlideInfo, _?: number): string;
 export declare function verifyConfig(_: SlidevConfig, _?: SlidevThemeMeta, _?: (_: string) => void): void;

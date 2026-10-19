@@ -172,8 +172,11 @@ describe('utils', () => {
         bar: 5,6,7,8
     `)
     updateFrontmatterPatch(slide3.source, { title: null })
+    // The fork edits the YAML text in place (`patchYaml`): removing `title` removes its line, and
+    // keeps the comment above it (the YAML library attached it to `title` and dropped it too).
     expectFrontmatter(slide3).toMatchInlineSnapshot(`
-      "dragPos:
+      "# comment
+      dragPos:
         bar: 5,6,7,8
       "
     `)

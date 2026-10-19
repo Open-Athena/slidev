@@ -76,8 +76,10 @@ export function prettifySlide(data: SourceSlideInfo) {
   const trimed = data.content.trim()
   data.content = trimed ? `\n${data.content.trim()}\n` : ''
   const yaml = data.frontmatterDoc?.contents ? minimalFrontmatterYaml(data.frontmatterRaw, data.frontmatterDoc) : undefined
-  if (yaml != null)
-    data.frontmatterRaw = yaml
+  // Keep `frontmatterRaw` in the parser's own shape (the text between the fences, with its final
+  // newline), so later edits diff against what's on disk.
+  if (yaml != null && yaml !== data.frontmatterRaw?.replace(/^\n+|\s+$/g, ''))
+    data.frontmatterRaw = `${yaml}\n`
   data.raw = yaml != null
     ? data.frontmatterStyle === 'yaml'
       ? `\`\`\`yaml\n${yaml}\n\`\`\`\n${data.content}`

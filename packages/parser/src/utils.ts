@@ -1,6 +1,7 @@
 import { isNumber, range, uniq } from '@antfu/utils'
 
 export * from './timesplit'
+export * from './yaml-edit'
 
 const RE_ASPECT_RATIO_SEPARATOR = /[:/x|]/
 

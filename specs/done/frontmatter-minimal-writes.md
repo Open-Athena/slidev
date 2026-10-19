@@ -43,3 +43,25 @@ TFFP: all four fail with the old whole-document serialization.
 Verified in Chrome: clicking a QR URL form in the deep-dive deck copy changed exactly `url: slug` → `url: n-slug`.
 
 **Not fixed here:** the deck's `slides.md` still has the reformatting from the earlier write (`[ Scrn ]`, the block `skipSlides`, the comment gap). That's the deck's file to restore.
+
+## Revision: in-place YAML text edits (ported from `yaya`)
+
+The line-diff approach above falls back to re-serializing the whole document when the original YAML and its re-serialization don't line up line for line. The `yaml` package folds plain strings longer than 80 columns, so the demo deck's long `description:` hit that fallback. Ryan pointed at his `yaya` ([Open-Athena/yaya], Python, `lossless-yaml` on PyPI). It can't run inside the Node dev server, but its approach ports directly: `packages/parser/src/yaml-edit.ts` (`setYamlIn` / `deleteYamlIn` / `patchYaml`, exported from `@slidev/parser/utils`).
+
+**How it edits:**
+- It parses with source ranges and splices only the changed value's text into the original:
+  - scalars keep their quote style (and a trailing comment);
+  - flow collections stay flow;
+  - block collections are re-indented in place.
+- Added keys go after their siblings at their indentation, inside `{…}` for flow maps.
+- Deleted keys remove their lines, but a comment above them is kept.
+- Unchanged values aren't touched.
+
+`updateFrontmatterPatch` now applies `patchYaml` to `frontmatterRaw` and re-parses the result. `minimalFrontmatterYaml` stays as the backstop for other document mutations.
+
+**Tests:**
+- `test/yaml-edit.test.ts` covers in-place scalar / flow / quoted replacement, adds (nested, top-level, flow map, block value, empty YAML), deletes (block, nested, flow, absent, last line), and no-op patches.
+- `test/frontmatter-write.test.ts` gains a >80-column `description:`. With it, the line-diff version fails 3 of 4 tests, and the in-place version passes all.
+- One upstream snapshot changed: deleting `title` now keeps the `# comment` above it, which the YAML library used to drop along with the key.
+
+[Open-Athena/yaya]: https://github.com/Open-Athena/yaya
