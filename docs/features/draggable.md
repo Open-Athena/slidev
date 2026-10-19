@@ -12,6 +12,10 @@ Draggable elements give you the ability to move, resize, rotate, and crop elemen
 
 Editing is off by default, so clicks during a talk (or on a published deck) can't select or move anything, and links and embeds inside draggable elements stay clickable. Press `e`, or click the <carbon-pen class="inline-icon-btn"/> pen in the navigation bar, to toggle it. Text is editable in edit mode too (see [In-App Text Editing](./text-editing)). The setting is remembered per browser and synced across tabs, so the presenter and audience windows agree. Undo / redo (`⌘Z` / `⌘⇧Z`), image insert (`i`), paste and file drop only work in edit mode.
 
+### Saving
+
+Text, column and slide-order edits are written to the slide's markdown as you make them. Positions (moves, resizes, crops, z-order) are recorded in the dev server's edit history (`.slidev/state.db`) and saved to `slides.coords.yaml`, which is what builds and exports read. With **autosave** (the default), that happens a moment after each edit. `⇧⌘S` (or the right-click menu) turns autosave off; then `⌘S` or the <carbon-save class="inline-icon-btn"/> button in the navigation bar saves, and its badge counts the edits not yet saved.
+
 ## Reordering Slides
 
 In edit mode, open the slide overview (`o`) and drag a slide onto the left or right half of another to move it there, or select a slide and press `⌘X` (move) or `⌘C` (copy), select another and press `⌘V` to put it after that one. The dev server rewrites `slides.md`, and drag positions (`slides.coords.yaml` and the edit history) follow their slide to its new number; a copy gets its original's positions. Slide 1 holds the deck's headmatter, so it stays first. Slides imported with `src:`, and slides with an imported or disabled slide between them, can't be reordered this way.

@@ -70,6 +70,8 @@ export const showHistoryDrawer = useLocalStorage('slidev-show-history-drawer', f
 export const editMode = useLocalStorage('slidev-edit-mode', false)
 /** Next / previous step over slides marked `skip: true` (⇧S toggles; synced to other windows). */
 export const skipSkipped = useLocalStorage('slidev-skip-skipped', true)
+/** Commit edits to `slides.coords.yaml` shortly after each one (dev; ⌘⇧S toggles, ⌘S commits now). */
+export const autosave = useLocalStorage('slidev-autosave', true)
 export const isEditorVertical = useLocalStorage('slidev-editor-vertical', false, { listenToStorageChanges: false })
 export const editorWidth = useLocalStorage('slidev-editor-width', isClient ? window.innerWidth * 0.4 : 318, { listenToStorageChanges: false })
 export const editorHeight = useLocalStorage('slidev-editor-height', isClient ? window.innerHeight * 0.4 : 300, { listenToStorageChanges: false })

@@ -5,7 +5,7 @@ import { onKeyDown, onKeyStroke } from '@vueuse/core'
 import { and, not } from '@vueuse/math'
 import { watch } from 'vue'
 import { deleteSelectedElements } from '../composables/useDeleteElement'
-import { redo as historyRedo, undo as historyUndo } from '../composables/useDragHistory'
+import { commitToYaml, redo as historyRedo, undo as historyUndo, toggleAutosave } from '../composables/useDragHistory'
 import { hasSelection } from '../composables/useMultiSelect'
 import { useNav } from '../composables/useNav'
 import { configs } from '../env'
@@ -34,6 +34,8 @@ export function registerShortcuts() {
   registerShortcutDisplay('copy_url', ['y'])
   registerShortcutDisplay('undo', ['⌘Z'])
   registerShortcutDisplay('redo', ['⇧⌘Z'])
+  registerShortcutDisplay('save', ['⌘S'])
+  registerShortcutDisplay('toggle_autosave', ['⇧⌘S'])
 
   strokeShortcut('f', () => fullscreen.toggle())
   strokeShortcut('h', () => showHistoryDrawer.value = !showHistoryDrawer.value)
@@ -81,6 +83,22 @@ export function registerShortcuts() {
       void historyRedo()
     else
       void historyUndo()
+  })
+
+  // ⌘S saves edits now (and replaces the browser's "Save page"); ⇧⌘S turns autosave on / off.
+  // Dev + edit mode. An edit in progress is finished (saved) first; a field with its own ⌘S
+  // (the notes editor) handles it and prevents the default.
+  onKeyDown(['s', 'S'], (e) => {
+    if (!__DEV__ || !editMode.value || (!e.metaKey && !e.ctrlKey) || e.defaultPrevented || isPrintMode.value)
+      return
+    e.preventDefault()
+    if (e.shiftKey) {
+      toggleAutosave()
+      return
+    }
+    if (isInputting.value)
+      (document.activeElement as HTMLElement | null)?.blur()
+    void commitToYaml().catch(err => console.error('[Slidev] Save failed:', err))
   })
 
   function shortcut(key: string | Ref<boolean>, fn: Fn, autoRepeat = false) {

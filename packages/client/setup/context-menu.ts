@@ -4,10 +4,11 @@ import type { ContextMenuItem } from '@slidev/types'
 import type { ComputedRef } from 'vue'
 import { computed } from 'vue'
 import setups from '#slidev/setups/context-menu'
+import { toggleAutosave } from '../composables/useDragHistory'
 import { useDrawings } from '../composables/useDrawings'
 import { useNav } from '../composables/useNav'
 import { isSlideSkipped, skippedCount, toggleSkipSkipped, toggleSlideSkip } from '../composables/useSlideSkip'
-import { editMode, fullscreen, showEditor, skipSkipped, toggleOverview } from '../state'
+import { autosave, editMode, fullscreen, showEditor, skipSkipped, toggleOverview } from '../state'
 
 // @unocss-include
 
@@ -90,6 +91,11 @@ export default () => {
         icon: skipSkipped.value ? 'i-carbon:skip-forward-outline' : 'i-carbon:skip-forward-filled',
         label: skipSkipped.value ? 'Show skipped slides' : 'Skip skipped slides',
         action: toggleSkipSkipped,
+      },
+      __DEV__ && editMode.value && {
+        icon: 'i-carbon:save',
+        label: autosave.value ? 'Turn autosave off' : 'Turn autosave on',
+        action: toggleAutosave,
       },
       __DEV__ && editMode.value && {
         icon: 'i-carbon:skip-forward-outline',

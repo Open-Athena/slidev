@@ -25,6 +25,9 @@ context('text editing', () => {
     // Generous timeouts: the first visit after the fixture server starts compiles the deck.
     cy.get('#slide-content', { timeout: 30000 }).should($s => expect($s[0].getBoundingClientRect().width).to.be.greaterThan(100))
     cy.contains('li', 'first item', { timeout: 30000 }).should('have.attr', 'data-slidev-md')
+    // The previous test's restore re-renders the slide by HMR, which can land after this visit:
+    // editing a stale render would see text that doesn't match the source (and go raw).
+    cy.contains('#slide-content p', 'text to edit').should('have.text', 'Some bold text to edit.')
   }
 
   // Double-click near the block's top-left, on its first line of text: an element's center can
@@ -78,12 +81,15 @@ context('text editing', () => {
     expectSource(original.replace('Some **bold** text to edit.\n', 'Some **bold** text to edit. Done.\n'))
   })
 
-  it('esc cancels, leaving source and DOM untouched', () => {
+  it('esc saves, and ⌘Z restores the source', () => {
     visit()
     startEditing('p', 'text to edit')
     cy.focused().should('have.attr', 'contenteditable', 'true').type('{moveToEnd} zzz{esc}')
-    cy.contains('p', 'text to edit').should('not.contain.text', 'zzz')
+    expectSource(original.replace('Some **bold** text to edit.\n', 'Some **bold** text to edit. zzz\n'))
     cy.contains('p', 'text to edit').should('not.have.attr', 'contenteditable')
+    // The source is written before the history event is recorded: wait for it.
+    cy.get('[aria-label^="Undo text edit"]').should('exist')
+    cy.get('body').type('{cmd}z')
     expectSource(original)
   })
 

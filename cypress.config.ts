@@ -1,3 +1,4 @@
+import { rmSync } from 'node:fs'
 import { defineConfig } from 'cypress'
 import { startBasePathServer, stopBasePathServer } from './cypress/basePathServer'
 
@@ -6,7 +7,7 @@ export default defineConfig({
     baseUrl: 'http://localhost:3041',
     chromeWebSecurity: false,
     specPattern: 'cypress/e2e/**/*.spec.*',
-    supportFile: false,
+    supportFile: 'cypress/support/e2e.ts',
     // The fork's deck-state plugin (better-sqlite3 hydrate + state probe + SSE) adds
     // startup latency, so the cold first page-load in CI can take >4s — the upstream
     // `basic nav` redirect assertion timed out at the 4s default. Give commands more
@@ -24,6 +25,11 @@ export default defineConfig({
         // Print to the terminal (and so the CI log); `cy.log` only shows in the runner UI.
         log(message: string) {
           console.log(message)
+          return null
+        },
+        // `cy.writeFile` can't delete; specs that create files (e.g. autosave's coords YAML) do.
+        removeFile(path: string) {
+          rmSync(path, { force: true })
           return null
         },
       })

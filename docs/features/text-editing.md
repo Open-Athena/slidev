@@ -13,7 +13,7 @@ In the dev server, slide text can be edited right on the slide. Edits are writte
 
 1. Turn on edit mode: press `e`, or click the <carbon-pen class="inline-icon-btn"/> pen in the navigation bar. Editable blocks show a dashed outline on hover.
 2. Double-click a heading, paragraph, list item or table cell.
-3. Type. `Enter` saves, `Shift+Enter` adds a line break, `Esc` cancels, and clicking elsewhere saves.
+3. Type. `Enter`, `Esc` and clicking elsewhere all save (`⌘Z` undoes), and `Shift+Enter` adds a line break.
 
 ## Rich text and raw markdown
 
@@ -38,7 +38,7 @@ Ordered lists numbered 1, 2, 3… are renumbered as items come and go (lazy `1.`
 
 ## WYSIWYG (prototype)
 
-With `wysiwyg: true` in the headmatter (or a slide's frontmatter), double-clicking edits the whole run of markdown blocks around the click (headings, paragraphs, lists, blockquotes and tables, up to any HTML or component) in a [Milkdown](https://milkdown.dev) editor, which provides lists, formatting shortcuts and markdown input rules. `⌘Enter` or clicking away saves, and `Esc` cancels.
+With `wysiwyg: true` in the headmatter (or a slide's frontmatter), double-clicking edits the whole run of markdown blocks around the click (headings, paragraphs, lists, blockquotes and tables, up to any HTML or component) in a [Milkdown](https://milkdown.dev) editor, which provides lists, formatting shortcuts and markdown input rules. `⌘Enter`, `Esc` or clicking away saves (`⌘Z` undoes).
 
 The editor only opens when its serialization of the unedited text lines up with the source line for line, and a save keeps every line you didn't change byte for byte, so the editor's normalizations (escaping `&` or `~`, padding tables) never rewrite untouched text. Otherwise, or with `⌥` held, editing falls back to the single block.
 

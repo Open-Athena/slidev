@@ -6,7 +6,8 @@ import type {
   IStateClient,
   ListEventsOptions,
 } from './state-client'
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
+import { autosave } from '../state'
 import { findLineRun } from './delete-source'
 import { hmrShared } from './hmr-shared'
 import { showNotice } from './notice'
@@ -585,6 +586,28 @@ export async function redo(): Promise<void> {
   topActiveEventId.value = result.topActiveEventId
   await fetchTopEvents()
   bumpEventStream()
+}
+
+// Autosave (dev): commit to `slides.coords.yaml` a moment after the history changes, so edits
+// don't wait on the commit button. With it off, ⌘S commits.
+// Registered once across HMR copies of this module (which share the history state).
+const AUTOSAVE_DELAY = 800
+hmrShared(import.meta.hot, 'autosave', () => {
+  let timer: ReturnType<typeof setTimeout> | undefined
+  return watch([topActiveEventId, autosave], () => {
+    clearTimeout(timer)
+    if (!__DEV__ || !autosave.value || !isDirty.value)
+      return
+    timer = setTimeout(() => {
+      if (autosave.value && isDirty.value)
+        commitToYaml().catch(err => console.error('[Slidev] Autosave failed:', err))
+    }, AUTOSAVE_DELAY)
+  })
+})
+
+export function toggleAutosave(): void {
+  autosave.value = !autosave.value
+  showNotice(autosave.value ? 'Autosave on' : 'Autosave off: ⌘S saves')
 }
 
 export async function commitToYaml(): Promise<{ committedEventId: number | null }> {

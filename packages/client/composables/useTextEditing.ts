@@ -24,7 +24,7 @@ import { closeWysiwyg, isWysiwygEditing, openWysiwyg } from './useWysiwyg'
 // table cell to edit it:
 // - in place, as rich text (⌘B / ⌘I), when its markdown round-trips through the rendered DOM;
 // - otherwise, or with ⌥ held, as raw markdown in a box over the block.
-// Enter saves (Shift+Enter: new line), Esc cancels, clicking away saves. The edit is written to
+// Enter saves (Shift+Enter: new line), and so do Esc and clicking away (⌘Z undoes). The edit is written to
 // the block's source lines (from the `data-slidev-md` attributes `node/syntax/source-lines.ts`
 // adds) and recorded as a `text` history event, so ⌘Z undoes it.
 // In a list item, Enter splits it (or ends the list, on an empty item), Backspace at its start
@@ -104,22 +104,6 @@ async function save(t: Target, content: string, newText: string): Promise<void> 
   if (!res.ok)
     throw new Error(`Failed to patch slide ${t.slideNo} (${res.status})`)
   await pushTextEdit(t.slideNo, { lineRange: [start, end], lines: before, after })
-}
-
-// Decide what a blur means. Clicking elsewhere, moving focus to another element, or leaving the
-// window keeps the edit. A bare programmatic blur is an Esc from a keyboard extension (Vimium
-// blurs the focused field on Esc before the page ever sees the key), so it cancels.
-function watchBlurIntent(editor: HTMLElement): { keepOnBlur: (ev: FocusEvent) => boolean, stop: () => void } {
-  let pointerDownOutside = false
-  const onPointerdown = (ev: PointerEvent) => {
-    if (!editor.contains(ev.target as Node))
-      pointerDownOutside = true
-  }
-  document.addEventListener('pointerdown', onPointerdown, true)
-  return {
-    keepOnBlur: ev => pointerDownOutside || ev.relatedTarget != null || !document.hasFocus(),
-    stop: () => document.removeEventListener('pointerdown', onPointerdown, true),
-  }
 }
 
 function flashError(el: HTMLElement) {
@@ -319,11 +303,7 @@ function startRich(t: Target, content: string, sourceText: string, caret?: numbe
         return
       }
     }
-    if (ev.key === 'Escape') {
-      ev.preventDefault()
-      void finish(false)
-    }
-    else if (ev.key === 'Enter' && !ev.shiftKey) {
+    if (ev.key === 'Escape' || (ev.key === 'Enter' && !ev.shiftKey)) {
       ev.preventDefault()
       void finish(true)
     }
@@ -333,9 +313,10 @@ function startRich(t: Target, content: string, sourceText: string, caret?: numbe
     ev.preventDefault()
     document.execCommand('insertText', false, ev.clipboardData?.getData('text/plain') ?? '')
   }
-  const blurIntent = watchBlurIntent(el)
-  function onBlur(ev: FocusEvent) {
-    void finish(blurIntent.keepOnBlur(ev))
+  // Any blur saves: clicking away, another window, or an Esc a keyboard extension (Vimium)
+  // turns into a bare blur before the page sees the key.
+  function onBlur() {
+    void finish(true)
   }
   el.addEventListener('keydown', onKeydown)
   el.addEventListener('paste', onPaste)
@@ -350,7 +331,6 @@ function startRich(t: Target, content: string, sourceText: string, caret?: numbe
     el.removeEventListener('keydown', onKeydown)
     el.removeEventListener('paste', onPaste)
     el.removeEventListener('blur', onBlur)
-    blurIntent.stop()
     return true
   }
   function release() {
@@ -428,21 +408,19 @@ function startRaw(t: Target, content: string, sourceText: string) {
   el.dataset.slidevTextEditing = ''
 
   function onKeydown(ev: KeyboardEvent) {
+    // ⌘S reaches the global handler, which finishes (saves) this edit and commits.
+    if ((ev.metaKey || ev.ctrlKey) && ev.key.toLowerCase() === 's')
+      return
     ev.stopPropagation()
     if (ev.isComposing)
       return
-    if (ev.key === 'Escape') {
-      ev.preventDefault()
-      void finish(false)
-    }
-    else if (ev.key === 'Enter' && (!ev.shiftKey || singleLine)) {
+    if (ev.key === 'Escape' || (ev.key === 'Enter' && (!ev.shiftKey || singleLine))) {
       ev.preventDefault()
       void finish(true)
     }
   }
-  const blurIntent = watchBlurIntent(box)
-  function onBlur(ev: FocusEvent) {
-    void finish(blurIntent.keepOnBlur(ev))
+  function onBlur() {
+    void finish(true)
   }
   box.addEventListener('keydown', onKeydown)
   box.addEventListener('blur', onBlur)
@@ -454,7 +432,6 @@ function startRaw(t: Target, content: string, sourceText: string) {
     done = true
     session = null
     box.removeEventListener('blur', onBlur)
-    blurIntent.stop()
     const newText = box.value
     box.remove()
     delete el.dataset.slidevTextEditing

@@ -11,8 +11,8 @@ import { linesCorrespond, mergeEdited } from './wysiwyg-merge'
 // serialization of the unedited region lines up with the source line for line, and a save keeps
 // every line the user didn't change byte for byte (`wysiwyg-merge.ts`), so the serializer's
 // normalizations (escapes, table padding, …) can't rewrite text nobody touched. Otherwise the
-// caller falls back to per-block editing. ⌘Enter or clicking
-// away saves, Esc cancels; one `text` history event per session.
+// caller falls back to per-block editing. ⌘Enter, Esc or clicking
+// away saves (⌘Z undoes); one `text` history event per session.
 
 /** Mirrors `SOURCE_BLOCK_ATTR` in `node/syntax/source-lines.ts`. */
 export const BLOCK_ATTR = 'data-slidev-block'
@@ -153,12 +153,7 @@ export async function openWysiwyg(target: HTMLElement, slideNo: number, content:
   container.querySelector<HTMLElement>('[contenteditable]')?.focus()
 
   function onKeydown(ev: KeyboardEvent) {
-    if (ev.key === 'Escape') {
-      ev.preventDefault()
-      ev.stopPropagation()
-      void finish(false)
-    }
-    else if (ev.key === 'Enter' && (ev.metaKey || ev.ctrlKey)) {
+    if (ev.key === 'Escape' || (ev.key === 'Enter' && (ev.metaKey || ev.ctrlKey))) {
       ev.preventDefault()
       ev.stopPropagation()
       void finish(true)
@@ -168,7 +163,17 @@ export async function openWysiwyg(target: HTMLElement, slideNo: number, content:
     if (!container.contains(ev.target as Node))
       void finish(true)
   }
+  // Focus leaving the editor saves too: that's how an Esc arrives from a keyboard extension
+  // (Vimium blurs the field before the page sees the key). Not while the window is in the
+  // background, where focus stays put.
+  function onFocusout() {
+    setTimeout(() => {
+      if (document.hasFocus() && !container.contains(document.activeElement))
+        void finish(true)
+    })
+  }
   container.addEventListener('keydown', onKeydown, true)
+  container.addEventListener('focusout', onFocusout)
   document.addEventListener('pointerdown', onPointerdown, true)
 
   let done = false
@@ -178,6 +183,7 @@ export async function openWysiwyg(target: HTMLElement, slideNo: number, content:
     done = true
     active = null
     container.removeEventListener('keydown', onKeydown, true)
+    container.removeEventListener('focusout', onFocusout)
     document.removeEventListener('pointerdown', onPointerdown, true)
     const edited = commit ? mergeEdited(source, normalized, await markdownOf(editor)) : source
     await editor.destroy()

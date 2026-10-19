@@ -8,7 +8,7 @@ import { slidesDrawer, toggleSlidesDrawer } from '../composables/useSlidesDrawer
 import { isSlideSkipped, skippedCount, toggleSkipSkipped, toggleSlideSkip } from '../composables/useSlideSkip'
 import { configs } from '../env'
 import { isColorSchemaConfigured, isDark, toggleDark } from '../logic/dark'
-import { activeElement, breakpoints, cursorStyle, editMode, fullscreen, hasViewerCssFilter, presenterLayout, showEditor, showHistoryDrawer, showInfoDialog, showPresenterCursor, skipSkipped, toggleOverview, togglePresenterCursor, togglePresenterLayout } from '../state'
+import { activeElement, autosave, breakpoints, cursorStyle, editMode, fullscreen, hasViewerCssFilter, presenterLayout, showEditor, showHistoryDrawer, showInfoDialog, showPresenterCursor, skipSkipped, toggleOverview, togglePresenterCursor, togglePresenterLayout } from '../state'
 import { downloadPDF } from '../utils'
 import IconButton from './IconButton.vue'
 import MenuButton from './MenuButton.vue'
@@ -66,6 +66,8 @@ const redoTitle = computed(() => historyCanRedo.value
 const pendingCount = computed(() => Math.max(0, (topActiveEventId.value ?? 0) - (lastYamlCommitEventId.value ?? 0)))
 
 const commitTitle = computed(() => {
+  if (autosave.value)
+    return historyIsDirty.value ? 'Autosave: saving to slides.coords.yaml…' : 'Autosave on: edits are saved to slides.coords.yaml as you make them'
   if (!historyIsDirty.value)
     return `slides.coords.yaml is up to date${lastYamlCommitEventId.value ? ` (event ${lastYamlCommitEventId.value})` : ''}`
   const n = pendingCount.value
@@ -136,7 +138,7 @@ if (__SLIDEV_FEATURE_RECORD__)
         <div class="i-carbon:pen" />
       </IconButton>
       <template v-if="editMode">
-        <IconButton :class="{ disabled: !historyCanUndo }" :title="undoTitle" shortcut="undo" @click="historyUndo()">
+        <IconButton :class="{ disabled: !historyCanUndo }" :title="undoTitle" shortcut="undo" data-testid="undo" @click="historyUndo()">
           <div class="i-carbon:undo" />
         </IconButton>
         <IconButton :class="{ disabled: !historyCanRedo }" :title="redoTitle" shortcut="redo" @click="historyRedo()">
@@ -146,6 +148,7 @@ if (__SLIDEV_FEATURE_RECORD__)
           v-if="__DEV__ && __SLIDEV_FEATURE_EDITOR__"
           :class="{ disabled: !historyIsDirty }"
           :title="commitTitle"
+          shortcut="save"
           class="relative"
           @click="onCommitClick"
         >

@@ -36,8 +36,9 @@ cleanup() {
 }
 trap cleanup EXIT
 
-# 1. Clear persistent fixture deck state so positions / z-order don't leak across runs.
-rm -rf cypress/fixtures/basic/.slidev
+# 1. Clear persistent fixture deck state so positions / z-order don't leak across runs (the state
+#    DB, and the `slides.coords.yaml` a save / autosave writes; neither is tracked).
+rm -rf cypress/fixtures/basic/.slidev cypress/fixtures/basic/slides.coords.yaml
 
 # 2. Free the port + (re)start the fixture server detached.
 cleanup

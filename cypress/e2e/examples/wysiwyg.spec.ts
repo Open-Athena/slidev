@@ -44,15 +44,23 @@ context('WYSIWYG editing', () => {
     expectSource(original)
   })
 
-  it('a paragraph after an HTML block is its own region; Esc cancels', () => {
+  it('a paragraph after an HTML block is its own region; Esc saves, ⌘Z restores', () => {
     visit()
-    cy.contains('.slidev-page-30 p', 'After the HTML.').dblclick(8, 8)
-    cy.get('.slidev-wysiwyg .ProseMirror', { timeout: 20000 }).should(($pm) => {
-      expect($pm.find('h1, p, li').toArray().map(e => e.textContent)).to.deep.eq(['After the HTML.'])
+    // The undo button's label names the latest edit; the save below must change it.
+    cy.get('[data-testid="undo"]').invoke('attr', 'aria-label').then((before) => {
+      cy.contains('.slidev-page-30 p', 'After the HTML.').dblclick(8, 8)
+      cy.get('.slidev-wysiwyg .ProseMirror', { timeout: 20000 }).should(($pm) => {
+        expect($pm.find('h1, p, li').toArray().map(e => e.textContent)).to.deep.eq(['After the HTML.'])
+      })
+      cy.get('.slidev-wysiwyg .ProseMirror').type('{moveToEnd} zzz{esc}')
+      cy.get('.slidev-wysiwyg').should('not.exist')
+      // (The slide's content has no trailing newline: this is its last line.)
+      expectSource(original.replace(/After the HTML\.$/, 'After the HTML. zzz'))
+      cy.contains('.slidev-page-30 p', 'After the HTML. zzz').should('be.visible')
+      // The source is written before the history event is recorded: wait for it.
+      cy.get('[data-testid="undo"]').should('not.have.attr', 'aria-label', before)
+      cy.get('body').type('{cmd}z')
+      expectSource(original)
     })
-    cy.get('.slidev-wysiwyg .ProseMirror').type('{moveToEnd} zzz{esc}')
-    cy.get('.slidev-wysiwyg').should('not.exist')
-    cy.contains('.slidev-page-30 p', 'After the HTML.').should('be.visible')
-    expectSource(original)
   })
 })
