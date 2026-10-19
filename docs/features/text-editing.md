@@ -36,11 +36,11 @@ In a list item, the editing keys work on the list's structure. Each key rewrites
 
 Ordered lists numbered 1, 2, 3… are renumbered as items come and go (lazy `1.` `1.` numbering is left as is), and new task items start unchecked.
 
-## WYSIWYG (prototype)
+## Rich-text boxes (WYSIWYG)
 
-With `wysiwyg: true` in the headmatter (or a slide's frontmatter), double-clicking edits the whole run of markdown blocks around the click (headings, paragraphs, lists, blockquotes and tables, up to any HTML or component) in a [Milkdown](https://milkdown.dev) editor, which provides lists, formatting shortcuts and markdown input rules. `⌘Enter`, `Esc` or clicking away saves (`⌘Z` undoes).
+By default, double-clicking edits the whole run of markdown blocks around the click (headings, paragraphs, lists, blockquotes and tables, up to any HTML or component) in a [Milkdown](https://milkdown.dev) editor, which provides lists, formatting shortcuts and markdown input rules. `⌘Enter`, `Esc` or clicking away saves (`⌘Z` undoes).
 
-The editor only opens when its serialization of the unedited text lines up with the source line for line, and a save keeps every line you didn't change byte for byte, so the editor's normalizations (escaping `&` or `~`, padding tables) never rewrite untouched text. Otherwise, or with `⌥` held, editing falls back to the single block.
+The editor only opens when its serialization of the unedited text lines up with the source line for line, and a save keeps every line you didn't change byte for byte, so the editor's normalizations (escaping `&` or `~`, padding tables) never rewrite untouched text. Otherwise, or with `⌥` held, editing falls back to the single block. Set `wysiwyg: false` in the headmatter (or a slide's frontmatter) to always edit one block at a time.
 
 ## Undo
 

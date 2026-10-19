@@ -900,9 +900,9 @@
         },
         "wysiwyg": {
           "type": "boolean",
-          "description": "Prototype: in edit mode, double-clicking a run of plain markdown blocks (paragraphs, headings, lists, blockquotes, tables) edits them together in a WYSIWYG (Milkdown) editor, when the run round-trips through the editor byte for byte. Dev only.",
-          "markdownDescription": "Prototype: in edit mode, double-clicking a run of plain markdown blocks (paragraphs, headings,\nlists, blockquotes, tables) edits them together in a WYSIWYG (Milkdown) editor, when the run\nround-trips through the editor byte for byte. Dev only.",
-          "default": false
+          "description": "In edit mode, double-clicking a run of plain markdown blocks (paragraphs, headings, lists, blockquotes, tables) edits them together as one rich-text box (Milkdown), when the run round-trips through the editor line for line; otherwise, with ⌥, or with `false`, one block at a time. Dev only.",
+          "markdownDescription": "In edit mode, double-clicking a run of plain markdown blocks (paragraphs, headings, lists,\nblockquotes, tables) edits them together as one rich-text box (Milkdown), when the run\nround-trips through the editor line for line; otherwise, with ⌥, or with `false`, one block at\na time. Dev only.",
+          "default": true
         },
         "defaults": {
           "$ref": "#/definitions/Frontmatter",

@@ -471,11 +471,12 @@ export interface HeadmatterConfig extends TransitionOptions {
    */
   draggableComponents?: boolean | string[]
   /**
-   * Prototype: in edit mode, double-clicking a run of plain markdown blocks (paragraphs, headings,
-   * lists, blockquotes, tables) edits them together in a WYSIWYG (Milkdown) editor, when the run
-   * round-trips through the editor byte for byte. Dev only.
+   * In edit mode, double-clicking a run of plain markdown blocks (paragraphs, headings, lists,
+   * blockquotes, tables) edits them together as one rich-text box (Milkdown), when the run
+   * round-trips through the editor line for line; otherwise, with ⌥, or with `false`, one block at
+   * a time. Dev only.
    *
-   * @default false
+   * @default true
    */
   wysiwyg?: boolean
 }

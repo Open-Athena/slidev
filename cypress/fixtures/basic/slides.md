@@ -4,6 +4,8 @@
 # fixture deck to the `n` form.
 publish:
   canonicalForm: n
+# The text-editing specs exercise per-block editing; slide 30 turns WYSIWYG back on.
+wysiwyg: false
 ---
 
 # Page 1
