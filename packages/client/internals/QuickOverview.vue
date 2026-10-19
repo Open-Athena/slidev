@@ -1,7 +1,9 @@
 <script setup lang="ts">
+import type { ReorderOp } from '../composables/slide-reorder'
 import { useEventListener } from '@vueuse/core'
 import { computed, ref, watchEffect } from 'vue'
 import { showNotice } from '../composables/notice'
+import { dropPosition, reorderSlides } from '../composables/slide-reorder'
 import { createFixedClicks } from '../composables/useClicks'
 import { useNav } from '../composables/useNav'
 import { CLICKS_MAX } from '../constants'
@@ -109,25 +111,9 @@ const dragFrom = ref<number | null>(null)
 const dropAt = ref<{ no: number, after: boolean } | null>(null)
 const clipboard = ref<{ no: number, cut: boolean } | null>(null)
 
-async function reorder(op: 'move' | 'duplicate', from: number, to: number) {
-  const res = await fetch('/__slidev/slides/reorder', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
-    body: JSON.stringify({ op, from, to }),
-  })
-  if (!res.ok) {
-    const { error } = await res.json().catch(() => ({ error: res.statusText })) as { error: string }
-    showNotice(`Couldn't ${op === 'move' ? 'move' : 'copy'} slide ${from}: ${error}`)
-    return
-  }
-  currentOverviewPage.value = to
-  showNotice(op === 'move' ? `Moved slide ${from} to ${to}` : `Copied slide ${from} to ${to}`)
-}
-
-// The position a slide dropped before / after slide `no` ends up at.
-function dropPosition(from: number, no: number, after: boolean): number {
-  const at = after ? no + 1 : no
-  return Math.max(2, from < at ? at - 1 : at)
+async function reorder(op: ReorderOp, from: number, to: number) {
+  if (await reorderSlides(op, from, to))
+    currentOverviewPage.value = to
 }
 
 function onDragstart(ev: DragEvent, no: number) {
