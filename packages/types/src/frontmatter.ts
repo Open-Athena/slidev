@@ -330,6 +330,32 @@ export interface HeadmatterConfig extends TransitionOptions {
       /** JPG quality 1-100; ignored for PNG. Default 85. */
       quality?: number
     }
+    /**
+     * Also emit a Cloudflare Worker (Workers + static assets) into `<outDir>/_worker/`, with a
+     * `wrangler.jsonc` template. It stamps per-URL share tags into slide pages (including the
+     * slide's declared `params`) and serves or renders the card for that exact URL.
+     * Same as `slidev build --worker`.
+     */
+    worker?: boolean | {
+      /** Worker name in the generated `wrangler.jsonc`; default the slugified deck title. */
+      name?: string
+      /**
+       * How cards for non-default URL states are made: `'browser'` renders them with Cloudflare
+       * Browser Rendering (needs `@cloudflare/puppeteer` installed in the deck), `'none'` serves
+       * the default card. Default: `'browser'` when `@cloudflare/puppeteer` is installed.
+       */
+      renderer?: 'browser' | 'none'
+    }
+    /**
+     * With `worker`: stamp per-URL tags into every slide request, not only those from link
+     * unfurlers (matched by user agent).
+     */
+    ogAlwaysStamp?: boolean
+    /**
+     * With `worker`: app paths (`/foo`, or prefix globs like `/public/*`) that an auth `gate`
+     * passed to `createWorker` must let through. `/_og/*` is always public.
+     */
+    publicPaths?: string[]
   }
   /**
    * Auto replace words with `<ruby>` tags in notes
@@ -513,6 +539,19 @@ export interface Frontmatter extends TransitionOptions {
    * and image.
    */
   skipThread?: boolean
+  /**
+   * URL params this slide reads (e.g. a view-mode toggle), so the Worker deploy target
+   * (`publish.worker`) can give `/<n>?m=heatmap` its own share card. The Worker canonicalizes
+   * them: unknown params and values are dropped, defaults are dropped, the rest sorted.
+   *
+   * @example
+   * ```yaml
+   * params:
+   *   m: { values: [bubbles, heatmap, pm], default: bubbles }
+   *   sort: [name, size] # shorthand: the first value is the default
+   * ```
+   */
+  params?: Record<string, string[] | { values: string[], default?: string }>
   /**
    * Custom zoom level for the slide
    * @default 1

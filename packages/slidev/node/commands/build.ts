@@ -145,14 +145,16 @@ export async function build(
   // routes to the right page (or to its own `404.vue` for genuinely-bad
   // paths — see `/:no(\\d+)` constraint in `setup/routes.ts`).
   await fs.copyFile(resolve(outDir, 'index.html'), resolve(outDir, '404.html'))
-  // _redirects for SPA
+  // _redirects for SPA. Not for the Worker deploy target, whose `not_found_handling` does it:
+  // Workers assets read `_redirects` too, and reject this catch-all as a loop.
+  const { generateOgShells, resolveWorkerConfig } = await import('./og')
+  const worker = options.data.config.publish?.baseUrl && resolveWorkerConfig(options.data.config.publish?.worker, args.worker)
   const redirectsPath = resolve(outDir, '_redirects')
-  if (!existsSync(redirectsPath))
+  if (!worker && !existsSync(redirectsPath))
     await fs.writeFile(redirectsPath, `${config.base}*    ${config.base}index.html   200\n`, 'utf-8')
 
   // Per-slide OG shells + images. Skipped when `publish.baseUrl` isn't configured.
   // See specs/bluesky-slide-threads.md (Phase 1).
-  const { generateOgShells } = await import('./og')
   await generateOgShells(options, args, outDir, config)
 
   if ([true, 'true', 'auto'].includes(options.data.config.download)) {

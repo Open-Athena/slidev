@@ -1,13 +1,20 @@
 import type { BuildArgs, ResolvedSlidevOptions, SlideInfo } from '@slidev/types'
 import type { ResolvedConfig } from 'vite'
+import type { WorkerManifest } from '../worker/runtime'
+import type { SlideParams } from '../worker/shared'
 import type { OgManifest } from './publish'
 import { createHash } from 'node:crypto'
 import { existsSync } from 'node:fs'
 import fs from 'node:fs/promises'
 import http from 'node:http'
-import { resolve } from 'node:path'
+import { dirname, relative, resolve, sep } from 'node:path'
+import process from 'node:process'
+import { fileURLToPath } from 'node:url'
 import connect from 'connect'
 import sirv from 'sirv'
+import { htmlEscape, normalizeSlideParams, shareTags } from '../worker/shared'
+
+export { htmlEscape }
 
 // 1200×675 = exact 16:9 — matches the slide canvas, so the OG export has no
 // pillarbox margins in a different bg color than the slide. Platforms that
@@ -38,6 +45,12 @@ interface SlideOgInfo {
   caption?: string
   /** Frontmatter `skipThread`: leave the slide out of published threads. */
   skipThread?: boolean
+  /** App path (including the Vite `base`) of the canonical slide route. */
+  appPath: string
+  /** App path of the OG image. */
+  imageAppPath: string
+  /** URL params the slide declares in frontmatter (`params`), for the Worker deploy target. */
+  params: SlideParams
 }
 
 const SLUG_PUNCT_RE = /[^\w\s-]+/g
@@ -137,15 +150,6 @@ function pickDescription(slide: SlideInfo): string {
   return firstParagraph(slide.content)
 }
 
-export function htmlEscape(s: string): string {
-  return s
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;')
-}
-
 // Join two URL-ish parts so there's exactly one slash between them (and trailing slashes on
 // the base don't cause `//` doubling).
 export function joinUrl(base: string, path: string): string {
@@ -190,7 +194,8 @@ function planSlide(
   // `<link rel=canonical>` / `og:url`.
   const appPath = joinUrl(appBase || '/', canonicalPathFor(no, slug, canonicalForm))
   const canonical = joinUrl(baseUrl, appPath)
-  const imageUrl = joinUrl(baseUrl, joinUrl(appBase || '/', `_og/${imageFilename}`))
+  const imageAppPath = joinUrl(appBase || '/', `_og/${imageFilename}`)
+  const imageUrl = joinUrl(baseUrl, imageAppPath)
   // Cache key includes the slide source + render-relevant config (size/format) — captured by
   // `renderKey` — so editing a slide invalidates *that* slide and resizing the image
   // invalidates *all* of them.
@@ -202,7 +207,10 @@ function planSlide(
     .update(renderKey)
     .digest('hex')
     .slice(0, 12)
-  const info: SlideOgInfo = { no, slug, title, description, canonical, imageUrl, overrideSrc, imageFilename, htmlFilename, contentHash: slideHash }
+  const { params, warnings } = normalizeSlideParams(fm.params)
+  for (const w of warnings)
+    console.warn(`[Slidev] OG: slide ${no} ${w}; ignoring it`)
+  const info: SlideOgInfo = { no, slug, title, description, canonical, imageUrl, overrideSrc, imageFilename, htmlFilename, contentHash: slideHash, appPath, imageAppPath, params }
   if (typeof fm.caption === 'string' && fm.caption.trim())
     info.caption = fm.caption.trim()
   if (fm.skipThread)
@@ -386,6 +394,8 @@ export async function generateOgShells(
   if (!baseUrl) {
     // OG shells need absolute URLs; without `publish.baseUrl` we'd emit broken meta tags.
     // Skip silently for unconfigured decks rather than fail the build.
+    if (resolveWorkerConfig(cfg.publish?.worker, args.worker))
+      console.warn('[Slidev] Worker: needs `publish.baseUrl` in the headmatter; not writing it')
     return
   }
   const ogCfg = cfg.publish?.ogImage ?? {}
@@ -577,19 +587,19 @@ export async function generateOgShells(
   // pretty-URL routing GH Pages does for `*.html` files). Browsers see the SPA
   // bootstrap exactly as they would from `index.html` / `404.html`.
   const shellPath = resolve(outDir, 'index.html')
+  // Find slugs that would collide with each other, or with files we already emit
+  // (`index`, `404`). Those slides skip the bare-slug alias; their canonical
+  // `/<n>-<slug>` still works.
+  const slugCounts = new Map<string, number>()
+  for (const p of plans) {
+    if (p.slug)
+      slugCounts.set(p.slug, (slugCounts.get(p.slug) ?? 0) + 1)
+  }
+  const reservedSlugs = new Set(['index', '404'])
+  const hasBareSlug = (p: Pick<SlideOgInfo, 'slug'>) => !!p.slug && !reservedSlugs.has(p.slug) && slugCounts.get(p.slug) === 1
   let bareSlugCount = 0
   if (existsSync(shellPath)) {
     const baseShell = await fs.readFile(shellPath, 'utf-8')
-
-    // Find slugs that would collide with each other, or with files we already emit
-    // (`index`, `404`). Those slides skip the bare-slug alias; their canonical
-    // `/<n>-<slug>` still works.
-    const slugCounts = new Map<string, number>()
-    for (const p of plans) {
-      if (p.slug)
-        slugCounts.set(p.slug, (slugCounts.get(p.slug) ?? 0) + 1)
-    }
-    const reservedSlugs = new Set(['index', '404'])
 
     for (const p of plans) {
       const rendered = injectPerSlideMeta(baseShell, p)
@@ -599,11 +609,34 @@ export async function generateOgShells(
       if (p.slug)
         await fs.writeFile(resolve(outDir, `${p.no}-${p.slug}.html`), rendered, 'utf-8')
       // Emit bare `<slug>.html` only when slug is unique + not reserved.
-      if (p.slug && !reservedSlugs.has(p.slug) && slugCounts.get(p.slug) === 1) {
+      if (hasBareSlug(p)) {
         await fs.writeFile(resolve(outDir, `${p.slug}.html`), rendered, 'utf-8')
         bareSlugCount++
       }
     }
+  }
+
+  const workerCfg = resolveWorkerConfig(cfg.publish?.worker, args.worker)
+  if (workerCfg) {
+    if (cfg.routerMode === 'hash')
+      console.warn('[Slidev] Worker: with `routerMode: hash`, slide URLs never reach the Worker, so only the `_og/*` cards are served per request')
+    const manifest = buildWorkerManifest(plans, {
+      baseUrl,
+      appBase,
+      alwaysStamp: !!cfg.publish?.ogAlwaysStamp,
+      publicPaths: Array.isArray(cfg.publish?.publicPaths) ? cfg.publish.publicPaths.map(String) : [],
+      card: { size, format, quality },
+      hasBareSlug,
+    })
+    const workerDir = workerDirFor(outDir)
+    // Resolved the way wrangler's bundler will, from the Worker's directory.
+    const hasPuppeteer = findPackage(workerDir, '@cloudflare/puppeteer')
+    const renderer = workerCfg.renderer ?? (hasPuppeteer ? 'browser' : 'none')
+    if (renderer === 'browser' && !hasPuppeteer)
+      console.warn('[Slidev] Worker: `renderer: browser` needs `@cloudflare/puppeteer` installed in the deck, to bundle the Worker')
+    await writeWorkerBundle(outDir, manifest, { name: workerCfg.name ?? (slugify(deckTitle) || 'slidev-deck'), renderer })
+    // eslint-disable-next-line no-console
+    console.log(`[Slidev] Worker: wrote ${workerDir} (renderer: ${renderer}); run it with \`wrangler dev -c ${relative(process.cwd(), workerDir)}/wrangler.jsonc\` (or \`deploy\`)`)
   }
 
   // eslint-disable-next-line no-console
@@ -638,27 +671,17 @@ export function setMeta(html: string, attr: 'name' | 'property', key: string, va
 // per-slide share cards to scrapers (browsers boot the SPA from this shell
 // exactly as from `index.html`/`404.html`). Idempotent: if the deck-level shell
 // already has a meta we'd inject, we replace its value; otherwise we append.
-export function injectPerSlideMeta(shell: string, info: SlideOgInfo): string {
+export function injectPerSlideMeta(shell: string, info: Pick<SlideOgInfo, 'title' | 'description' | 'canonical' | 'imageUrl'>): string {
   let html = shell
-  const t = info.title
-  const d = info.description
   const u = info.canonical
-  const img = info.imageUrl
 
-  html = html.replace(/<title>[^<]*<\/title>/, `<title>${htmlEscape(t)}</title>`)
-  html = setMeta(html, 'name', 'description', d)
-  html = setMeta(html, 'property', 'og:type', 'website')
-  html = setMeta(html, 'property', 'og:title', t)
-  html = setMeta(html, 'property', 'og:description', d)
-  html = setMeta(html, 'property', 'og:image', img)
-  html = setMeta(html, 'property', 'og:url', u)
-  html = setMeta(html, 'name', 'twitter:card', 'summary_large_image')
-  html = setMeta(html, 'name', 'twitter:title', t)
-  html = setMeta(html, 'name', 'twitter:description', d)
-  html = setMeta(html, 'name', 'twitter:image', img)
-  // Not a standard tag, so only kept current when the deck sets it.
-  if (/(?:name|property)="twitter:url"/.test(html))
-    html = setMeta(html, 'name', 'twitter:url', u)
+  html = html.replace(/<title>[^<]*<\/title>/, `<title>${htmlEscape(info.title)}</title>`)
+  // The same tags the Worker deploy target stamps per request (`worker/runtime.ts`).
+  for (const tag of shareTags({ title: info.title, description: info.description, url: u, image: info.imageUrl })) {
+    if (tag.ifPresent && !new RegExp(`(?:name|property)="${escapeRegex(tag.key)}"`).test(html))
+      continue
+    html = setMeta(html, tag.attr, tag.key, tag.value)
+  }
 
   // Canonical link: replace if present, else inject before </head>.
   if (/<link\s+rel="canonical"/.test(html)) {
@@ -684,4 +707,162 @@ async function transcodeToJpg(srcPng: string, dstJpg: string, quality: number): 
   if (!sharp)
     throw new Error('`sharp` is required for JPEG share cards')
   await sharp(srcPng).jpeg({ quality, mozjpeg: true }).toFile(dstJpg)
+}
+
+/**
+ * Where the Worker deploy target goes: next to the build output (`dist` → `dist-worker`), not in
+ * it. Inside, its files would be uploaded as assets unless ignored, and `wrangler dev` writes its
+ * `.wrangler/` scratch dir next to the config, which its assets watcher then reloads on, forever.
+ */
+export function workerDirFor(outDir: string): string {
+  return `${resolve(outDir)}-worker`
+}
+// The Workers runtime version the generated `wrangler.jsonc` asks for.
+const WORKER_COMPATIBILITY_DATE = '2026-07-01'
+
+export interface WorkerConfig {
+  /** Worker name in the generated `wrangler.jsonc`; default the slugified deck title. */
+  name?: string
+  /** See `publish.worker.renderer`; `undefined` = detect. */
+  renderer?: 'browser' | 'none'
+}
+
+/** `publish.worker` (`true` or an object), overridden by `--worker` / `--no-worker`; `null` when off. */
+export function resolveWorkerConfig(raw: unknown, flag: boolean | undefined): WorkerConfig | null {
+  if (flag === false || (!flag && !raw))
+    return null
+  const obj = raw && typeof raw === 'object' ? raw as Record<string, unknown> : {}
+  return {
+    name: typeof obj.name === 'string' ? obj.name : undefined,
+    renderer: obj.renderer === 'browser' || obj.renderer === 'none' ? obj.renderer : undefined,
+  }
+}
+
+export function buildWorkerManifest(
+  plans: Pick<SlideOgInfo, 'no' | 'slug' | 'title' | 'description' | 'appPath' | 'imageAppPath' | 'contentHash' | 'params'>[],
+  opts: {
+    baseUrl: string
+    appBase: string
+    alwaysStamp: boolean
+    publicPaths: string[]
+    card: WorkerManifest['card']
+    hasBareSlug: (p: Pick<SlideOgInfo, 'slug'>) => boolean
+  },
+): WorkerManifest {
+  return {
+    version: 1,
+    // App paths already include the Vite base, so only a path prefix in `baseUrl` stays in front.
+    baseUrl: opts.baseUrl.replace(/\/+$/, ''),
+    base: opts.appBase || '/',
+    alwaysStamp: opts.alwaysStamp,
+    publicPaths: [...new Set(['/_og/*', ...opts.publicPaths])],
+    card: opts.card,
+    slides: plans.map(p => ({
+      no: p.no,
+      slug: p.slug,
+      title: p.title,
+      description: p.description,
+      path: p.appPath,
+      image: p.imageAppPath,
+      hash: p.contentHash,
+      bareSlug: opts.hasBareSlug(p),
+      ...(Object.keys(p.params).length ? { params: p.params } : {}),
+    })),
+  }
+}
+
+/** `_worker/deck.js`: the manifest, plus the renderer wiring. */
+export function renderWorkerDeck(manifest: WorkerManifest, renderer: 'browser' | 'none'): string {
+  const browser = renderer === 'browser'
+  return `// Generated by \`slidev build --worker\`; rewritten on every build.
+${browser ? `import puppeteer from '@cloudflare/puppeteer'\nimport { browserRenderer } from './runtime.js'\n` : ''}
+export const manifest = ${JSON.stringify(manifest, null, 2)}
+
+export const renderer = ${browser ? 'browserRenderer(puppeteer)' : 'undefined'}
+`
+}
+
+// The entry's only export is the handler: workerd reads every named export of the main module
+// as an entrypoint, so the manifest lives in `deck.js`.
+export const WORKER_ENTRY = `// Generated by \`slidev build --worker\`; rewritten on every build.
+//
+// To put the deck behind auth, deploy your own entry (outside this directory) instead:
+//
+//   import { manifest, renderer } from './dist-worker/deck.js'
+//   import { createWorker } from './dist-worker/runtime.js'
+//   export default createWorker(manifest, { renderer, gate: (request, env, ctx) => ... })
+//
+// \`gate\` returns a Response (401, a login redirect, ...) for requests it blocks, or nothing.
+// \`manifest.publicPaths\` (\`/_og/*\` plus \`publish.publicPaths\`) skip it, and unfurlers it
+// blocks get a meta-only page, never the SPA.
+import { manifest, renderer } from './deck.js'
+import { createWorker } from './runtime.js'
+
+export default createWorker(manifest, { renderer })
+`
+
+/** `assetsDir` is the build output, relative to the Worker's directory. */
+export function renderWranglerConfig(name: string, renderer: 'browser' | 'none', assetsDir: string): string {
+  const browser = renderer === 'browser'
+    ? `,
+  // Browser Rendering, for cards of non-default URL states.
+  "browser": { "binding": "BROWSER" }`
+    : `
+  // To render cards for non-default URL states, install \`@cloudflare/puppeteer\` in the deck and
+  // rebuild (or set \`publish.worker.renderer: browser\`), which adds a \`browser\` binding here.`
+  return `// Generated by \`slidev build --worker\`. A template: copy it next to the deck to customize it
+// (routes, more bindings), keeping \`main\` and \`assets.directory\` pointed at this directory and
+// the build output.
+{
+  "name": ${JSON.stringify(name)},
+  "main": "index.js",
+  "compatibility_date": "${WORKER_COMPATIBILITY_DATE}",
+  "assets": {
+    "directory": ${JSON.stringify(assetsDir)},
+    "binding": "ASSETS",
+    // The Worker sees every request (to stamp slide pages and render cards), and hands the rest
+    // to the assets.
+    "run_worker_first": true,
+    "html_handling": "auto-trailing-slash",
+    "not_found_handling": "single-page-application"
+  }${browser}
+}
+`
+}
+
+function workerRuntimePath(): string {
+  // From the built CLI (`dist/*.mjs`) it's a sibling; from source (tests), it's in `dist/`.
+  const here = dirname(fileURLToPath(import.meta.url))
+  for (const p of [resolve(here, 'og-worker.js'), resolve(here, '../../dist/og-worker.js')]) {
+    if (existsSync(p))
+      return p
+  }
+  throw new Error('[Slidev] Worker: `og-worker.js` not found; build `@slidev/cli` first')
+}
+
+export async function writeWorkerBundle(
+  outDir: string,
+  manifest: WorkerManifest,
+  opts: { name: string, renderer: 'browser' | 'none' },
+): Promise<void> {
+  const dir = workerDirFor(outDir)
+  await fs.mkdir(dir, { recursive: true })
+  await fs.copyFile(workerRuntimePath(), resolve(dir, 'runtime.js'))
+  await fs.writeFile(resolve(dir, 'deck.js'), renderWorkerDeck(manifest, opts.renderer), 'utf-8')
+  await fs.writeFile(resolve(dir, 'index.js'), WORKER_ENTRY, 'utf-8')
+  const assetsDir = relative(dir, resolve(outDir)).split(sep).join('/')
+  await fs.writeFile(resolve(dir, 'wrangler.jsonc'), renderWranglerConfig(opts.name, opts.renderer, assetsDir), 'utf-8')
+}
+
+/** Whether `name` resolves from `root` through `node_modules` dirs, as a bundler would find it. */
+function findPackage(root: string, name: string): boolean {
+  let dir = resolve(root)
+  while (true) {
+    if (existsSync(resolve(dir, 'node_modules', name, 'package.json')))
+      return true
+    const parent = dirname(dir)
+    if (parent === dir)
+      return false
+    dir = parent
+  }
 }

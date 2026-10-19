@@ -49,6 +49,7 @@ allowBuilds:
   simple-git-hooks: true
   typeit: true
   unrs-resolver: true
+  workerd: true
 
 catalogs:
   demo:
@@ -61,6 +62,7 @@ catalogs:
     eslint-plugin-format: ^2.0.1
     jszip: ^3.10.1
     lint-staged: ^17.5.1
+    miniflare: ^4.20260730.0
     nodemon: ^3.1.14
     ovsx: ^1.2.0
     playwright-chromium: ^1.63.0

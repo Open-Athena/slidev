@@ -380,6 +380,10 @@ cli.command(
       type: 'boolean',
       describe: 'exclude speaker notes from the built output',
     })
+    .option('worker', {
+      type: 'boolean',
+      describe: 'also emit a Cloudflare Worker (+ wrangler.jsonc) that stamps per-URL OG tags and renders cards on demand (needs publish.baseUrl)',
+    })
     .option('router-mode', {
       type: 'string',
       choices: ['hash', 'history', 'memory'],

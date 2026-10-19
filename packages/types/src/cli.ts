@@ -25,4 +25,6 @@ export interface BuildArgs extends ExportArgs {
   'download'?: boolean
   'inspect': boolean
   'without-notes'?: boolean
+  /** Also emit the Cloudflare Worker deploy target (`publish.worker`). */
+  'worker'?: boolean
 }

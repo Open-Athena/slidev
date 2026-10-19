@@ -115,6 +115,9 @@ describe('ogManifest', () => {
       imageFilename: '2-install.jpg',
       htmlFilename: '2-install.html',
       contentHash: '0123456789ab',
+      appPath: '/2-install',
+      imageAppPath: '/_og/2-install.jpg',
+      params: {},
     }
     expect(ogManifest(
       [plan, { ...plan, no: 3, caption: 'Hi', skipThread: true }],
