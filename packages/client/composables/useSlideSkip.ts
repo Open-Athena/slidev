@@ -1,7 +1,7 @@
 import { computed } from 'vue'
 import { slides } from '#slidev/slides'
 import { isSkippedRoute } from '../logic/skip'
-import { editMode, skipSkipped } from '../state'
+import { skipSkipped } from '../state'
 import { showNotice } from './notice'
 import { pushSkipEdit } from './useDragHistory'
 
@@ -22,10 +22,15 @@ export function toggleSkipSkipped(): void {
     : `Showing ${n} skipped slide${n === 1 ? '' : 's'}`)
 }
 
-/** Mark slide `no` skipped, or unmark it (dev, edit mode). Undoable. */
+/**
+ * Mark slide `no` skipped, or unmark it. Undoable. Dev only (it writes the slide's frontmatter);
+ * not tied to edit mode, so a deck's command palette can offer it any time.
+ */
 export async function toggleSlideSkip(no: number): Promise<void> {
-  if (!__DEV__ || !editMode.value)
+  if (!__DEV__) {
+    showNotice('Marking slides skipped needs the dev server (it edits slides.md)')
     return
+  }
   const before = isSlideSkipped(no) ? true : null
   const after = before ? null : true
   const res = await fetch(`/__slidev/slides/${no}.json`, {

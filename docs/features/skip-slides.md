@@ -26,10 +26,10 @@ Slide numbers don't change: URLs, QR codes and share cards stay the same, and th
 
 Press `⇧S`, or click <carbon-skip-forward-filled class="inline-icon-btn"/> in the navigation bar or the slides drawer (`⇧T`), or use the right-click menu. The setting works the same in play mode, presenter mode and plain browsing, is remembered per browser, and is synced between the presenter and audience windows.
 
-A deck can offer it in its own UI too:
+A deck can offer both in its own UI (e.g. a command palette): the toggle, and marking the current slide (`toggleSlideSkip(no)`, dev server only, in or out of edit mode; undoable):
 
 ```ts
-import { toggleSkipSkipped } from '@slidev/client/composables/useSlideSkip.ts'
+import { isSlideSkipped, toggleSkipSkipped, toggleSlideSkip } from '@slidev/client/composables/useSlideSkip.ts'
 import { skipSkipped } from '@slidev/client/state/index.ts'
 ```
 
