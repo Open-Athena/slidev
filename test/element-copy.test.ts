@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { appendSnippet, elementSnippet, findElement, idForCopy, offsetPos, removeRange, uniqueId } from '../packages/client/composables/element-copy'
+import { appendSnippet, elementSnippet, findElement, idForCopy, isEmbedSnippet, offsetPos, removeRange, uniqueId } from '../packages/client/composables/element-copy'
 
 describe('elementSnippet', () => {
   it('finds the element itself within its lines', () => {
@@ -83,5 +83,40 @@ describe('findElement / removeRange', () => {
   it('removes just the element when its line has other content', () => {
     expect(del('Before ![x](/a.png) after', { src: '/a.png', dragId: 'img-a' })).toBe('Before  after')
     expect(del('<div class="g"><img src="/a.png" /><img src="/a.png" /></div>', { src: '/a.png', dragId: 'img-a-2' })).toBe('<div class="g"><img src="/a.png" /></div>')
+  })
+})
+
+describe('embeds', () => {
+  const slide = [
+    '# T',
+    '',
+    '<Tweet :id="20" cards="hidden" />',
+    '',
+    '<Youtube id="luoMHjh-XcQ" />',
+    '',
+    '<BlueSky uri="https://bsky.app/profile/sli.dev/post/3lgwg2vy44s2q" />',
+    '',
+    `<div v-drag="'tweet-box'">not a tweet</div>`,
+  ]
+
+  it('finds an embed by the id its wrapper derives from its props', () => {
+    expect([
+      elementSnippet(slide, { dragId: 'tweet-20' }, false),
+      elementSnippet(slide, { dragId: 'yt-luoMHjh-XcQ' }, false),
+      elementSnippet(slide, { dragId: 'bsky-3lgwg2vy44s2q' }, false),
+      elementSnippet(slide, { dragId: 'tweet-21' }, false),
+      elementSnippet(slide, { dragId: 'tweet-undefined' }, false),
+    ]).toEqual([
+      '<Tweet :id="20" cards="hidden" />',
+      '<Youtube id="luoMHjh-XcQ" />',
+      '<BlueSky uri="https://bsky.app/profile/sli.dev/post/3lgwg2vy44s2q" />',
+      null,
+      null,
+    ])
+  })
+
+  it('tells embeds from other markup', () => {
+    expect(['<Tweet id="20" />', '<Youtube id="x" />', '<BlueSky uri="u" />', '<Tweets />', `<div v-drag="'tweet-box'" />`].map(isEmbedSnippet))
+      .toEqual([true, true, true, false, false])
   })
 })

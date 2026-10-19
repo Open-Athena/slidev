@@ -10,6 +10,7 @@ Usage:
 <script setup lang="ts">
 import { useElementSize } from '@vueuse/core'
 import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue'
+import { blueSkyDragId, extractPostInfoFromUrl, RE_AT_POST_URI } from '../logic/bluesky'
 import { isDark } from '../logic/dark'
 import VDrag from './VDrag.vue'
 
@@ -34,15 +35,7 @@ const BSKY_NATURAL_W = 550
 const BSKY_INSET = 12
 const BSKY_VISIBLE_W = BSKY_NATURAL_W - 2 * BSKY_INSET
 
-// Stable dragId derived from the post id (last URL/at-URI segment). Falls back
-// to a slugified uri if no recognizable post segment is present.
-const bskyDragId = computed(() => {
-  const m = props.uri.match(/(?:post|app\.bsky\.feed\.post)\/([^/?#]+)/)
-  const slug = m?.[1] ?? props.uri.replace(/\W+/g, '-').replace(/^-+|-+$/g, '').slice(-32)
-  return `bsky-${slug}`
-})
-
-const RE_BLUESKY_POST_URL = /^\/profile\/([^/]+)\/post\/([^/?#]+)$/
+const bskyDragId = computed(() => blueSkyDragId(props.uri))
 
 const container = ref<HTMLElement | null>(null)
 const wrapper = ref<HTMLElement | null>(null)
@@ -119,7 +112,6 @@ const resolvedPostUrl = ref('')
 // drag-control bar (DragControl picks up any `<a>` inside the dragged element
 // via its `associatedLink` computed). For URL inputs we already store the
 // canonical form during resolve; for at:// inputs we reconstruct from did/postId.
-const RE_AT_POST_URI = /^at:\/\/(did:[^/]+)\/app\.bsky\.feed\.post\/([^/?#]+)$/
 const postUrl = computed(() => {
   if (resolvedPostUrl.value)
     return resolvedPostUrl.value
@@ -154,21 +146,6 @@ function scan(retries = 10) {
   }
   // @ts-expect-error global
   window.bluesky.scan(container.value || undefined)
-}
-
-function extractPostInfoFromUrl(input: string) {
-  try {
-    const url = new URL(input)
-    const match = url.pathname.match(RE_BLUESKY_POST_URL)
-    if (!match)
-      return
-    return {
-      handle: decodeURIComponent(match[1]),
-      postId: decodeURIComponent(match[2]),
-      postUrl: url.toString(),
-    }
-  }
-  catch {}
 }
 
 async function resolvePostUri(input: string) {

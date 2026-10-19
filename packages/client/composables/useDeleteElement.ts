@@ -4,6 +4,7 @@ import type { DragElementState } from './useDragElements'
 import { sliceLineRange } from './delete-source'
 import { findElement, removeRange } from './element-copy'
 import { changedRange } from './list-edit'
+import { showNotice } from './notice'
 import { pushDelete, pushTextEdit } from './useDragHistory'
 import { clearSelection, getSelectedElements } from './useMultiSelect'
 
@@ -16,8 +17,8 @@ import { clearSelection, getSelectedElements } from './useMultiSelect'
 //
 // Deferred:
 //   - Cleanup of stale `slides.coords.yaml` dragPos entries (no-op now; harmless leftovers).
-//   - Group delete as a single event (multi-select today emits N events).
-//   - Toast / error feedback when an element can't be deleted (no `markdownSource`).
+//   - Group delete as a single event (multi-select today emits one event per element with a
+//     source range, plus one per slide for the rest; ⌘Z unwinds them one at a time).
 
 async function fetchSlideContent(no: number): Promise<string> {
   const res = await fetch(`/__slidev/slides/${no}.json`)
@@ -132,6 +133,8 @@ export async function deleteSelectedElements(): Promise<{ deleted: number, skipp
     deleted += ranges.length
   }
 
+  if (skipped)
+    showNotice(`${skipped === 1 ? 'This element isn\'t' : `${skipped} elements aren't`} deletable from the slide source`)
   clearSelection()
   return { deleted, skipped }
 }

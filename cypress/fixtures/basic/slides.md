@@ -496,3 +496,11 @@ must not change what's visible. -->
 .fit-contain { left: 60%; top: 0; width: 23%; height: 55%; object-fit: contain !important; background: #2a2725; }
 .fit-collage img.fit-fill { left: 62%; top: 65%; width: 160px; height: 90px; object-fit: fill; }
 </style>
+
+---
+
+# Page 35
+
+Insert target
+
+<Youtube :id="'dQw4w9WgXcQ'" />

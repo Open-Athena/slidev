@@ -27,6 +27,19 @@ export function elementSnippet(lines: string[], el: { src?: string | null, dragI
   return at ? text.slice(at.start, at.end) : wholeLines ? text : null
 }
 
+// Embeds whose `VDrag` id comes from what they show (`Tweet.vue`, `Youtube.vue`, `BlueSky.vue`):
+// `[id prefix, tag, attribute the rest of the id comes from]`.
+const EMBEDS: [string, string, string][] = [
+  ['tweet', 'Tweet', 'id'],
+  ['yt', 'Youtube', 'id'],
+  ['bsky', 'BlueSky', 'uri'],
+]
+
+/** Whether the snippet is an embed (see `EMBEDS`): a copy would keep the original's id. */
+export function isEmbedSnippet(snippet: string): boolean {
+  return EMBEDS.some(([, tag]) => new RegExp(`^<${tag}\\b`).test(snippet))
+}
+
 /** Offsets of the element's own markup in `text` (see `elementSnippet`), or `null`. */
 export function findElement(text: string, el: { src?: string | null, dragId: string }): { start: number, end: number } | null {
   const attrs = `(?:[^>"']|"[^"]*"|'[^']*')*`
@@ -42,6 +55,14 @@ export function findElement(text: string, el: { src?: string | null, dragId: str
   if (component) {
     const tag = component.replace(/(?:^|-)([a-z\d])/g, (_, c: string) => c.toUpperCase())
     candidates.push(new RegExp(`<${tag}\\b${attrs}/>|<${tag}\\b${attrs}>[\\s\\S]*?</${tag}>`, 'g'))
+  }
+  for (const [prefix, tag, attr] of EMBEDS) {
+    if (!el.dragId.startsWith(`${prefix}-`))
+      continue
+    const value = escapeRegex(el.dragId.slice(prefix.length + 1))
+    // `bsky-<post>` is the last segment of the post's URL / at:// URI.
+    const pattern = attr === 'uri' ? `[^"']*/${value}` : value
+    candidates.push(new RegExp(`<${tag}\\b${attrs}\\s:?${attr}=(["'])${pattern}\\1${attrs}/>`, 'g'))
   }
   candidates.push(new RegExp(`<([A-Za-z][\\w-]*)\\b${attrs}(["'])${escapeRegex(el.dragId)}\\2${attrs}/>`, 'g'))
   for (const re of candidates) {

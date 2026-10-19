@@ -2,20 +2,18 @@ import type { CopiedElement } from './element-copy'
 import type { DragElementState } from './useDragElements'
 import { onMounted, onUnmounted } from 'vue'
 import { editMode, isInputting } from '../state'
-import { appendSnippet, elementSnippet, idForCopy, offsetPos, posToSnapshot } from './element-copy'
-import { changedRange } from './list-edit'
+import { elementSnippet, idForCopy, isEmbedSnippet, offsetPos } from './element-copy'
 import { showNotice } from './notice'
 import { getDragElementsForPage } from './useDragElements'
-import { initialState, pushTextEdit } from './useDragHistory'
-import { addToSelection, clearSelection, getSelectedElements } from './useMultiSelect'
+import { fetchSlide, insertElements } from './useInsertElements'
+import { getSelectedElements } from './useMultiSelect'
 import { useNav } from './useNav'
 
 // ⌘C / ⌘V / ⌘D on selected draggable elements (edit mode, dev): ⌘C copies their markdown (so
 // pasting into an editor works too); ⌘V appends copies to the current slide, 16 px down-right of
 // the original (further for each repeated paste), with ids of their own; ⌘D does both at once.
-// The copies end up selected. Appended at the end of the
-// slide because auto ids (`img-x`, `img-x-2`, …) follow order of appearance: inserting earlier
-// would renumber, and so move, later elements. One undoable history event per paste.
+// The copies end up selected. Appended at the end of the slide (see `useInsertElements.ts`), as
+// one undoable history event per paste.
 
 let copied: { items: CopiedElement[], text: string, slideNo: number, pastes: number } | null = null
 
@@ -40,17 +38,11 @@ function posOf(state: DragElementState): string | null {
   return pos
 }
 
-async function fetchSlide(no: number): Promise<{ content: string }> {
-  const res = await fetch(`/__slidev/slides/${no}.json`)
-  if (!res.ok)
-    throw new Error(`Failed to fetch slide ${no} (${res.status})`)
-  return res.json()
-}
-
 // The selected elements' markdown and positions.
 async function gatherSelected(): Promise<{ items: CopiedElement[], slideNo: number }> {
   const items: CopiedElement[] = []
   let slideNo = 0
+  let embeds = 0
   for (const state of getSelectedElements()) {
     slideNo = state.page.value
     const { content } = await fetchSlide(slideNo)
@@ -61,9 +53,14 @@ async function gatherSelected(): Promise<{ items: CopiedElement[], slideNo: numb
     const snippet = state.markdownSource
       ? elementSnippet(content.split('\n').slice(state.markdownSource[0], state.markdownSource[1]), el)
       : elementSnippet(content.split('\n'), el, false)
-    if (snippet)
+    // An embed's id comes from the post / video it shows, so a copy would share the original's.
+    if (snippet && isEmbedSnippet(snippet))
+      embeds++
+    else if (snippet)
       items.push({ snippet, dragId: state.dragId, pos: posOf(state) })
   }
+  if (embeds)
+    showNotice(`${embeds === 1 ? 'An embed' : `${embeds} embeds`} can't be copied: the copy would have the same id`)
   return { items, slideNo }
 }
 
@@ -79,52 +76,12 @@ async function copySelected(): Promise<void> {
 
 // Append copies of `items` to slide `slideNo`, shifted by `shift` px, then select them.
 async function insertCopies(items: CopiedElement[], slideNo: number, shift: number): Promise<void> {
-  const { content } = await fetchSlide(slideNo)
   const ids = getDragElementsForPage(slideNo).map(e => e.dragId)
-  const positions: Record<string, string> = {}
-  const newIds: string[] = []
-  let next = content
-  for (const item of items) {
+  await insertElements(slideNo, items.map((item) => {
     const { snippet, dragId } = idForCopy(item.snippet, item.dragId, ids)
     ids.push(dragId)
-    newIds.push(dragId)
-    next = appendSnippet(next, snippet)
-    if (item.pos)
-      positions[dragId] = offsetPos(item.pos, shift, shift)
-  }
-  // The copies' positions go in the same history event as the inserted markup, so one ⌘Z undoes
-  // both; seed the client's state cache so the copies mount in place.
-  const edits = Object.entries(positions).map(([dragId, pos]) => ({ dragId, before: null, after: posToSnapshot(pos) }))
-  if (initialState.value) {
-    const slide = initialState.value[slideNo] ??= {}
-    for (const { dragId, after } of edits)
-      slide[dragId] = after
-  }
-  await pushTextEdit(slideNo, changedRange(content, next), edits)
-  const res = await fetch(`/__slidev/slides/${slideNo}.json`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
-    body: JSON.stringify({ content: next, skipHmr: false }),
-  })
-  if (!res.ok)
-    throw new Error(`Failed to patch slide ${slideNo} (${res.status})`)
-  await selectWhenRendered(slideNo, newIds)
-}
-
-// Select the new elements once the slide re-renders with them (each `v-drag` element carries its
-// state as `draggingState`).
-async function selectWhenRendered(slideNo: number, ids: string[]): Promise<void> {
-  for (let tries = 0; tries < 50; tries++) {
-    const states = ids
-      .map(id => (document.querySelector(`.slidev-page-${slideNo} [data-drag-id="${CSS.escape(id)}"]`) as (HTMLElement & { draggingState?: DragElementState }) | null)?.draggingState)
-      .filter((s): s is DragElementState => !!s)
-    if (states.length === ids.length) {
-      clearSelection()
-      states.forEach(addToSelection)
-      return
-    }
-    await new Promise(r => setTimeout(r, 100))
-  }
+    return { snippet, dragId, pos: item.pos && offsetPos(item.pos, shift, shift) }
+  }))
 }
 
 async function paste(): Promise<void> {

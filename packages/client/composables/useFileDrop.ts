@@ -66,9 +66,7 @@ export function useFileDrop() {
     inFlight.value = true
     error.value = null
     try {
-      const no = currentSlideNo.value
-      for (const file of files)
-        await uploadAndInsert(file, no)
+      await uploadAndInsert(files, currentSlideNo.value)
     }
     catch (e) {
       error.value = e instanceof Error ? e.message : String(e)

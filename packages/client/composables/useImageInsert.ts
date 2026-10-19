@@ -1,5 +1,3 @@
-import type { SlidePatch } from '@slidev/types'
-
 export interface UploadResult {
   url: string
   path: string
@@ -30,25 +28,20 @@ export function buildImageMarkdown(file: File, url: string): string {
     : `![${alt}](${url})`
 }
 
-export async function appendToSlide(no: number, snippet: string): Promise<void> {
-  const slideUrl = `/__slidev/slides/${no}.json`
-  const current = await fetch(slideUrl).then(r => r.json())
-  const sep = current.content.endsWith('\n') ? '\n' : '\n\n'
-  const patch: SlidePatch = {
-    content: `${current.content}${sep}${snippet}\n`,
-    skipHmr: false,
-  }
-  const res = await fetch(slideUrl, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
-    body: JSON.stringify(patch),
-  })
-  if (!res.ok)
-    throw new Error(`Failed to patch slide ${no} (${res.status})`)
+// Append the snippet(s) to the end of the slide as one undoable history event, left where the
+// layout puts them. Imported lazily: the history plumbing pulls in the app's virtual modules, which
+// the pure helpers above (tested in `test/image-insert.test.ts`) shouldn't need.
+export async function appendToSlide(no: number, snippets: string | string[]): Promise<void> {
+  const { insertElements } = await import('./useInsertElements')
+  await insertElements(no, [snippets].flat().map(snippet => ({ snippet, dragId: null, pos: null })))
 }
 
-export async function uploadAndInsert(file: File, no: number): Promise<UploadResult> {
-  const result = await uploadFile(file)
-  await appendToSlide(no, buildImageMarkdown(file, result.url))
-  return result
+/** Upload the files, then insert them into slide `no` together (one ⌘Z removes them all). */
+export async function uploadAndInsert(files: File | File[], no: number): Promise<UploadResult[]> {
+  const list = [files].flat()
+  const results: UploadResult[] = []
+  for (const file of list)
+    results.push(await uploadFile(file))
+  await appendToSlide(no, list.map((file, i) => buildImageMarkdown(file, results[i].url)))
+  return results
 }
