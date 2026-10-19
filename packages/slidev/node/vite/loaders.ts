@@ -212,7 +212,13 @@ export function createSlidesLoader(
         }
         else if (req.method === 'POST') {
           const body: SlidePatch = await getBodyJson(req)
-          const slide = targetSlide
+          // Looked up again after the body arrives: a hot update in the meantime replaces
+          // `data.slides`, and patching the old object would be dropped by the save below.
+          const slide = data.slides[idx]
+          if (!slide) {
+            res.statusCode = 404
+            return res.end()
+          }
 
           if (body.content && body.content !== slide.source.content)
             hmrSlidesIndexes.add(idx)
