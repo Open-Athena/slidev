@@ -67,6 +67,8 @@ context('share links', () => {
   it('mints a link that opens at this slide, with a copy button and its QR', () => {
     cy.intercept('POST', '/api/auth/grants', { body: { grant: grant('g1', { subject: { name: 'Rae' }, note: 'review' }), token: 'tok123' } }).as('mint')
     visitAs(ADMIN, '/3?m=heatmap')
+    // The probe's answer lands a moment after the response: until then ⇧Y isn't active.
+    shareButton().should('exist')
     cy.get('body').type('{shift}Y')
     cy.get('[data-share-dialog]').should('be.visible')
     cy.get('[data-share-name]').type('Rae')
@@ -132,6 +134,7 @@ context('share links', () => {
       req.reply({ body: { ok: true } })
     }).as('revoke')
     visitAs(ADMIN)
+    shareButton().should('exist')
     cy.window().then(win => cy.stub(win, 'confirm').returns(true))
     cy.get('body').type('{shift}Y')
     cy.get('[data-share-tab="links"]').click()
