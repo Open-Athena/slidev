@@ -497,6 +497,88 @@ cli.command(
 )
 
 cli.command(
+  'publish [platform]',
+  'Publish a built deck as a social thread, one post per slide',
+  (command) => {
+    return command
+      .command(
+        'bluesky',
+        'Post the deck built in --out as a Bluesky thread (needs `publish.baseUrl`; auth from BSKY_HANDLE / BSKY_APP_PASSWORD)',
+        args => args
+          .option('out', {
+            alias: 'o',
+            type: 'string',
+            default: 'dist',
+            describe: 'built deck dir (`slidev build --out`)',
+          })
+          .option('handle', {
+            type: 'string',
+            describe: 'account to post as (default: BSKY_HANDLE, else headmatter `publish.bluesky.handle`)',
+          })
+          .option('service', {
+            type: 'string',
+            describe: 'service to log in to (default: BSKY_SERVICE, else https://bsky.social)',
+          })
+          .option('dry-run', {
+            alias: 'n',
+            type: 'boolean',
+            default: false,
+            describe: 'print the thread without logging in or posting',
+          })
+          .option('json', {
+            type: 'boolean',
+            default: false,
+            describe: 'with --dry-run, print the assembled posts as JSON',
+          })
+          .strict()
+          .help(),
+        async ({ out, handle: handleArg, service: serviceArg, 'dry-run': dryRun, json }) => {
+          const { assembleThread, readManifest } = await import('./commands/publish')
+          const bsky = await import('./commands/bluesky')
+          const distDir = path.resolve(out)
+          const manifest = await readManifest(distDir)
+          const posts = assembleThread(manifest, { maxGraphemes: bsky.BLUESKY_MAX_GRAPHEMES })
+          const stateFile = bsky.statePath(distDir)
+          const state = await bsky.readState(stateFile)
+          if (dryRun) {
+            console.log(json ? JSON.stringify(posts, null, 2) : bsky.describeThread(posts, state))
+            return
+          }
+          const handle = handleArg || process.env.BSKY_HANDLE || manifest.deck.bluesky?.handle
+          const password = process.env.BSKY_APP_PASSWORD
+          if (!handle || !password) {
+            console.error(`Set ${handle ? '' : 'BSKY_HANDLE (or pass --handle) and '}BSKY_APP_PASSWORD (an app password: https://bsky.app/settings/app-passwords)`)
+            process.exit(1)
+          }
+          const pending = bsky.pendingPosts(posts, state)
+          if (!pending.length) {
+            console.log(`All ${posts.length} slide(s) already posted: ${state?.posts[0]?.url}`)
+            return
+          }
+          const client = await bsky.createBlueskyClient({
+            service: serviceArg || process.env.BSKY_SERVICE || bsky.DEFAULT_BLUESKY_SERVICE,
+            identifier: handle,
+            password,
+          })
+          const final = await bsky.publishThread({
+            posts,
+            client,
+            state,
+            readImage: image => bsky.readThumb(distDir, image),
+            save: s => bsky.writeState(stateFile, s),
+            log: msg => console.log(dim(msg)),
+          })
+          console.log(`${green('Posted')} ${pending.length} slide(s); thread: ${final.posts[0].url}`)
+        },
+      )
+  },
+  () => {
+    cli.showHelp()
+    process.exit(1)
+  },
+)
+
+cli.command(
   'export [entry..]',
   'Export slides to PDF',
   args => exportOptions(commonOptions(args))

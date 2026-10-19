@@ -316,6 +316,11 @@ export interface HeadmatterConfig extends TransitionOptions {
      * in-deck nav, and the `y` yank.
      */
     canonicalForm?: 'n' | 'n-slug' | 'slug'
+    /** Defaults for `slidev publish bluesky`. */
+    bluesky?: {
+      /** Account to post as when neither `--handle` nor `BSKY_HANDLE` is given. */
+      handle?: string
+    }
     /** Per-slide OG image generation knobs (used by `slidev build`). */
     ogImage?: {
       /** Image dimensions; default `[1200, 630]` (BlueSky / Twitter / OG standard). */
@@ -494,14 +499,20 @@ export interface Frontmatter extends TransitionOptions {
    */
   ogImage?: string
   /**
-   * Optional caption used by future thread-publishing tools (BlueSky, Mastodon).
-   * Harmless to set today; not used by the build itself.
+   * Text of this slide's post when the deck is published as a thread (`slidev publish
+   * bluesky`). Defaults to the slide's OG title. Markdown links (`[text](url)`) and bare URLs
+   * become links in the post.
    */
   caption?: string
   /**
    * Skip this slide from OG-shell + image generation (and from social threads).
    */
   skipOg?: boolean
+  /**
+   * Omit this slide from published threads (`slidev publish bluesky`), keeping its OG shell
+   * and image.
+   */
+  skipThread?: boolean
   /**
    * Custom zoom level for the slide
    * @default 1

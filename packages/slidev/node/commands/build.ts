@@ -17,6 +17,9 @@ export async function build(
   const indexHtmlId = resolve(options.userRoot, 'index.html')
 
   let config: ResolvedConfig = undefined!
+  // `_publish/` holds `slidev publish` state (the posted thread's URIs); Vite empties the out dir,
+  // so carry it over or the next publish would post the whole thread again.
+  let publishFiles: Map<string, Uint8Array> | undefined
 
   const inlineConfig = await resolveViteConfigs(
     options,
@@ -26,6 +29,9 @@ export async function build(
           name: 'slidev:build',
           configResolved(_config) {
             config = _config
+          },
+          async buildStart() {
+            publishFiles = await readFlatDir(resolve(options.userRoot, config.build.outDir, '_publish'))
           },
           resolveId: {
             order: 'pre',
@@ -61,6 +67,13 @@ export async function build(
   await viteBuild(inlineConfig)
 
   const outDir = resolve(options.userRoot, config.build.outDir)
+
+  if (publishFiles?.size) {
+    const publishDir = resolve(outDir, '_publish')
+    await fs.mkdir(publishDir, { recursive: true })
+    for (const [name, bytes] of publishFiles)
+      await fs.writeFile(join(publishDir, name), bytes)
+  }
 
   // copy or generate ogImage if it's a relative path, skip if not
   if (options.data.config.seoMeta?.ogImage === 'auto' || options.data.config.seoMeta?.ogImage?.startsWith('.')) {
@@ -165,4 +178,15 @@ export async function build(
     })
     server.close()
   }
+}
+
+async function readFlatDir(dir: string): Promise<Map<string, Uint8Array>> {
+  const files = new Map<string, Uint8Array>()
+  if (!existsSync(dir))
+    return files
+  for (const entry of await fs.readdir(dir, { withFileTypes: true })) {
+    if (entry.isFile())
+      files.set(entry.name, await fs.readFile(join(dir, entry.name)))
+  }
+  return files
 }

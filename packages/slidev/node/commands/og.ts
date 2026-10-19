@@ -1,5 +1,6 @@
 import type { BuildArgs, ResolvedSlidevOptions, SlideInfo } from '@slidev/types'
 import type { ResolvedConfig } from 'vite'
+import type { OgManifest } from './publish'
 import { createHash } from 'node:crypto'
 import { existsSync } from 'node:fs'
 import fs from 'node:fs/promises'
@@ -33,6 +34,10 @@ interface SlideOgInfo {
   htmlFilename: string
   /** Content hash (slide source + render-relevant settings); used as the cache key. */
   contentHash: string
+  /** Frontmatter `caption`: the slide's post text in published threads. */
+  caption?: string
+  /** Frontmatter `skipThread`: leave the slide out of published threads. */
+  skipThread?: boolean
 }
 
 const SLUG_PUNCT_RE = /[^\w\s-]+/g
@@ -197,7 +202,34 @@ function planSlide(
     .update(renderKey)
     .digest('hex')
     .slice(0, 12)
-  return { no, slug, title, description, canonical, imageUrl, overrideSrc, imageFilename, htmlFilename, contentHash: slideHash }
+  const info: SlideOgInfo = { no, slug, title, description, canonical, imageUrl, overrideSrc, imageFilename, htmlFilename, contentHash: slideHash }
+  if (typeof fm.caption === 'string' && fm.caption.trim())
+    info.caption = fm.caption.trim()
+  if (fm.skipThread)
+    info.skipThread = true
+  return info
+}
+
+/**
+ * The `_og/slides.json` manifest: what `slidev publish` needs from a build (each slide's
+ * canonical URL, card text and image), so publishing reads `dist/` alone and links exactly the
+ * URLs and images that were built.
+ */
+export function ogManifest(plans: SlideOgInfo[], deck: OgManifest['deck']): OgManifest {
+  return {
+    version: 1,
+    deck,
+    slides: plans.map(p => ({
+      no: p.no,
+      slug: p.slug,
+      title: p.title,
+      description: p.description,
+      ...(p.caption ? { caption: p.caption } : {}),
+      canonical: p.canonical,
+      image: p.imageFilename,
+      ...(p.skipThread ? { skipThread: true } : {}),
+    })),
+  }
 }
 
 function renderShell(info: SlideOgInfo): string {
@@ -406,7 +438,9 @@ export async function generateOgShells(
     plans.push(planSlide(slide, i + 1, deckTitle, baseUrl, appBase, format, renderKey, canonicalForm))
   }
   // Slides without a description of their own (frontmatter, or a first paragraph) use the deck's.
-  const deckDescription = stripMd(String(cfg.seoMeta?.ogDescription ?? cfg.info ?? '')).trim()
+  // `info` defaults to `false`, which must not become the text "false".
+  const rawDeckDescription = [cfg.seoMeta?.ogDescription, cfg.info].find(v => typeof v === 'string' && v.trim())
+  const deckDescription = stripMd(rawDeckDescription ?? '').trim()
   for (const p of plans)
     p.description ||= deckDescription
 
@@ -524,6 +558,13 @@ export async function generateOgShells(
   // to the canonical slide URL. See specs/og-index-and-404.md.
   const deckUrl = joinUrl(baseUrl, appBase || '/')
   await fs.writeFile(resolve(ogDir, 'index.html'), renderIndex(plans, deckTitle, deckUrl, size), 'utf-8')
+  const bskyHandle: unknown = cfg.publish?.bluesky?.handle
+  const manifest = ogManifest(plans, {
+    title: deckTitle,
+    url: deckUrl,
+    ...(typeof bskyHandle === 'string' && bskyHandle ? { bluesky: { handle: bskyHandle } } : {}),
+  })
+  await fs.writeFile(resolve(ogDir, 'slides.json'), `${JSON.stringify(manifest, null, 2)}\n`, 'utf-8')
 
   // Per-slide SPA shells so canonical URLs serve per-slide og:*/twitter:* meta to
   // scrapers without giving up the SPA. Three filenames per slide (all identical
