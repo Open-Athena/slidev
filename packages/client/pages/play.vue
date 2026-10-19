@@ -9,6 +9,7 @@ import { useHideCursorIdle } from '../composables/useHideCursorIdle'
 import { useNav } from '../composables/useNav'
 import { usePasteImage } from '../composables/usePasteImage'
 import { usePinchZoomPan } from '../composables/usePinchZoomPan'
+import { slidesDrawer } from '../composables/useSlidesDrawer'
 import { useSwipeControls } from '../composables/useSwipeControls'
 import { useTextEditing } from '../composables/useTextEditing'
 import { useWakeLock } from '../composables/useWakeLock'
@@ -17,11 +18,12 @@ import LaserPointer from '../internals/LaserPointer.vue'
 import NavControls from '../internals/NavControls.vue'
 import PresenterMouse from '../internals/PresenterMouse.vue'
 import SlideContainer from '../internals/SlideContainer.vue'
+import SlidesDrawer from '../internals/SlidesDrawer.vue'
 import SlidesShow from '../internals/SlidesShow.vue'
 import SlugChip from '../internals/SlugChip.vue'
 import { onContextMenu } from '../logic/contextMenu'
 import { registerShortcuts } from '../logic/shortcuts'
-import { editorHeight, editorWidth, isEditorVertical, isScreenVertical, showEditor, viewerCssFilter, viewerCssFilterDefaults } from '../state'
+import { breakpoints, editorHeight, editorWidth, fullscreen, isEditorVertical, isScreenVertical, showEditor, viewerCssFilter, viewerCssFilterDefaults } from '../state'
 
 const { next, prev, isPrintMode, isPlaying, isEmbedded } = useNav()
 const { isDrawing } = useDrawings()
@@ -33,11 +35,14 @@ function onClick(e: MouseEvent) {
   if (showEditor.value)
     return
 
-  if (e.button === 0 && (e.target as HTMLElement)?.id === 'slide-container') {
+  const target = e.target as HTMLElement | null
+  if (e.button === 0 && target?.id === 'slide-container') {
     // Only the outer 15% on each side advances/rewinds slides. The middle 70%
     // (and the letterbox/pillarbox bars near vertical center) is a no-op, so
     // clicking off-element to defocus doesn't accidentally page the deck.
-    const x = e.pageX / window.innerWidth
+    // Relative to the slide's own column: the slide index or side editor can take part of the window.
+    const rect = target.getBoundingClientRect()
+    const x = (e.clientX - rect.left) / rect.width
     const HOT = 0.15
     if (x < HOT)
       prev()
@@ -78,6 +83,15 @@ if (import.meta.hot) {
   ))
 }
 
+// The slide index (`⇧T`): a column left of the slide, which then rescales to the rest of the
+// width; on narrow windows it floats over the slide instead. Not in fullscreen, print or embeds.
+const narrow = breakpoints.smaller('md')
+const showSlidesDrawer = computed(() => slidesDrawer.visible && !isPrintMode.value && !isEmbedded.value && !fullscreen.isFullscreen.value)
+const drawerColumn = computed(() => showSlidesDrawer.value && !narrow.value)
+const gridClass = computed(() => isEditorVertical.value
+  ? (drawerColumn.value ? 'grid-rows-[1fr_max-content] grid-cols-[max-content_1fr]' : 'grid-rows-[1fr_max-content]')
+  : (drawerColumn.value ? 'grid-cols-[max-content_1fr_max-content]' : 'grid-cols-[1fr_max-content]'))
+
 const persistNav = computed(() => isScreenVertical.value || showEditor.value)
 
 const SideEditor = shallowRef<any>()
@@ -113,8 +127,9 @@ const contentStyle = computed(() => {
 <template>
   <div
     id="page-root" ref="root" class="grid"
-    :class="isEditorVertical ? 'grid-rows-[1fr_max-content]' : 'grid-cols-[1fr_max-content]'"
+    :class="gridClass"
   >
+    <SlidesDrawer v-if="showSlidesDrawer" :overlay="narrow" class="row-span-full" />
     <SlideContainer
       :style="{ background: 'var(--slidev-slide-container-background, black)' }"
       is-main

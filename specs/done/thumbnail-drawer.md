@@ -243,3 +243,41 @@ P1 alone is shippable and valuable; P2/P3 are follow-ups.
 - **Editor panel** (`packages/client/pages/edit.vue` or similar): the drawer
   makes editor-mode navigation much faster; likely the first place users will
   want it default-on.
+
+## As built
+
+P1–P3 shipped together.
+
+### Files
+
+- `packages/client/internals/SlidesDrawer.vue`: the panel (`<nav aria-label="Slide index">`): header with a titles / previews toggle and Close, the thumb list, an edit-mode "Drag to reorder" footer, and a resize handle on the right edge.
+- `packages/client/internals/SlideThumbnail.vue`: one `<button>` per slide (`data-slide-no`, `aria-current`, `aria-label="Slide N: title[, current slide]"`).
+- `packages/client/composables/useSlidesDrawer.ts`: reactive `slidesDrawer` state `{ visible, width, mode }` (defaults `false` / `200` / `'text'`), `clampDrawerWidth` ([120, 400]), `parseDrawerState`, `toggleSlidesDrawer(visible?, { focus })`.
+- `packages/client/composables/slide-reorder.ts`: `dropPosition` + `reorderSlides`, extracted from `QuickOverview.vue`, which now uses them too.
+- Wiring: `pages/play.vue` (layout), `internals/NavControls.vue` (toggle button), `setup/shortcuts.ts` (`toggle_slides_drawer`).
+
+### Decisions / deviations
+
+- **Hotkey `⇧T`** (`toggle_slides_drawer`, `display: ['⇧T']`), and a nav-bar `IconButton` (`side-panel-open` / `side-panel-close` icon) with `shortcut="toggle_slides_drawer"`, so the tooltip shows the key. The button is hidden in presenter mode and embeds.
+- **Persistence**: one localStorage key, `slidev-slides-drawer`, holding JSON; it's per browser, not per deck (like the other `slidev-*` settings). Reads and writes are in try/catch, and malformed or missing fields fall back to the defaults one field at a time.
+- **Layout**: the drawer is the first column of `#page-root`'s grid (`max-content 1fr max-content`, or `max-content 1fr` beside the vertical editor with the drawer spanning the rows). `SlideContainer`'s `useElementSize` rescales the slide by itself, so nothing needs a manual resize. Below Tailwind `md` (768px) the drawer floats over the slide (`overlay`) instead, and picking a slide closes it.
+- **Hidden** in print mode, embeds, fullscreen and presenter mode (it isn't mounted in `presenter.vue`; opt-in there is left for later).
+- **Titles**: `route.meta.slide.title` (the parser already derives it from frontmatter `title` or the first heading), rendered with `#slidev/title-renderer`. Untitled slides show "Slide N".
+- **Live previews (P2)**: a per-browser drawer-header toggle stored as `mode`, rather than a deck config flag. Default stays `'text'`. Each preview is the overview's `SlideContainer` + `SlideWrapper render-context="overview"` + `DrawingPreview` at `width - 64` px, under `pointer-events-none`, and it uses snapshots when they exist. Lazy mounting: an `IntersectionObserver` rooted on the list, with `rootMargin: 100% 0px`, mounts a preview when it comes within one drawer height of the visible area and unmounts it once it leaves. A fixed-size placeholder keeps the scroll height steady. There's no pooling, and no benchmark on a 200-slide deck yet.
+- **Keyboard / a11y**: roving tabindex (only the focused thumb has `tabindex=0`, and it follows the current slide). ↑ / ↓ / Home / End move focus without navigating; Enter (a native button click) jumps. ← / → still page the deck, Esc closes the drawer, and opening it with `⇧T` focuses the current thumb. A mouse click blurs the thumb, so the deck's shortcuts (which are off while a button has focus) keep working.
+  - `⇧T` pressed inside the drawer only blurs the thumb, and the global shortcut then does the toggle. Closing the drawer directly would let the still-held keys reopen it: the magic-key shortcuts fire as soon as they're re-enabled. Without the blur, the thumb is removed while the keys are still down.
+- **Active slide**: highlighted with the primary border and a tint. It's `scrollIntoView({ block: 'nearest' })`'d on mount and on every slide change.
+- **Reorder (P3)**: in dev edit mode, drag a thumb onto another's upper or lower half to drop it before or after; a blue bar marks the target. This uses the overview's `POST /__slidev/slides/reorder {op: 'move'}`. Slide 1 (headmatter) can't be dragged or dropped in front of.
+- **Side fix**: `play.vue`'s 15% click-to-page hot zones are now measured relative to the slide container, not the window, so they stay correct when the drawer or side editor narrows the slide.
+- Not done: right-click context menu, ⌘X/⌘C/⌘V inside the drawer (the overview still has them), opt-in for presenter mode, theme override hooks.
+
+### Tests
+
+- `test/slides-drawer.test.ts` (vitest): `parseDrawerState` (defaults, per-field fallback, garbage input), `clampDrawerWidth`, `dropPosition`.
+- `cypress/e2e/examples/slides-drawer.spec.ts` (5 tests):
+  - Off by default. `⇧T` opens it with all 31 labels exact, current slide marked, focus on the active thumb, and the slide canvas starting at x = 200. ↑ / ↓ / Enter work, as do Esc and `⇧T` to close, and the stored state is checked.
+  - Click navigates, then → still pages. The nav button toggles the drawer, and it survives a reload.
+  - Resize handle: +80px gives 280, and the width is clamped at 120.
+  - Live previews mount as a contiguous run at the top, rendering "Page 2"; at `/31` the run is at the bottom.
+  - Drag-reorder moves 26 after 27 and back, leaving the fixture byte-identical.
+  - Cypress quirk: after a thumb is removed, `type()` sends its keyup to the detached element, so the deck never sees the keys released. That's why the spec closes with `⇧T` last.

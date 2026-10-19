@@ -4,6 +4,7 @@ import setups from '#slidev/setups/shortcuts'
 import { useDrawings } from '../composables/useDrawings'
 import { hasSelection } from '../composables/useMultiSelect'
 import { useNav } from '../composables/useNav'
+import { toggleSlidesDrawer } from '../composables/useSlidesDrawer'
 import { toggleDark } from '../logic/dark'
 import { editMode, magicKeys, showGotoDialog, showInsertImageDialog, showOverview, toggleOverview } from '../state'
 import { downloadPDF } from '../utils'
@@ -12,7 +13,7 @@ import { currentOverviewPage, downOverviewPage, nextOverviewPage, prevOverviewPa
 export default function setupShortcuts() {
   const { go, goFirst, goLast, next, nextSlide, prev, prevSlide } = useNav()
   const { drawingEnabled } = useDrawings()
-  const { escape, space, shift, left, right, up, down, enter, d, e, g, i, o, '`': backtick } = magicKeys
+  const { escape, space, shift, left, right, up, down, enter, d, e, g, i, o, t, '`': backtick } = magicKeys
 
   const context: NavOperations = {
     next,
@@ -47,6 +48,7 @@ export default function setupShortcuts() {
     { name: 'toggle_overview', key: and(or(o, backtick), not(drawingEnabled)), display: ['o', '`'], fn: toggleOverview },
     { name: 'hide_overview', key: and(escape, not(drawingEnabled)), display: ['esc'], fn: () => showOverview.value = false },
     { name: 'goto', key: and(g, not(drawingEnabled)), display: ['g'], fn: () => showGotoDialog.value = !showGotoDialog.value },
+    { name: 'toggle_slides_drawer', key: and(t, shift, not(drawingEnabled)), display: ['⇧T'], fn: () => toggleSlidesDrawer(undefined, { focus: true }) },
     { name: 'toggle_edit', key: and(e, not(drawingEnabled)), display: ['e'], fn: () => editMode.value = !editMode.value },
     { name: 'insert_image', key: and(i, not(drawingEnabled), editMode), display: ['i'], fn: () => showInsertImageDialog.value = !showInsertImageDialog.value },
     { name: 'next_overview', key: and(right, showOverview), fn: nextOverviewPage },

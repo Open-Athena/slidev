@@ -4,6 +4,7 @@ import CustomNavControls from '#slidev/custom-nav-controls'
 import { commitToYaml, describeEntry, downloadCoordsYaml, canRedo as historyCanRedo, canUndo as historyCanUndo, isDirty as historyIsDirty, redo as historyRedo, undo as historyUndo, lastYamlCommitEventId, revertToYaml, topActiveEventId, topRedoEntry, topUndoEntry } from '../composables/useDragHistory'
 import { useDrawings } from '../composables/useDrawings'
 import { useNav } from '../composables/useNav'
+import { slidesDrawer, toggleSlidesDrawer } from '../composables/useSlidesDrawer'
 import { configs } from '../env'
 import { isColorSchemaConfigured, isDark, toggleDark } from '../logic/dark'
 import { activeElement, breakpoints, cursorStyle, editMode, fullscreen, hasViewerCssFilter, presenterLayout, showEditor, showHistoryDrawer, showInfoDialog, showPresenterCursor, toggleOverview, togglePresenterCursor, togglePresenterLayout } from '../state'
@@ -113,6 +114,16 @@ if (__SLIDEV_FEATURE_RECORD__)
       </IconButton>
       <IconButton v-if="!isEmbedded" title="Show slide overview" shortcut="toggle_overview" @click="toggleOverview()">
         <div class="i-carbon:apps" />
+      </IconButton>
+      <IconButton
+        v-if="!isEmbedded && !isPresenter"
+        :title="`${slidesDrawer.visible ? 'Hide' : 'Show'} slide index`"
+        shortcut="toggle_slides_drawer"
+        :class="slidesDrawer.visible ? 'text-primary' : ''"
+        data-testid="toggle-slides-drawer"
+        @click="toggleSlidesDrawer()"
+      >
+        <div :class="slidesDrawer.visible ? 'i-carbon:side-panel-close' : 'i-carbon:side-panel-open'" />
       </IconButton>
       <IconButton
         :title="editMode ? 'Stop editing' : 'Edit: move, resize, crop; double-click text to edit it'"
