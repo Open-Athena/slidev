@@ -46,6 +46,16 @@ draggableImageTags: [Scrn] # optional: components whose root element is an image
 
 Under `all`, images keep their place in the layout ([flow layout](#flow-layout)), so images in columns and grids stay put until you move them.
 
+## Duplicate, Copy, Paste, Delete
+
+With an object selected in edit mode:
+
+- `⌘D` duplicates it, 16 px down-right of the original; the copy is selected.
+- `⌘C` copies it (its markdown also goes to the system clipboard), and `⌘V` pastes a copy on the current slide, which can be another slide.
+- `⌫` / `⌦` deletes it.
+
+The toolbar under the selection has Duplicate and Delete buttons too. Copies are added at the end of the slide's markdown, with ids of their own, and one `⌘Z` undoes a paste or delete.
+
 ## Draggable Components
 
 To give components their own drag / resize box, list them, or pass `true` for every component in the deck's `components/` directory whose template has a single root element (a directive can't attach to a multi-root component):

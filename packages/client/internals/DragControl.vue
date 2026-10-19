@@ -3,6 +3,8 @@
 import type { DragElementState } from '../composables/useDragElements'
 import { clamp } from '@antfu/utils'
 import { computed, inject, onMounted, onUnmounted, ref, watchEffect } from 'vue'
+import { duplicateSelected } from '../composables/useCopyPaste'
+import { deleteSelectedElements } from '../composables/useDeleteElement'
 import { findSnap, getDragElementsForPage, getSnapTargets } from '../composables/useDragElements'
 import { useSlideBounds } from '../composables/useSlideBounds'
 import { injectionSlideScale } from '../constants'
@@ -697,6 +699,14 @@ function onNudgeKeydown(e: KeyboardEvent) {
 onMounted(() => window.addEventListener('keydown', onNudgeKeydown, true))
 onUnmounted(() => window.removeEventListener('keydown', onNudgeKeydown, true))
 
+function duplicate() {
+  void duplicateSelected().catch(err => console.error('[Slidev] Duplicate failed:', err))
+}
+
+function remove() {
+  void deleteSelectedElements().catch(err => console.error('[Slidev] Delete failed:', err))
+}
+
 function openLink() {
   if (associatedLink.value)
     window.open(associatedLink.value, '_blank')
@@ -1322,7 +1332,7 @@ function getCropHandleProps(handle: 'top' | 'right' | 'bottom' | 'left' | 'topLe
          and made the bottom corner / edge handles hard to grab. `font-family` pins to
          system-ui sans so the deck theme's serif body font doesn't bleed into the UI. -->
     <div
-      v-if="(associatedLink || (hasAspectRatioChanged && !isArrow && !autoHeight)) && !isCropping"
+      v-if="!isCropping"
       class="absolute flex items-center gap-2 bg-white dark:bg-gray-800 rounded shadow-lg px-2 py-1 text-xs font-sans"
       :style="{
         top: '100%',
@@ -1334,6 +1344,22 @@ function getCropHandleProps(handle: 'top' | 'right' | 'bottom' | 'left' | 'topLe
         fontFamily: `ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif`,
       }"
     >
+      <!-- Duplicate (⌘D) / delete (⌫) the selection -->
+      <button
+        class="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded"
+        title="Duplicate (⌘D)"
+        @click.stop="duplicate"
+      >
+        <div class="i-carbon:copy w-3.5 h-3.5" />
+      </button>
+      <button
+        class="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded"
+        title="Delete (⌫)"
+        @click.stop="remove"
+      >
+        <div class="i-carbon:trash-can w-3.5 h-3.5" />
+      </button>
+      <div v-if="associatedLink || (hasAspectRatioChanged && !isArrow && !autoHeight)" class="w-px h-4 bg-gray-300 dark:bg-gray-600" />
       <!-- Link info -->
       <template v-if="associatedLink">
         <a
