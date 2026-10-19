@@ -1,6 +1,6 @@
 import { expectEventually } from '../../poll'
 
-const BASE = 'http://localhost:3041'
+const BASE = Cypress.config('baseUrl')!
 const NUDGE_SLIDE = 14
 const OTHER_SLIDE = 15
 const CLAMP_SLIDE = 28

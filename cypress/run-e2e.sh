@@ -7,7 +7,7 @@
 # runs on a fresh checkout so it never sees this; locally you do. This script makes a
 # run reproducible end-to-end:
 #   1. clear the fixture's `.slidev/` persistent state,
-#   2. (re)start the `cy:fixture` dev server on :3041 from a clean port,
+#   2. (re)start the `cy:fixture` dev server on :$CY_PORT (default 3041) from a clean port,
 #   3. wait for it to answer,
 #   4. run cypress (all specs, or whatever args you pass through),
 #   5. tear the fixture server down on exit (no leaked dev-server trees).
@@ -22,14 +22,16 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
-PORT=3041
+# `CY_PORT` lets parallel worktrees run their own fixture server + Cypress side by side.
+PORT="${CY_PORT:-3041}"
+export CY_PORT="$PORT"
 mkdir -p tmp
 
 cleanup() {
   # Kill the whole fixture dev-server tree. `pkill -f` gets the nodemon + pnpm wrapper
   # (their cmdline carries the fixture path) first, so nodemon can't relaunch; the slidev
   # child's cmdline is just `@slidev/cli/bin/slidev.mjs`, so reap it by the port it holds.
-  pkill -f 'cypress/fixtures/basic' 2>/dev/null || true
+  pkill -f "$ROOT/cypress/fixtures/basic" 2>/dev/null || true
   kill-port "$PORT" >/dev/null 2>&1 || true
 }
 trap cleanup EXIT
@@ -41,7 +43,8 @@ rm -rf cypress/fixtures/basic/.slidev
 cleanup
 kill-port "$PORT" >/dev/null 2>&1 || true
 sleep 1
-nohup pnpm cy:fixture </dev/null >"tmp/cy-fixture-$PORT.log" 2>&1 &
+# Started by absolute path, so `cleanup`'s `pkill` matches only this worktree's fixture server.
+nohup pnpm -C "$ROOT/cypress/fixtures/basic" run dev </dev/null >"tmp/cy-fixture-$PORT.log" 2>&1 &
 disown
 
 # 3. Wait for the server to answer (up to ~40s).
@@ -57,4 +60,4 @@ if ! curl -fsS -o /dev/null "http://localhost:$PORT/1" 2>/dev/null; then
 fi
 
 # 4. Run cypress (pass-through args, e.g. `--spec ...`).
-npx cypress run --browser electron "$@"
+npx cypress run --browser electron --config "baseUrl=http://localhost:$PORT" "$@"

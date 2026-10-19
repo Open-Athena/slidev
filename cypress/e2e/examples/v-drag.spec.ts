@@ -1,6 +1,6 @@
 export {}
 
-const BASE = 'http://localhost:3041'
+const BASE = Cypress.config('baseUrl')!
 
 context('v-drag', () => {
   // Editing (select / drag / crop) is behind edit mode, which is off by default.
@@ -204,7 +204,7 @@ context('v-drag', () => {
       cy.wait(500)
 
       // Should still be on the same page (not navigated to example.com)
-      cy.url().should('include', 'localhost:3041')
+      cy.url().should('include', new URL(Cypress.config('baseUrl')!).host)
     })
 
     it('shows floating link button for linked elements', () => {

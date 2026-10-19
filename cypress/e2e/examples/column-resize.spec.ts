@@ -1,6 +1,6 @@
 import { expectEventually } from '../../poll'
 
-const BASE = 'http://localhost:3041'
+const BASE = Cypress.config('baseUrl')!
 const LAYOUT_SLIDE = 26
 const HTML_SLIDE = 27
 // The ⌘Z test's own copy of slide 27: restoring a slide right after a test edited it can lose to

@@ -1,6 +1,6 @@
 export {}
 
-const BASE = 'http://localhost:3041'
+const BASE = Cypress.config('baseUrl')!
 
 // `v-drag.flow` elements keep their slot in an author-built layout (grid / flex columns with
 // positioned containers), instead of being pulled out to slide-absolute positions.

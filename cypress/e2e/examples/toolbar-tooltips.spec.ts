@@ -1,6 +1,6 @@
 export {}
 
-const BASE = 'http://localhost:3041'
+const BASE = Cypress.config('baseUrl')!
 
 context('toolbar tooltips', () => {
   it('show the label and the hotkeys from the shortcut table, quickly, with no native title', () => {

@@ -12,7 +12,7 @@ Cypress.Commands.add('rightArrow', (n = 1) => {
   cy.get('body').wait(500).type('{rightarrow}'.repeat(n), { delay: 10 }).wait(500)
 })
 
-const BASE = 'http://localhost:3041'
+const BASE = Cypress.config('baseUrl')!
 
 context('Basic', () => {
   beforeEach(() => {

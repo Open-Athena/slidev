@@ -1,6 +1,6 @@
 import { expectEventually } from '../../poll'
 
-const BASE = 'http://localhost:3041'
+const BASE = Cypress.config('baseUrl')!
 const SLIDE = 30
 
 // WYSIWYG block editing (prototype; fixture slide 30 turns it on in its frontmatter). Each test

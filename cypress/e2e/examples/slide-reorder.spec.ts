@@ -1,6 +1,6 @@
 import { expectEventually } from '../../poll'
 
-const BASE = 'http://localhost:3041'
+const BASE = Cypress.config('baseUrl')!
 const SOURCE = 'cypress/fixtures/basic/slides.md'
 
 // Reordering from the overview rewrites the fixture deck's (tracked) `slides.md`, so the test

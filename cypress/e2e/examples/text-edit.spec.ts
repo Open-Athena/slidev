@@ -1,6 +1,6 @@
 import { expectEventually } from '../../poll'
 
-const BASE = 'http://localhost:3041'
+const BASE = Cypress.config('baseUrl')!
 const SLIDE = 25
 
 // In-app text editing writes to the fixture deck's (tracked) `slides.md`; every test puts the

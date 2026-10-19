@@ -1,6 +1,6 @@
 import { expectEventually } from '../../poll'
 
-const BASE = 'http://localhost:3041'
+const BASE = Cypress.config('baseUrl')!
 const SLIDE = 29
 
 // List structure keys in in-app text editing. Each test edits the fixture deck's (tracked)
