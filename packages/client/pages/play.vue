@@ -2,6 +2,7 @@
 import { useStyleTag } from '@vueuse/core'
 import { computed, ref, shallowRef } from 'vue'
 import { useColumnResize } from '../composables/useColumnResize'
+import { useCopyPaste } from '../composables/useCopyPaste'
 import { useDrawings } from '../composables/useDrawings'
 import { useFileDrop } from '../composables/useFileDrop'
 import { useHideCursorIdle } from '../composables/useHideCursorIdle'
@@ -52,6 +53,7 @@ const { dropActive: fileDropActive, inFlight: fileDropInFlight } = useFileDrop()
 if (__DEV__ && __SLIDEV_FEATURE_EDITOR__) {
   useTextEditing()
   useColumnResize()
+  useCopyPaste()
 }
 usePasteImage()
 if (__SLIDEV_FEATURE_WAKE_LOCK__)

@@ -452,3 +452,12 @@ Intro with Q&A and ~1 day.
 <div class="cy-note">An HTML block</div>
 
 After the HTML.
+
+---
+
+# Page 31
+
+<div class="grid gap-4" style="grid-template-columns: 1fr 1fr">
+<div>Left cell</div>
+<div>Right cell</div>
+</div>

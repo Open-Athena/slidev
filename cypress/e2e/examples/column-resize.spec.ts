@@ -3,6 +3,9 @@ import { expectEventually } from '../../poll'
 const BASE = 'http://localhost:3041'
 const LAYOUT_SLIDE = 26
 const HTML_SLIDE = 27
+// The ⌘Z test's own copy of slide 27: restoring a slide right after a test edited it can lose to
+// the edit's own write, and the next test would start from the edited split.
+const UNDO_SLIDE = 31
 
 interface SlideJson {
   content: string
@@ -144,10 +147,15 @@ context('column resizing', () => {
   })
 
   it('⌘Z undoes a resize, restoring the source exactly', () => {
-    visit(HTML_SLIDE)
-    dragBoundary('[data-slidev-html].grid', 0.2)
-    expectHtml(resized())
-    cy.get('body').type('{cmd}z')
-    expectHtml(originalHtml)
+    visit(UNDO_SLIDE)
+    const url = `${BASE}/__slidev/slides/${UNDO_SLIDE}.json`
+    cy.request(url).then(({ body }) => {
+      const before = (typeof body === 'string' ? JSON.parse(body) : body).content as string
+      const resizedHere = before.replace('style="grid-template-columns: 1fr 1fr"', 'style="grid-template-columns: 1.5fr 1fr"')
+      dragBoundary('[data-slidev-html].grid', 0.2)
+      expectEventually(url, (s: SlideJson) => s.content, resizedHere)
+      cy.get('body').type('{cmd}z')
+      expectEventually(url, (s: SlideJson) => s.content, before)
+    })
   })
 })

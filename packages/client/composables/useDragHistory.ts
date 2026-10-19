@@ -340,8 +340,8 @@ async function applyDeleteSplice(slideNo: number, source: DeleteSource, mode: 'i
 
 // In-app text edit: the slide source has already been patched; record the before / after lines
 // so undo / redo can swap them (matched by content, since line numbers drift).
-export async function pushTextEdit(slideNo: number, source: Required<Omit<DeleteSource, 'frontmatter'>>): Promise<void> {
-  await postEdit(slideNo, 'text', [], source)
+export async function pushTextEdit(slideNo: number, source: Required<Omit<DeleteSource, 'frontmatter'>>, items: EditItem[] = []): Promise<void> {
+  await postEdit(slideNo, 'text', items, source)
 }
 
 async function applyTextSplice(slideNo: number, source: DeleteSource, direction: 'undo' | 'redo'): Promise<void> {

@@ -1,7 +1,10 @@
 import type { SlidePatch } from '@slidev/types'
 import type { ElementSnapshot } from './state-client'
+import type { DragElementState } from './useDragElements'
 import { sliceLineRange } from './delete-source'
-import { pushDelete } from './useDragHistory'
+import { findElement, removeRange } from './element-copy'
+import { changedRange } from './list-edit'
+import { pushDelete, pushTextEdit } from './useDragHistory'
 import { clearSelection, getSelectedElements } from './useMultiSelect'
 
 // Delete a selected v-drag element by stripping the markdown lines that produced it. Each
@@ -49,10 +52,14 @@ export async function deleteSelectedElements(): Promise<{ deleted: number, skipp
   }
   const jobs: Job[] = []
   let skipped = 0
+  // Elements from HTML (`draggableImages: all`, `draggableComponents`) carry no source range;
+  // their markup is found in the slide instead (`findElement`), per slide.
+  const unmapped = new Map<number, DragElementState[]>()
   for (const state of selected) {
     if (!state.markdownSource) {
-      console.warn('[Slidev] Delete skipped: element has no markdownSource', state.dragId)
-      skipped++
+      const list = unmapped.get(state.page.value) ?? []
+      list.push(state)
+      unmapped.set(state.page.value, list)
       continue
     }
     const [start, end] = state.markdownSource
@@ -100,6 +107,30 @@ export async function deleteSelectedElements(): Promise<{ deleted: number, skipp
   // elements; the server-side event log already reflects the delete.
   for (const [slideNo, content] of working)
     await patchSlideContent(slideNo, content)
+
+  // Unmapped elements: remove their markup (bottom-up, so earlier offsets and `-2`-style
+  // occurrences stay valid), as one text edit per slide. Undo restores the markup, and the
+  // element's position is still in the history state, so it comes back where it was.
+  for (const [slideNo, states] of unmapped) {
+    const content = await fetchSlideContent(slideNo)
+    const ranges = states.map((state) => {
+      const src = state.container.value?.tagName === 'IMG' ? state.container.value.getAttribute('src') : null
+      const at = findElement(content, { src, dragId: state.dragId })
+      if (!at) {
+        console.warn('[Slidev] Delete skipped: element\'s markup not found in the slide', state.dragId)
+        skipped++
+      }
+      return at
+    }).filter(r => r != null).sort((a, b) => b.start - a.start)
+    let next = content
+    for (const r of ranges)
+      next = removeRange(next, r.start, r.end)
+    if (next === content)
+      continue
+    await patchSlideContent(slideNo, next)
+    await pushTextEdit(slideNo, changedRange(content, next))
+    deleted += ranges.length
+  }
 
   clearSelection()
   return { deleted, skipped }
