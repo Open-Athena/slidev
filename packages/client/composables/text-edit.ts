@@ -18,7 +18,7 @@ export function parseLineRange(value: string | null | undefined): LineRange | nu
 
 // Block markers before a line's text: blockquote `>`s, a list marker (+ task checkbox), or an
 // ATX heading's `#`s.
-const PREFIX_RE = /^[ \t]*(?:>[ \t]?)*[ \t]*(?:(?:[-*+]|\d+[.)])[ \t]+(?:\[[ x]\][ \t]+)?)?(?:#{1,6}(?:[ \t]+|$))?/i
+const PREFIX_RE = /^[ \t]*(?:>[ \t]?)*[ \t]*(?:(?:[-*+]|\d+[.)])(?:[ \t]+|$)(?:\[[ x]\](?:[ \t]+|$))?)?(?:#{1,6}(?:[ \t]+|$))?/i
 // What precedes a continuation line's text: blockquote `>`s and indentation.
 const CONTINUATION_RE = /^[ \t]*(?:>[ \t]?)*[ \t]*/
 const SETEXT_UNDERLINE_RE = /^[ \t]*(?:=+|-+)[ \t]*$/
@@ -65,7 +65,9 @@ export function replaceBlockText(content: string, range: LineRange, newText: str
   const continuation = textEnd - start >= 2
     ? lines[start + 1].match(CONTINUATION_RE)![0]
     : quote + ' '.repeat(prefix.length - quote.length)
-  const replaced = textLines.map((text, i) => (i === 0 ? prefix : continuation) + text)
+  // A bare marker (`-` with nothing after it, as an empty item is saved) needs a space before text.
+  const first = /\S$/.test(prefix) && textLines[0] ? `${prefix} ` : prefix
+  const replaced = textLines.map((text, i) => (i === 0 ? first : continuation) + text)
   return [...lines.slice(0, start), ...replaced, ...lines.slice(textEnd, end), ...lines.slice(end)].join('\n')
 }
 
@@ -196,8 +198,10 @@ function serializeNode(node: InlineNode): string | null {
       return inner === href ? href : `[${inner}](${href})`
     }
     // Browsers wrap edits in bare spans / font tags; markdown has no equivalent, keep the text.
+    // A task-list item's text is wrapped in a `<label>` for its checkbox.
     case 'span':
     case 'font':
+    case 'label':
       return inner
     default:
       return null

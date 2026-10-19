@@ -47,3 +47,39 @@ Candidates:
   - the no-op round trip over a fixture corpus is byte-identical for every region B accepts;
   - regions containing HTML / components / slots are refused;
   - editing one list item rewrites only that item's lines.
+
+## Part A: as built
+
+In a rich-edited list item (`composables/useTextEditing.ts`), the keys below rewrite the source lines through pure functions in `composables/list-edit.ts` (unit tests in `test/list-edit.test.ts`). Editing then continues in the resulting item, caret placed by text offset, once the slide re-renders.
+
+| Key | As built |
+|---|---|
+| Enter | `splitItem`: the item keeps the text before the caret; a new sibling holding the rest goes right below its text. Its nested list, if any, then belongs to the new item, as in ProseMirror and Docs. Enter at the end therefore adds an empty item. |
+| Enter on an empty item | `removeItem`, and editing stops. |
+| Backspace at the start | `mergeIntoPrevious`: joins the text onto the item above at any depth, caret at the join. An empty item is just removed. Nothing happens on a list's first item. |
+| Tab / ⇧Tab | `indentItem` aligns the item, with its children, under the previous sibling's text. `outdentItem` lifts it to the parent's level; siblings after it become its children. |
+| ⌥↑ / ⌥↓ | `moveItem` swaps the item, with its nested list, with the previous / next sibling. |
+
+**Markers:**
+- Ordered lists numbered sequentially are renumbered after every op; lazy `1.` / `1.` numbering is left alone.
+- Task items get an unchecked `[ ]`.
+- Blockquote prefixes are kept.
+
+**Saving:** each op is one POST plus one `text` history event (`changedRange`: just the differing lines), so ⌘Z restores the source byte for byte.
+
+**Changes it needed:**
+- `source-lines.ts` tags an empty item (`- `, which has no paragraph) with its first line.
+- `PREFIX_RE` / `ITEM_RE` accept a bare marker (`-`) and a bare `[ ]`. Saving trims the trailing space of a last-line empty item, and typed text then gets a space after the marker.
+- `<label>` (the task-list plugin's text wrapper) serializes as plain content, so task items edit as rich text.
+- An empty task item renders as the text `[ ]` (markdown-it needs text after the box), so it opens in the raw box until it has text.
+- Re-render waits up to 10 s; a cold dev server takes seconds to recompile.
+
+**Tests:** `cypress/e2e/examples/list-edit.spec.ts` on fixture slide 29 (nested, ordered and task lists) asserts the exact rewritten markdown for:
+- Enter at the end, then typing, then Enter on the empty item;
+- Enter mid-text in an ordered list, which renumbers;
+- a new task item;
+- Backspace merge, with ⌘Z restoring the source byte for byte;
+- Tab, then ⇧Tab back to the original;
+- ⌥↓.
+
+Two existing text-edit tests used Enter to save a list item; one now saves by clicking away, the other edits a paragraph. Verified with real keys in Chrome on the deep-dive deck's Outline list: add "Q&A", Tab / ⇧Tab / ⌥↑, Backspace-merge, ⌘Z.

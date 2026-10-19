@@ -1,6 +1,8 @@
+import type { ListEditResult, ListFocus } from './list-edit'
 import type { LineRange } from './text-edit'
 import { onMounted, onUnmounted, watch } from 'vue'
 import { editMode } from '../state'
+import { changedRange, indentItem, mergeIntoPrevious, moveItem, outdentItem, removeItem, splitItem } from './list-edit'
 import {
   blockSourceText,
   cellSourceText,
@@ -22,6 +24,9 @@ import { clearSelection } from './useMultiSelect'
 // Enter saves (Shift+Enter: new line), Esc cancels, clicking away saves. The edit is written to
 // the block's source lines (from the `data-slidev-md` attributes `node/syntax/source-lines.ts`
 // adds) and recorded as a `text` history event, so ⌘Z undoes it.
+// In a list item, Enter splits it (or ends the list, on an empty item), Backspace at its start
+// merges it into the item above, Tab / ⇧Tab indent / outdent it and ⌥↑ / ⌥↓ move it, then
+// editing continues in the resulting item (`list-edit.ts` rewrites the lines).
 
 interface Target {
   el: HTMLElement
@@ -134,7 +139,127 @@ function snapshotDom(el: HTMLElement): () => void {
   }
 }
 
-function startRich(t: Target, content: string, sourceText: string) {
+// Text nodes of a block's own text: a list item's nested list (and task checkbox) excluded.
+function ownTextNodes(el: HTMLElement): Text[] {
+  const nodes: Text[] = []
+  const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT, {
+    acceptNode: n => n.parentElement?.closest('ul, ol') && n.parentElement.closest('ul, ol') !== el.closest('ul, ol')
+      ? NodeFilter.FILTER_REJECT
+      : NodeFilter.FILTER_ACCEPT,
+  })
+  for (let n = walker.nextNode(); n; n = walker.nextNode())
+    nodes.push(n as Text)
+  return nodes
+}
+
+function ownTextLength(el: HTMLElement): number {
+  return ownTextNodes(el).reduce((n, t) => n + t.data.length, 0)
+}
+
+/** Put the caret at a text offset in the block's own text (or its end). */
+function placeCaret(el: HTMLElement, offset: number | 'end'): void {
+  const nodes = ownTextNodes(el)
+  const range = document.createRange()
+  let left = offset === 'end' ? Number.POSITIVE_INFINITY : offset
+  let placed = false
+  for (const node of nodes) {
+    if (left <= node.data.length) {
+      range.setStart(node, left)
+      placed = true
+      break
+    }
+    left -= node.data.length
+  }
+  if (!placed) {
+    const last = nodes.at(-1)
+    if (last)
+      range.setStart(last, last.data.length)
+    else
+      range.setStart(el, 0)
+  }
+  range.collapse(true)
+  const sel = getSelection()
+  sel?.removeAllRanges()
+  sel?.addRange(range)
+}
+
+/** The block's text before / after the caret, as markdown, and the caret's text offset. */
+function splitAtCaret(el: HTMLElement): { before: string, after: string, offset: number, collapsed: boolean } | null {
+  const sel = getSelection()
+  if (!sel?.rangeCount)
+    return null
+  const r = sel.getRangeAt(0)
+  if (!el.contains(r.startContainer) || !el.contains(r.endContainer))
+    return null
+  const pre = document.createRange()
+  pre.selectNodeContents(el)
+  pre.setEnd(r.startContainer, r.startOffset)
+  const post = document.createRange()
+  post.selectNodeContents(el)
+  post.setStart(r.endContainer, r.endOffset)
+  const before = serializeInline(pre.cloneContents())
+  const after = serializeInline(post.cloneContents())
+  if (before === null || after === null)
+    return null
+  return { before: before.replace(/\s+$/, ''), after: after.replace(/^\s+/, '').replace(/\s+$/, ''), offset: pre.toString().length, collapsed: r.collapsed }
+}
+
+// Resolves once the slide re-renders after a save (mutations, then a quiet moment), or after 10 s
+// (a cold dev server can take seconds to recompile the slide).
+function nextRender(slideNo: number): Promise<void> {
+  const page = document.querySelector(`.slidev-page-${slideNo}`)
+  if (!page)
+    return Promise.resolve()
+  return new Promise((resolve) => {
+    let quiet: ReturnType<typeof setTimeout> | undefined
+    let timeout: ReturnType<typeof setTimeout> | undefined
+    const observer = new MutationObserver(() => {
+      clearTimeout(quiet)
+      quiet = setTimeout(done, 80)
+    })
+    function done() {
+      observer.disconnect()
+      clearTimeout(timeout)
+      clearTimeout(quiet)
+      resolve()
+    }
+    observer.observe(page, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: [MD_ATTR] })
+    timeout = setTimeout(done, 10000)
+  })
+}
+
+// Write a list edit's result, record it, and continue editing where it says.
+async function applyListEdit(t: Target, content: string, res: ListEditResult): Promise<void> {
+  if (res.content === content)
+    return
+  const rendered = nextRender(t.slideNo)
+  const res2 = await fetch(`/__slidev/slides/${t.slideNo}.json`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+    body: JSON.stringify({ content: res.content, skipHmr: false }),
+  })
+  if (!res2.ok)
+    throw new Error(`Failed to patch slide ${t.slideNo} (${res2.status})`)
+  await pushTextEdit(t.slideNo, changedRange(content, res.content))
+  if (res.focus)
+    await continueAt(t.slideNo, res.focus, rendered)
+}
+
+async function continueAt(slideNo: number, focus: ListFocus, rendered: Promise<void>): Promise<void> {
+  await rendered
+  // The item may land a moment after the first mutations settle.
+  let el: HTMLElement | null | undefined
+  for (let tries = 0; tries < 20 && !el; tries++) {
+    el = document.querySelector(`.slidev-page-${slideNo}`)?.querySelector<HTMLElement>(`li[${MD_ATTR}^="${focus.line},"]`)
+    if (!el)
+      await new Promise(r => setTimeout(r, 100))
+  }
+  const range = parseLineRange(el?.getAttribute(MD_ATTR))
+  if (el && range)
+    await beginEditing({ el, slideNo, range, cell: null }, false, focus.offset)
+}
+
+function startRich(t: Target, content: string, sourceText: string, caret?: number | 'end') {
   const { el } = t
   const restore = snapshotDom(el)
   // List items: only the item's own text is editable, not its nested list.
@@ -144,10 +269,53 @@ function startRich(t: Target, content: string, sourceText: string) {
   el.contentEditable = 'true'
   el.dataset.slidevTextEditing = ''
   el.focus()
+  if (caret !== undefined)
+    placeCaret(el, caret)
+  const isItem = el.tagName === 'LI' && t.cell == null
+
+  // A list structure key: compute the op from the edited text, end this session, apply it.
+  function listOp(ev: KeyboardEvent): (() => ListEditResult | null) | null {
+    const at = splitAtCaret(el)
+    if (!at)
+      return null
+    const [start, end] = t.range
+    const text = at.after ? (at.before ? `${at.before}${at.after}` : at.after) : at.before
+    if (ev.key === 'Enter' && !ev.shiftKey && !ev.altKey)
+      return !at.before && !at.after ? () => removeItem(content, start, end) : () => splitItem(content, start, end, at.before, at.after)
+    if (ev.key === 'Backspace' && at.collapsed && !at.before) {
+      return () => {
+        // Join point: the end of the item above's own text, measured in the rendered slide.
+        const probe = mergeIntoPrevious(content, start, end, at.after, 0)
+        const prevEl = probe?.focus && el.closest(`.slidev-page-${t.slideNo}`)?.querySelector<HTMLElement>(`li[${MD_ATTR}^="${probe.focus.line},"]`)
+        return mergeIntoPrevious(content, start, end, at.after, prevEl ? ownTextLength(prevEl) : 0)
+      }
+    }
+    // Structure ops on unsaved text: save the text into the item first, then apply the op.
+    const withText = (op: (c: string) => ListEditResult | null) => () =>
+      op(text === sourceText ? content : replaceBlockText(content, t.range, text))
+    if (ev.key === 'Tab')
+      return withText(c => (ev.shiftKey ? outdentItem : indentItem)(c, start, start + text.split('\n').length, at.offset))
+    if (ev.altKey && (ev.key === 'ArrowUp' || ev.key === 'ArrowDown'))
+      return withText(c => moveItem(c, start, start + text.split('\n').length, ev.key === 'ArrowUp' ? 'up' : 'down', at.offset))
+    return null
+  }
 
   function onKeydown(ev: KeyboardEvent) {
     if (ev.isComposing)
       return
+    if (isItem && !ev.metaKey && !ev.ctrlKey && (['Enter', 'Backspace', 'Tab'].includes(ev.key) || (ev.altKey && ev.key.startsWith('Arrow')))) {
+      const op = listOp(ev)
+      if (op) {
+        ev.preventDefault()
+        ev.stopPropagation()
+        void finishWith(op)
+        return
+      }
+      if (ev.key === 'Tab') {
+        ev.preventDefault()
+        return
+      }
+    }
     if (ev.key === 'Escape') {
       ev.preventDefault()
       void finish(false)
@@ -171,21 +339,44 @@ function startRich(t: Target, content: string, sourceText: string) {
   el.addEventListener('blur', onBlur)
 
   let done = false
-  async function finish(commit: boolean) {
+  function teardown(): boolean {
     if (done)
-      return
+      return false
     done = true
     session = null
     el.removeEventListener('keydown', onKeydown)
     el.removeEventListener('paste', onPaste)
     el.removeEventListener('blur', onBlur)
     blurIntent.stop()
-    const newText = commit ? serializeBlock(el) : null
+    return true
+  }
+  function release() {
     el.removeAttribute('contenteditable')
     delete el.dataset.slidevTextEditing
     for (const child of locked)
       child.removeAttribute('contenteditable')
     restore()
+  }
+  async function finishWith(op: () => ListEditResult | null) {
+    if (!teardown())
+      return
+    const res = op()
+    release()
+    if (!res)
+      return
+    try {
+      await applyListEdit(t, content, res)
+    }
+    catch (err) {
+      console.error('[Slidev] List edit failed:', err)
+      flashError(el)
+    }
+  }
+  async function finish(commit: boolean) {
+    if (!teardown())
+      return
+    const newText = commit ? serializeBlock(el) : null
+    release()
     if (!commit)
       return
     if (newText === null) {
@@ -286,7 +477,10 @@ async function onDblclick(ev: MouseEvent) {
   ev.preventDefault()
   ev.stopPropagation()
   clearSelection()
-  const raw = ev.altKey
+  await beginEditing(t, ev.altKey)
+}
+
+async function beginEditing(t: Target, raw: boolean, caret?: number | 'end') {
   try {
     const content = await fetchContent(t.slideNo)
     const sourceText = sourceTextOf(t, content)
@@ -296,7 +490,7 @@ async function onDblclick(ev: MouseEvent) {
       return
     }
     if (!raw && serializeBlock(t.el) === sourceText)
-      startRich(t, content, sourceText)
+      startRich(t, content, sourceText, caret)
     else
       startRaw(t, content, sourceText)
   }

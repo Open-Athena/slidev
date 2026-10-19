@@ -143,6 +143,12 @@ describe('blockSourceText / replaceBlockText', () => {
     ])
   })
 
+  it('reads a bare marker as an empty item, and spaces text added to it', () => {
+    expect([blockSourceText('- a\n-', [1, 2]), replaceBlockText('- a\n-', [1, 2], 'b')]).toEqual(['', '- a\n- b'])
+    // An empty task item, its trailing space trimmed at the end of a slide.
+    expect([blockSourceText('- [ ]', [0, 1]), replaceBlockText('- [ ]', [0, 1], 'next')]).toEqual(['', '- [ ] next'])
+  })
+
   it('aligns new continuation lines under a list item\'s text', () => {
     expect(replaceBlockText('- item', [0, 1], 'item\nwrapped')).toBe('- item\n  wrapped')
   })
@@ -223,7 +229,8 @@ describe('serializeInline', () => {
 
   it('skips nested lists and task checkboxes in a list item', () => {
     const li = el('li', [el('input', []), text('parent'), el('ul', [el('li', [text('child')])])])
-    expect(serializeInline(li)).toBe('parent')
+    const task = el('li', [el('input', []), text(' '), el('label', [text('done')])])
+    expect([serializeInline(li), serializeInline(task)]).toEqual(['parent', ' done'])
   })
 
   it('gives up (null) on anything it cannot represent', () => {

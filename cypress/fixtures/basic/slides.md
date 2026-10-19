@@ -421,3 +421,19 @@ Right column
 <div data-testid="clamp-left">Text in the left column, which an image enlarged in the right column must not squeeze.</div>
 <div><img v-drag.flow="'colimg'" src="/wide.svg" style="width: 160px" data-testid="clamp-img"></div>
 </div>
+
+---
+
+# Page 29
+
+- alpha
+- beta
+  - beta one
+- gamma
+
+1. one
+2. two
+3. three
+
+- [ ] todo
+- [x] done

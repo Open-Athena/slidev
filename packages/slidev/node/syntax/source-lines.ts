@@ -98,13 +98,15 @@ export default function MarkdownItSourceLines(md: MarkdownExit, markdownTransfor
           break
         }
         case 'list_item_open': {
-          // The item's own text is its first paragraph; nested lists inside the item aren't part of it.
+          // The item's own text is its first paragraph; nested lists inside the item aren't part of
+          // it. An empty item (`- `) has no paragraph: its text is its first line.
           const paragraph = tokens[i + 1]
-          if (paragraph?.type === 'paragraph_open' && paragraph.map) {
-            const r = range(paragraph.map)
-            if (r)
-              token.attrSet(SOURCE_LINES_ATTR, r)
-          }
+          const map = paragraph?.type === 'paragraph_open'
+            ? paragraph.map
+            : token.map && [token.map[0], token.map[0] + 1] as [number, number]
+          const r = map && range(map)
+          if (r)
+            token.attrSet(SOURCE_LINES_ATTR, r)
           break
         }
         case 'html_block':

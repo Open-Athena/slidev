@@ -52,7 +52,9 @@ context('text editing', () => {
   it('edits a list item in place and writes its source line', () => {
     visit()
     startEditing('li', 'first item')
-    cy.focused().should('have.attr', 'contenteditable', 'true').type('{moveToEnd} edited{enter}')
+    // Enter in a list item adds an item (see `list-edit.spec.ts`); clicking away saves.
+    cy.focused().should('have.attr', 'contenteditable', 'true').type('{moveToEnd} edited')
+    cy.contains('#slide-content h1', 'Page 25').click()
     expectSource(original.replace('- first item\n', '- first item edited\n'))
     cy.contains('li', 'first item edited').should('not.have.attr', 'contenteditable')
   })
@@ -102,9 +104,9 @@ context('text editing', () => {
 
   it('⌘Z undoes a text edit', () => {
     visit()
-    startEditing('li', 'second item')
+    startEditing('p', 'text to edit')
     cy.focused().should('have.attr', 'contenteditable', 'true').type('{moveToEnd}!{enter}')
-    expectSource(original.replace('- second item\n', '- second item!\n'))
+    expectSource(original.replace('Some **bold** text to edit.\n', 'Some **bold** text to edit.!\n'))
     cy.get('body').type('{cmd}z')
     expectSource(original)
   })

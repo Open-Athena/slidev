@@ -97,3 +97,13 @@ it('tags block-level HTML tags with their source line and index on that line', a
     '</div>',
   ])
 })
+
+it('tags an empty list item with its first line', async () => {
+  expect((await render('- a\n- \n- c')).trim().split('\n')).toEqual([
+    '<ul>',
+    '<li data-slidev-md="0,1">a</li>',
+    '<li data-slidev-md="1,2"></li>',
+    '<li data-slidev-md="2,3">c</li>',
+    '</ul>',
+  ])
+})
