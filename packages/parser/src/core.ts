@@ -1,6 +1,7 @@
 import type { FrontmatterStyle, SlidevDetectedFeatures, SlidevMarkdown, SlidevPreparserExtension, SourceSlideInfo } from '@slidev/types'
 import { ensurePrefix } from '@antfu/utils'
 import YAML from 'yaml'
+import { linesCorrespond, mergeEditedLines } from './utils'
 
 const RE_FRONTMATTER = /^---.*\r?\n([\s\S]*?)---/
 const RE_YAML_CODEBLOCK = /^\s*```ya?ml([\s\S]*?)```/
@@ -55,13 +56,32 @@ export function stringifySlide(data: SourceSlideInfo, idx = 0) {
     : `---\n${ensurePrefix('\n', data.raw)}`
 }
 
+/**
+ * The frontmatter's YAML after edits to its document, changing only the touched lines: `toString`
+ * re-serializes the whole document (flow `[a]` → `[ a ]`, comment spacing, quoting…), so lines
+ * whose serialization didn't change keep their original text.
+ */
+export function minimalFrontmatterYaml(raw: string | undefined, doc: YAML.Document): string {
+  const next = doc.toString().trim()
+  if (raw == null)
+    return next
+  const original = raw.replace(/^\n+|\s+$/g, '')
+  const baseline = YAML.parseDocument(original).toString().trim()
+  if (next === baseline)
+    return original
+  return linesCorrespond(original, baseline) ? mergeEditedLines(original, baseline, next) : next
+}
+
 export function prettifySlide(data: SourceSlideInfo) {
   const trimed = data.content.trim()
   data.content = trimed ? `\n${data.content.trim()}\n` : ''
-  data.raw = data.frontmatterDoc?.contents
+  const yaml = data.frontmatterDoc?.contents ? minimalFrontmatterYaml(data.frontmatterRaw, data.frontmatterDoc) : undefined
+  if (yaml != null)
+    data.frontmatterRaw = yaml
+  data.raw = yaml != null
     ? data.frontmatterStyle === 'yaml'
-      ? `\`\`\`yaml\n${data.frontmatterDoc.toString().trim()}\n\`\`\`\n${data.content}`
-      : `---\n${data.frontmatterDoc.toString().trim()}\n---\n${data.content}`
+      ? `\`\`\`yaml\n${yaml}\n\`\`\`\n${data.content}`
+      : `---\n${yaml}\n---\n${data.content}`
     : data.content
   if (data.note)
     data.raw += `\n<!--\n${data.note.trim()}\n-->\n`

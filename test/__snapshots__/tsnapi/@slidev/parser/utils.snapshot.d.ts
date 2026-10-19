@@ -17,6 +17,8 @@ export interface TimesplitOutput {
 // #endregion
 
 // #region Functions
+export declare function linesCorrespond(_: string, _: string): boolean;
+export declare function mergeEditedLines(_: string, _: string, _: string): string;
 export declare function parseAspectRatio(_: string | number): number;
 export declare function parseRangeString(_: number, _?: string): number[];
 export declare function parseTimesplits(_: TimesplitInput[]): TimesplitOutput[];

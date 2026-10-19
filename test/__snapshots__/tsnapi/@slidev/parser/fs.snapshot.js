@@ -7,7 +7,10 @@ export function extractImagesUsage(_, _) {}
 export function getDefaultConfig() {}
 export function injectPreparserExtensionLoader(_) {}
 export function isPathInsideRoots(_, _) {}
+export function linesCorrespond(_, _) {}
 export async function load(_, _, _, _) {}
+export function mergeEditedLines(_, _, _) {}
+export function minimalFrontmatterYaml(_, _) {}
 export async function parse(_, _, _, _) {}
 export function parseAspectRatio(_) {}
 export function parseRangeString(_, _) {}

@@ -5,6 +5,9 @@
 export function detectFeatures(_) {}
 export function extractImagesUsage(_, _) {}
 export function getDefaultConfig() {}
+export function linesCorrespond(_, _) {}
+export function mergeEditedLines(_, _, _) {}
+export function minimalFrontmatterYaml(_, _) {}
 export async function parse(_, _, _, _) {}
 export function parseAspectRatio(_) {}
 export function parseRangeString(_, _) {}

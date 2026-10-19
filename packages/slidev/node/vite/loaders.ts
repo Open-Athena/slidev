@@ -169,10 +169,14 @@ export function createSlidesLoader(
             }
             else {
               const parsed = YAML.parseDocument(body.frontmatterRaw)
-              if (parsed.errors.length)
+              if (parsed.errors.length) {
                 console.error('ERROR when saving frontmatter', parsed.errors)
-              else
+              }
+              else {
                 slide.source.frontmatterDoc = parsed
+                // Written as typed (`prettifySlide` keeps the raw text of an unchanged document).
+                slide.source.frontmatterRaw = body.frontmatterRaw
+              }
             }
           }
           if (body.note != null)

@@ -97,32 +97,41 @@ export function updateFrontmatterPatch(source: SourceSlideInfo, frontmatter: Rec
     source.frontmatterStyle = 'frontmatter'
     source.frontmatterDoc = doc = new YAML.Document({})
   }
+  if (!YAML.isMap(doc.contents))
+    doc.contents = doc.createNode({})
   for (const [key, value] of Object.entries(frontmatter)) {
     source.frontmatter[key] = value
-    if (value == null) {
-      doc.delete(key)
-    }
-    else {
-      const valueNode = doc.createNode(value)
-      let found = false
-      YAML.visit(doc.contents, {
-        Pair(_key, node, path) {
-          if (path.length === 1 && YAML.isScalar(node.key) && node.key.value === key) {
-            node.value = valueNode
-            found = true
-            return YAML.visit.BREAK
-          }
-        },
-      })
-      if (!found) {
-        if (!YAML.isMap(doc.contents))
-          doc.contents = doc.createNode({})
-        doc.contents.add(
-          doc.createPair(key, valueNode),
-        )
-      }
-    }
+    patchNode(doc, [key], value)
   }
+}
+
+function isPlainObject(v: unknown): v is Record<string, unknown> {
+  return typeof v === 'object' && v !== null && !Array.isArray(v)
+}
+
+// Set `path` to `value` touching as little of the document as possible: unchanged values are
+// left alone, and an object patched onto an existing map updates only the keys that differ, so
+// the rest keeps its style (flow `[a]` vs block lists, quoting, comments).
+function patchNode(doc: YAML.Document, path: string[], value: unknown): void {
+  if (value == null) {
+    doc.deleteIn(path)
+    return
+  }
+  const node = doc.getIn(path, true)
+  if (isPlainObject(value) && YAML.isMap(node)) {
+    for (const [k, v] of Object.entries(value))
+      patchNode(doc, [...path, k], v)
+    for (const item of [...node.items]) {
+      const k = YAML.isScalar(item.key) ? String(item.key.value) : String(item.key)
+      if (!(k in value))
+        doc.deleteIn([...path, k])
+    }
+    return
+  }
+  const current = YAML.isNode(node) ? node.toJSON() : node
+  if (JSON.stringify(current) === JSON.stringify(value))
+    return
+  doc.setIn(path, YAML.isScalar(node) && !isPlainObject(value) && !Array.isArray(value) ? value : doc.createNode(value))
 }
 
 export function getBodyJson(req: Connect.IncomingMessage) {

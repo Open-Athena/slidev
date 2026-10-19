@@ -35,7 +35,10 @@ export declare function extractImagesUsage(_: string, _: Record<string, any>): s
 export declare function getDefaultConfig(): SlidevConfig;
 export declare function injectPreparserExtensionLoader(_: PreparserExtensionLoader): void;
 export declare function isPathInsideRoots(_: string, _: string[]): boolean;
+export declare function linesCorrespond(_: string, _: string): boolean;
 export declare function load(_: LoadRootsInfo, _: string, _?: Record<string, string> | ((_: string) => Promise<string>), _?: string): Promise<LoadedSlidevData>;
+export declare function mergeEditedLines(_: string, _: string, _: string): string;
+export declare function minimalFrontmatterYaml(_: string | undefined, _: YAML.Document): string;
 export declare function parse(_: string, _: string, _?: SlidevPreparserExtension[], _?: SlidevParserOptions): Promise<SlidevMarkdown>;
 export declare function parseAspectRatio(_: string | number): number;
 export declare function parseRangeString(_: number, _?: string): number[];
