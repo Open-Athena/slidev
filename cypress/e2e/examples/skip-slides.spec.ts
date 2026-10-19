@@ -5,10 +5,16 @@ const SOURCE = 'cypress/fixtures/basic/slides.md'
 // so marking it skipped adds one line.
 const waitForSlide = () => cy.get('#slide-content').should($s => expect($s[0].getBoundingClientRect().width).to.be.greaterThan(100))
 const heading = () => cy.get('#slide-content .slidev-page h1:visible')
-// The counter's parts (badge, number, total), as they read; retried until they match.
+// The counter's parts (badge, number, total), as they read (not the total's screen-reader label);
+// retried until they match.
 function expectCounter(text: string) {
   cy.get('[data-testid="slide-counter"]').should(($c) => {
-    expect($c.children().toArray().map(c => c.textContent!.replace(/\s+/g, ' ').trim()).join(' ')).to.eq(text)
+    const visible = (el: Element) => {
+      const copy = el.cloneNode(true) as Element
+      copy.querySelectorAll('.sr-only').forEach(e => e.remove())
+      return copy.textContent!.replace(/\s+/g, ' ').trim()
+    }
+    expect($c.children().toArray().map(visible).join(' ')).to.eq(text)
   })
 }
 
@@ -50,6 +56,14 @@ context('skipped slides', () => {
     cy.get('body').type('{rightArrow}')
     cy.location('pathname').should('eq', '/38')
     cy.get('[data-testid="skipped-badge"]').should('not.exist')
+  })
+
+  it('the counter\'s total opens the slide overview', () => {
+    cy.visit(`${BASE}/36`)
+    waitForSlide()
+    cy.get('[data-testid="slide-total"]').click({ force: true })
+    cy.get('[data-testid="quick-overview"]').should('be.visible')
+    cy.location('pathname').should('eq', '/36')
   })
 
   it('the presenter\'s next preview is the next kept slide', () => {

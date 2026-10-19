@@ -324,7 +324,17 @@ if (__SLIDEV_FEATURE_RECORD__)
           data-testid="skipped-badge"
         >skipped</span>
         <span class="text-lg">{{ currentSlideNo }}</span>
-        <span class="opacity-50 text-sm"> / {{ total }}<template v-if="skippedCount > 0"> · {{ skippedCount }} skipped</template></span>
+        <IconButton
+          title="Open the slide overview"
+          shortcut="toggle_overview"
+          class="aspect-ratio-initial !px-1 !py-0 text-sm"
+          data-testid="slide-total"
+          @click="toggleOverview()"
+        >
+          / {{ total }}<template v-if="skippedCount > 0">
+            · {{ skippedCount }} skipped
+          </template>
+        </IconButton>
       </div>
 
       <CustomNavControls />
