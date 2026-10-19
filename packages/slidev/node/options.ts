@@ -12,6 +12,7 @@ import { getRoots, resolveEntry, toAtFS } from './resolver'
 import setupIndexHtml from './setups/indexHtml'
 import setupKatex from './setups/katex'
 import setupShiki from './setups/shiki'
+import { applySlugHistory, loadSlugHistory } from './slug-history'
 
 const RE_FILE_EXTENSION = /\.\w+$/
 
@@ -93,6 +94,8 @@ export async function resolveOptions(
   // for v1; intentionally not added to data.watchFiles to avoid an HMR loop on our own writes.
   const coords = await loadCoords(rootsInfo.userRoot)
   applyCoords(data, coords)
+  // Old slugs (slides.slugs.yaml) as each slide's `slugHistory`, so old links keep resolving.
+  applySlugHistory(data, await loadSlugHistory(rootsInfo.userRoot))
 
   const resolved: Omit<ResolvedSlidevOptions, 'utils'> = {
     ...rootsInfo,

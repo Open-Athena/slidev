@@ -47,9 +47,9 @@ export interface SlideSlugs {
   /** The slide's slug: frontmatter `slug`, else `routeAlias`, else its title's text; `''` if none. */
   slug: string
   /**
-   * Other slugs that still name the slide: frontmatter `aliases` (e.g. its slugs before a title
-   * change), and the slug the previous rule derived from a markdown title, so links already shared
-   * keep working.
+   * Other slugs that still name the slide: frontmatter `aliases`, its old slugs the dev server
+   * recorded (`slugHistory`, from `slides.slugs.yaml`), and the slug the previous rule derived
+   * from a markdown title, so links already shared keep working.
    */
   aliases: string[]
 }
@@ -59,7 +59,8 @@ export function slideSlugs(frontmatter: Record<string, any> | undefined, title: 
   const sources = [fm.slug, fm.routeAlias, fm.title, title]
   const source = sources.find(s => typeof s === 'string' && slugify(titleText(s))) as string | undefined
   const slug = source ? slugify(titleText(source)) : ''
-  const listed = Array.isArray(fm.aliases) ? fm.aliases : typeof fm.aliases === 'string' ? [fm.aliases] : []
+  const list = (v: unknown): unknown[] => Array.isArray(v) ? v : typeof v === 'string' ? [v] : []
+  const listed = [...list(fm.aliases), ...list(fm.slugHistory)]
   const aliases = [
     ...listed.filter((a: unknown): a is string => typeof a === 'string').map(a => slugify(a)),
     source ? legacySlugify(source) : '',

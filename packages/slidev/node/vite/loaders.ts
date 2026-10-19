@@ -11,6 +11,7 @@ import YAML from 'yaml'
 import { applyCoords, loadCoords, saveCoordsForSlide, writeCoords } from '../coords'
 import { createDataUtils } from '../options'
 import { duplicateOrder, isIdentityOrder, matchSlides, moveOrder, reorderCoords } from '../slide-order'
+import { applySlugHistory, loadSlugHistory, ownSlug, recordSlugChanges, SLUGS_FILENAME, writeSlugHistory } from '../slug-history'
 import MarkdownItKatex from '../syntax/katex'
 import markdownItLink from '../syntax/link'
 import { applyNotesAutoRuby, createMakeAbsoluteImportGlob, getBodyJson, updateFrontmatterPatch } from '../utils'
@@ -117,6 +118,29 @@ export function createSlidesLoader(
       ].filter(Boolean).join('; '))
     }
     return true
+  }
+
+  /**
+   * Record slides whose slug changed in this edit of the markdown (paired with their previous
+   * version by `matchSlides`), so links with the old slug keep leading to them
+   * (`slides.slugs.yaml`), and apply the updated history to `after`.
+   */
+  async function recordSlugRenames(before: SlideInfo[], after: SlidevData): Promise<void> {
+    const { order } = matchSlides(before.map(slideKey), after.slides.map(slideKey))
+    const changes = order.flatMap((slot, i) => {
+      if (slot.from == null)
+        return []
+      const from = ownSlug(before[slot.from - 1])
+      const to = ownSlug(after.slides[i])
+      return from && to && from !== to ? [{ from, to }] : []
+    })
+    if (!changes.length)
+      return
+    const history = recordSlugChanges(await loadSlugHistory(options.userRoot), changes, new Date().toISOString())
+    await writeSlugHistory(options.userRoot, history)
+    applySlugHistory(after, history)
+    // eslint-disable-next-line no-console
+    console.log(`[slidev] Slug changed: ${changes.map(c => `${c.from} → ${c.to}`).join(', ')}; links with the old slug keep working (${SLUGS_FILENAME})`)
   }
 
   function getFrontmatter(pageNo: number) {
@@ -326,6 +350,7 @@ export function createSlidesLoader(
         reorderWrite = null
       else
         remapped = await remapSlideState(data.slides, newData)
+      await recordSlugRenames(data.slides, newData)
 
       const moduleIds = new Set<string>()
 
@@ -584,7 +609,8 @@ export function createSlidesLoader(
 
 /** A slide's identity across edits of the markdown (`matchSlides`): its content and frontmatter. */
 function slideKey(slide: SlideInfo): SlideKey {
-  const { dragPos: _, ...frontmatter } = slide.frontmatter ?? {}
+  // Not what the slide is: positions and its slug history are applied from sidecar files.
+  const { dragPos: _, slugHistory: __, ...frontmatter } = slide.frontmatter ?? {}
   return {
     signature: createHash('sha1').update(JSON.stringify([slide.content.trim(), frontmatter])).digest('hex'),
     title: slide.title?.trim() || undefined,

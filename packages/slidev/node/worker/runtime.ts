@@ -128,7 +128,11 @@ export const UNFURLER_RE = /bot\b|bot\/|crawler|spider|facebookexternalhit|faceb
 
 export const RENDER_TOKEN_HEADER = 'X-Slidev-Render-Token'
 
-/** The slide a path (relative to `base`, no leading slash) names: `3`, `3-install` or `install`. */
+/**
+ * The slide a path (relative to `base`, no leading slash) names: `3`, `3-install` or `install`.
+ * In `<n>-<slug>`, the slug decides (slide numbers shift as slides are inserted or removed before
+ * it): a slide's own slug, else an old one (alias), when exactly one slide has it; else the number.
+ */
 export function matchSlide(slides: WorkerSlide[], rel: string): WorkerSlide | undefined {
   const r = rel.replace(/\/+$/, '')
   if (!r || r.includes('/'))
@@ -137,11 +141,26 @@ export function matchSlide(slides: WorkerSlide[], rel: string): WorkerSlide | un
     return slides.find(s => s.no === Number(r))
   const m = r.match(/^(\d+)-(.+)$/)
   if (m) {
-    const s = slides.find(s => s.no === Number(m[1]))
-    if (s && (s.slug === m[2] || s.aliases?.includes(m[2])))
-      return s
+    for (const named of [(s: WorkerSlide) => s.slug === m[2], (s: WorkerSlide) => !!s.aliases?.includes(m[2])]) {
+      const matches = slides.filter(named)
+      if (matches.length)
+        return matches.length === 1 ? matches[0] : slides.find(s => s.no === Number(m[1]))
+    }
+    return slides.find(s => s.no === Number(m[1]))
   }
   return slides.find(s => s.bareSlug && s.slug === r) ?? slides.find(s => s.bareAliases?.includes(r))
+}
+
+/**
+ * Where a request for `slide` by `rel` should be redirected: its current path, when `rel` named it
+ * by an old number (`7-install` after a slide before it was removed), an old slug, or a slug with
+ * no slide (the number decided). Plain numbers and its own bare slug stay as they are.
+ */
+export function slideRedirect(slide: WorkerSlide, rel: string, base: string): string | undefined {
+  const r = rel.replace(/\/+$/, '')
+  if (/^\d+$/.test(r) || (slide.bareSlug && r === slide.slug))
+    return undefined
+  return `${base}${r}` === slide.path ? undefined : slide.path
 }
 
 /** The slide whose card a path (relative to `base`) names: `_og/3-install.jpg` or `_og/3.jpg`. */
@@ -328,6 +347,9 @@ export function createWorker(manifest: WorkerManifest, options: WorkerOptions = 
         return serveCard(request, env, ctx, manifest, card, options)
 
       const slide = isGet && rel !== undefined ? matchSlide(manifest.slides, rel) : undefined
+      const moved = slide && slideRedirect(slide, rel!, base)
+      if (moved)
+        return Response.redirect(new URL(`${moved}${url.search}`, url).toString(), 301)
       const isUnfurler = unfurlers.test(request.headers.get('User-Agent') ?? '')
       const info = () => shareInfoFor(manifest, slide!, canonicalizeParams(slide!.params, url.searchParams))
 

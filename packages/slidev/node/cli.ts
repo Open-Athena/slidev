@@ -21,6 +21,7 @@ import { resolveOptions } from './options'
 import { parser } from './parser'
 import { isInstalledGlobally, resolveEntry } from './resolver'
 import setupPreparser from './setups/preparser'
+import { applySlugHistory, loadSlugHistory } from './slug-history'
 import { updateFrontmatterPatch } from './utils'
 
 const RE_NODE_MODULES_OR_GIT = /node_modules|\.git/
@@ -191,6 +192,7 @@ cli.command(
             // Re-apply external coords (slides.coords.yaml) so reloads pick up positions.
             const coords = await loadCoords(options.userRoot)
             applyCoords(newData, coords)
+            applySlugHistory(newData, await loadSlugHistory(options.userRoot))
 
             return newData
           },

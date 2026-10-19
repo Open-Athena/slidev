@@ -107,9 +107,13 @@ describe('matchSlide', () => {
       .toEqual([1, 1, 1, 1, 2, 2])
   })
 
-  it('rejects wrong slugs, non-unique bare slugs, nested and unknown paths', () => {
-    expect(['1-chart', 'chart', '3', '', 'assets/x.js', 'presenter/1'].map(r => matchSlide(slides, r)?.no))
-      .toEqual([undefined, undefined, undefined, undefined, undefined, undefined])
+  it('a slug wins over a stale number (the handler redirects to the current URL)', () => {
+    expect(matchSlide(slides, '1-chart')?.no).toBe(2)
+  })
+
+  it('rejects non-unique bare slugs, nested and unknown paths', () => {
+    expect(['chart', '3', '', 'assets/x.js', 'presenter/1'].map(r => matchSlide(slides, r)?.no))
+      .toEqual([undefined, undefined, undefined, undefined, undefined])
   })
 })
 
