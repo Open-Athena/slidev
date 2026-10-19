@@ -437,3 +437,18 @@ Right column
 
 - [ ] todo
 - [x] done
+
+---
+wysiwyg: true
+---
+
+# Page 30
+
+Intro with Q&A and ~1 day.
+
+- one
+- two
+
+<div class="cy-note">An HTML block</div>
+
+After the HTML.

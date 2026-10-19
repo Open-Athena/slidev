@@ -83,3 +83,43 @@ In a rich-edited list item (`composables/useTextEditing.ts`), the keys below rew
 - ⌥↓.
 
 Two existing text-edit tests used Enter to save a list item; one now saves by clicking away, the other edits a paragraph. Verified with real keys in Chrome on the deep-dive deck's Outline list: add "Q&A", Tab / ⇧Tab / ⌥↑, Backspace-merge, ⌘Z.
+
+## Part B: as built (prototype)
+
+- **Flag:** `wysiwyg: true` in the headmatter, or in a slide's frontmatter. Dev only. ⌥ + double-click still edits a single block.
+- **Regions:** `source-lines.ts` tags top-level paragraphs, headings, lists, blockquotes and tables with `data-slidev-block`. The region is the run of adjacent tagged blocks around the click that are contiguous in the source (only blank lines between). HTML blocks, components and `::slot::` markers end it.
+- **Editor:** Milkdown 7.22 (`@milkdown/kit`: commonmark, gfm, history), loaded with a dynamic import. It mounts in place of the region's blocks inside the slide, so the theme styles it. ⌘Enter or clicking away saves; Esc cancels. One `text` history event per session (⌘Z verified).
+- **Serializer options** are inferred from the source: bullet, emphasis / strong markers, incrementing vs lazy numbering.
+
+**The fidelity rule changed during implementation.** Byte-identical no-op round trips turned out to be too strict: Milkdown escapes `&` before a letter (`Q&A` → `Q\&A`) and `~`, pads tables, and decodes entities. That refused the deck's own Outline slide. So:
+
+- **Gate:** the unedited region's serialization must line up with the source line for line (`linesCorrespond`).
+- **Merge:** on save, `mergeEdited` (`composables/wysiwyg-merge.ts`, unit-tested) diffs the unedited and edited serializations line by line (LCS). Unchanged lines keep the original source bytes; only changed or added lines come from the serializer.
+
+So text the user didn't touch is never rewritten, the goal of the original rule, and the gate only refuses regions whose structure would shift lines: loose lists, reference-style links, and the like.
+
+**Corpus** (deep-dive deck, 48 slides, 96 regions). The remark proxy with matching options gives:
+- 71 of 96 regions byte-identical;
+- **84 of 96 passing the line gate.**
+
+Milkdown's ProseMirror model can only lose more (e.g. reference links), so in-browser numbers may be slightly lower.
+
+**Bug found on the way:** a block's line map can end on a trailing blank line that the transformed source generated, which maps to no original line. `range()` dropped such blocks (every list ending a slide lost its tag). It now ends at the last mapped line.
+
+**Tests:**
+- `test/wysiwyg-merge.test.ts`;
+- `source-lines.test.ts` (block tags);
+- `cypress/e2e/examples/wysiwyg.spec.ts` on fixture slide 30:
+  - the region spans heading, paragraph and list up to an HTML block;
+  - editing one item rewrites only that line, while `Q&A` and `~1 day` keep their bytes;
+  - ⌘Z restores the source;
+  - a paragraph after the HTML block is its own region;
+  - Esc cancels.
+
+Verified in Chrome on the deep-dive deck's Outline slide: append to an item, Enter, type a new item, ⌘Enter, then ⌘Z.
+
+**Not yet:**
+- a formatting toolbar (Milkdown's Crepe has one);
+- tables in the gate on real decks (the padding is only a problem if a row's line count changes, which it doesn't);
+- in-browser corpus numbers;
+- turning it on by default.

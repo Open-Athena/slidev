@@ -409,6 +409,14 @@ export interface HeadmatterConfig extends TransitionOptions {
    * @default []
    */
   draggableComponents?: boolean | string[]
+  /**
+   * Prototype: in edit mode, double-clicking a run of plain markdown blocks (paragraphs, headings,
+   * lists, blockquotes, tables) edits them together in a WYSIWYG (Milkdown) editor, when the run
+   * round-trips through the editor byte for byte. Dev only.
+   *
+   * @default false
+   */
+  wysiwyg?: boolean
 }
 
 export interface Frontmatter extends TransitionOptions {

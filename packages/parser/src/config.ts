@@ -62,6 +62,7 @@ export function getDefaultConfig(): SlidevConfig {
     draggableImages: false,
     draggableImageTags: [],
     draggableComponents: [],
+    wysiwyg: false,
     clickAnimation: '',
     publish: {},
   }

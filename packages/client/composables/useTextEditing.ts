@@ -1,6 +1,8 @@
 import type { ListEditResult, ListFocus } from './list-edit'
 import type { LineRange } from './text-edit'
 import { onMounted, onUnmounted, watch } from 'vue'
+import { configs } from '../env'
+import { getSlide } from '../logic/slides'
 import { editMode } from '../state'
 import { changedRange, indentItem, mergeIntoPrevious, moveItem, outdentItem, removeItem, splitItem } from './list-edit'
 import {
@@ -16,6 +18,7 @@ import {
 } from './text-edit'
 import { pushTextEdit } from './useDragHistory'
 import { clearSelection } from './useMultiSelect'
+import { closeWysiwyg, isWysiwygEditing, openWysiwyg } from './useWysiwyg'
 
 // In-app text editing (dev only). In edit mode, double-click a heading, paragraph, list item or
 // table cell to edit it:
@@ -469,7 +472,7 @@ function startRaw(t: Target, content: string, sourceText: string) {
 }
 
 async function onDblclick(ev: MouseEvent) {
-  if (!editMode.value || session)
+  if (!editMode.value || session || isWysiwygEditing())
     return
   const t = findTarget(ev)
   if (!t)
@@ -477,6 +480,18 @@ async function onDblclick(ev: MouseEvent) {
   ev.preventDefault()
   ev.stopPropagation()
   clearSelection()
+  // WYSIWYG (`wysiwyg: true` in the headmatter, or a slide's frontmatter): edit the whole run of markdown blocks when it
+  // round-trips exactly; otherwise (or with ⌥) edit this block.
+  const wysiwyg = getSlide(t.slideNo)?.meta.slide?.frontmatter.wysiwyg ?? (configs as any).wysiwyg
+  if (wysiwyg && !ev.altKey) {
+    try {
+      if (await openWysiwyg(t.el, t.slideNo, await fetchContent(t.slideNo)))
+        return
+    }
+    catch (err) {
+      console.error('[Slidev] WYSIWYG failed; editing per block', err)
+    }
+  }
   await beginEditing(t, ev.altKey)
 }
 
@@ -514,7 +529,9 @@ export function useTextEditing() {
   // saves any edit in progress.
   watch(editMode, (on) => {
     document.documentElement.classList.toggle('slidev-edit-mode', on)
-    if (!on)
+    if (!on) {
       void session?.finish(true)
+      closeWysiwyg(true)
+    }
   }, { immediate: true })
 }

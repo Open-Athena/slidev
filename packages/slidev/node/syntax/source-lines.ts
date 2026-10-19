@@ -8,6 +8,12 @@ import { SourceMapConsumer } from 'source-map-js'
  * uses it to write an edited block back to the right lines.
  */
 export const SOURCE_LINES_ATTR = 'data-slidev-md'
+/**
+ * On top-level markdown blocks (paragraphs, headings, lists, blockquotes, tables): their source
+ * lines, so a block editor (WYSIWYG) can find a run of plain-markdown blocks and its source.
+ */
+export const SOURCE_BLOCK_ATTR = 'data-slidev-block'
+const TOP_LEVEL_BLOCKS = new Set(['paragraph_open', 'heading_open', 'bullet_list_open', 'ordered_list_open', 'blockquote_open', 'table_open'])
 /** On table cells: the cell's index within its row (whose line is in `SOURCE_LINES_ATTR`). */
 export const SOURCE_CELL_ATTR = 'data-slidev-md-cell'
 /**
@@ -77,8 +83,12 @@ export default function MarkdownItSourceLines(md: MarkdownExit, markdownTransfor
       : (line: number) => line
     const range = (map: [number, number]) => {
       const start = toOriginal(map[0])
-      const end = toOriginal(map[1] - 1) + 1
-      return start >= 0 && end > start ? `${start},${end}` : null
+      // A block's map can end on a trailing blank line (lists, blockquotes) that the transformed
+      // source generated, which maps to no original line; end at the last line that does.
+      let end = -1
+      for (let line = map[1] - 1; line >= map[0] && end < 0; line--)
+        end = toOriginal(line)
+      return start >= 0 && end + 1 > start ? `${start},${end + 1}` : null
     }
 
     const tokens = state.tokens
@@ -86,6 +96,11 @@ export default function MarkdownItSourceLines(md: MarkdownExit, markdownTransfor
     let cellIndex = 0
     for (let i = 0; i < tokens.length; i++) {
       const token = tokens[i]
+      if (token.level === 0 && TOP_LEVEL_BLOCKS.has(token.type) && token.map && !token.hidden) {
+        const r = range(token.map)
+        if (r)
+          token.attrSet(SOURCE_BLOCK_ATTR, r)
+      }
       switch (token.type) {
         case 'heading_open':
         case 'paragraph_open': {

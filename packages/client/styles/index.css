@@ -317,3 +317,13 @@ html {
   border-radius: 4px;
   font: 11px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace;
 }
+
+/* WYSIWYG block editor (`composables/useWysiwyg.ts`). */
+.slidev-wysiwyg .ProseMirror {
+  outline: 2px solid rgb(59 130 246 / 0.5);
+  outline-offset: 4px;
+  border-radius: 2px;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  font-variant-ligatures: none;
+}

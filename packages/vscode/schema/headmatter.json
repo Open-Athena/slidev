@@ -752,6 +752,12 @@
           "markdownDescription": "Components that get their own drag / resize box in edit mode, e.g. `['OgPreviews']`, or `true`\nfor every component in the deck's `components/` directory. They keep their place in the layout\n(`dragLayout: flow`), and their height follows their content, so narrowing one reflows it.",
           "default": []
         },
+        "wysiwyg": {
+          "type": "boolean",
+          "description": "Prototype: in edit mode, double-clicking a run of plain markdown blocks (paragraphs, headings, lists, blockquotes, tables) edits them together in a WYSIWYG (Milkdown) editor, when the run round-trips through the editor byte for byte. Dev only.",
+          "markdownDescription": "Prototype: in edit mode, double-clicking a run of plain markdown blocks (paragraphs, headings,\nlists, blockquotes, tables) edits them together in a WYSIWYG (Milkdown) editor, when the run\nround-trips through the editor byte for byte. Dev only.",
+          "default": false
+        },
         "defaults": {
           "$ref": "#/definitions/Frontmatter",
           "description": "Default frontmatter options applied to all slides",
