@@ -126,9 +126,9 @@ Add to deck headmatter:
 ## Implementation phases
 
 1. **Per-slide OG (A + C + D + F-frontmatter).** Prerendered shells + image generation + frontmatter. Delivers the "paste a slide URL and get a preview" win without any social integration. **Shipped.**
-2. **Slug URLs (B).** Nice-to-have; can land alongside or after phase 1.
-3. **BlueSky publish (E).** CLI command assembling the thread.
-4. **Mastodon publish.** Reuse phase 3's post-assembly.
+2. **Slug URLs (B).** Nice-to-have; can land alongside or after phase 1. **Shipped.**
+3. **BlueSky publish (E).** CLI command assembling the thread. **Shipped.**
+4. **Mastodon publish.** Reuse phase 3's post-assembly. **Open** — see "Phase 4 notes" below.
 
 Phase 1 alone is probably the highest-leverage piece — it's what makes the deck behave like a proper web citizen.
 
@@ -183,10 +183,42 @@ decks are unaffected).
 
 ### Caveats
 
-- Slug routing (Phase 2) isn't shipped, so the canonical URL embedded in
-  shells is the integer route `/<n>` rather than `/<n>-<slug>`. The slug
-  is used in shell + image filenames only.
 - The cache directory grows monotonically; a future tweak should sweep
   entries not used in the current build.
 - 1200×630 with a 16:9 slide canvas produces sidebar letterboxing
   (1.905 vs 1.778 AR); acceptable for OG previews.
+
+## Phase 2 as built (slug URLs)
+
+- **Routes** (`packages/client/setup/routes.ts`):
+  - `/:no(\d+)-:slug` (`play-slug`): a slug naming exactly one slide wins over the number (`resolveNumberedSlug` in `logic/slidePath.ts`), so links shared before slides were inserted earlier follow their slide (`/3-install` → `/4-install`); a renamed or ambiguous slug falls back to the number.
+  - `/:no(\d+)` (`play`): digits only, so non-numeric paths fall through to the slug / 404 routes. Bare `/<n>` renders in place (no redirect); in-deck nav then writes the canonical form.
+  - `/:slug`: bare slug → redirect to `/<n>-<slug>`, else `NotFound`.
+- **`publish.canonicalForm`** (`'n-slug'` default, `'n'`, `'slug'`; `canonicalPathFor` in `og.ts` and `logic/slides.ts`): which form goes into `<link rel=canonical>`, `og:url`, the URL bar after nav, and the `y` yank. All three forms keep resolving.
+- **Static hosts**: `slidev build` emits `dist/<n>.html`, `dist/<n>-<slug>.html` and (unique, non-reserved slugs only) `dist/<slug>.html`, each the SPA shell with that slide's OG meta, so GH Pages-style pretty URLs serve per-slide cards without a server.
+
+## Phase 3 as built (`slidev publish bluesky`)
+
+```
+slidev publish bluesky [-o dist] [-n|--dry-run] [--json] [--handle h] [--service url]
+```
+
+- **Input is the build, not the source.** `slidev build` writes `dist/_og/slides.json` (`ogManifest` in `og.ts`): per slide `no`, `slug`, OG `title` / `description`, `caption`, `canonical` (absolute URL, per `canonicalForm`), `image` (filename under `_og/`), `skipThread`; plus the deck title / URL and headmatter `publish.bluesky.handle`. So the thread links exactly the URLs and images that were built, and `publish` needs no theme / Vite resolution. No manifest → error telling you to build with `publish.baseUrl`.
+- **Assembly** (`packages/slidev/node/commands/publish.ts`, pure, platform-neutral): `assembleThread(manifest, { maxGraphemes })` → `ThreadPost[]` (`text`, `links` as UTF-16 spans, `card: { uri, title, description }`, `image`), deck order, `skipThread` slides dropped (`skipOg` / `hide` / `disabled` slides are already absent from the manifest).
+  - Text: frontmatter `caption`, else OG title, else OG description. `[text](url)` keeps `text` and links it; bare `http(s)://` URLs link to themselves (trailing sentence punctuation excluded).
+  - Truncation: to `maxGraphemes` (`Intl.Segmenter`), ending in `…`; links are clipped to the kept text. Applies to all three sources, not just the description, since Bluesky rejects >300 graphemes.
+- **Bluesky records** (`packages/slidev/node/commands/bluesky.ts`, pure): `postRecord(post, { createdAt, thumb, reply })` → `app.bsky.feed.post` with `facets` (`linkFacets`: UTF-8 byte offsets, `app.bsky.richtext.facet#link`) and an `app.bsky.embed.external` card (canonical URL, OG title / description, uploaded OG image as `thumb`). Each post after the first has `reply: { root: <first>, parent: <previous> }`.
+- **Client**: raw XRPC over `fetch`, not `@atproto/api` (10 MB unpacked, brings its own `zod` 3 while slidev is on `zod` 4) — three endpoints: `com.atproto.server.createSession` (app password), `com.atproto.repo.uploadBlob`, `com.atproto.repo.createRecord`. Calls after login go to the account's PDS from the session's DID doc (`#atproto_pds`), else the login service. `fetch` is injectable; tests mock it and assert the exact requests.
+- **Auth**: handle from `--handle`, else `BSKY_HANDLE`, else headmatter `publish.bluesky.handle`; password from `BSKY_APP_PASSWORD`; service from `--service`, else `BSKY_SERVICE`, else `https://bsky.social`.
+- **Idempotency**: `dist/_publish/bluesky.json` (`{ version, did, handle, posts: [{ no, slug, canonical, uri, cid, url }] }`) is rewritten after every post, so an interrupted run resumes; re-runs post only slides whose canonical URL isn't recorded, continuing the reply chain from the last recorded post (root stays the first). A state file from another account (DID mismatch) is refused. `slidev build` carries `_publish/` across Vite's out-dir wipe, so rebuilding doesn't lose it. Slides appended to the deck later extend the thread; edits to already-posted slides are not reconciled (non-goal).
+- **Thumbs over 1,000,000 bytes** (Bluesky's blob cap for external embeds) are skipped with a warning; the post goes out with a card but no image.
+- **`--dry-run`**: no login or network; prints each post's text, links, card and thumb, marking posts already in the state file. `--json` prints the assembled `ThreadPost[]` instead.
+- **Tests**: `test/publish.test.ts` — link extraction, grapheme truncation, `assembleThread` / `ogManifest` / `postRecord` / `linkFacets` exact records, `publishThread` against a fake client (reply chain, per-post saves, resume, oversized thumb, DID mismatch), `createBlueskyClient` against a mocked `fetch` (exact requests, error surfacing), `describeThread` output. Verified end to end offline against a local XRPC stub via `--service`; never run against a real Bluesky service.
+- Also fixed: decks without `info` / `seoMeta.ogDescription` got OG descriptions of `"false"` (the `info` default) on slides with no first paragraph.
+
+## Phase 4 notes (Mastodon — open)
+
+- Reuse `readManifest` + `assembleThread` (with `maxGraphemes: 500`, or the instance's `configuration.statuses.max_characters`); add a `commands/mastodon.ts` beside `bluesky.ts` and a `publish mastodon` subcommand.
+- Mastodon has no author-supplied link cards: it scrapes the first URL in the status (our shells serve the per-slide OG meta, so the card should match). So the text should append `card.uri`, and the OG image could instead go up as a media attachment (`POST /api/v2/media`, with alt text from the title) — pick one, since both make a status with a big image *and* a card.
+- Markdown-link anchors can't be kept: render `text (url)` or just the URL. `ThreadPost.links` carries enough to do that.
+- Auth `MASTODON_TOKEN` + `MASTODON_INSTANCE` (headmatter `publish.mastodon`); threading via `in_reply_to_id`; state in `_publish/mastodon.json` with the same resume rules.
